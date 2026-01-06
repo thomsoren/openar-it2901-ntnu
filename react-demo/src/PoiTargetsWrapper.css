@@ -1,0 +1,10 @@
+.poi-grid {
+  display: grid;
+  gap: 50px; /* Adjust the spacing between grid items */
+  padding: 20px; /* Optional padding around the grid */
+  position: absolute;
+  top: 40%;
+  left: 30%;
+  z-index: 10;
+  width: fit-content;
+}
