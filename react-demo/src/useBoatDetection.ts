@@ -91,9 +91,6 @@ export const useBoatDetection = (
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-          // Convert canvas to image for inference
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
           // Run inference
           // Note: InferenceJS expects specific image formats, this is a simplified version
           // You may need to adjust based on actual InferenceJS API requirements
