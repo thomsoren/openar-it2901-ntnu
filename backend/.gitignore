@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# uv
+.uv/
+
+# Environment variables
+.env
+
+# Output files
+output/
+*.mp4
+*.json
+temp_frame.jpg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

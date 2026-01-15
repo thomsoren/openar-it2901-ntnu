@@ -1,85 +1,63 @@
-import React, { useReducer, useEffect } from "react";
+import React from "react";
 import { ObcPoiTarget } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-target/poi-target";
 import "./PoiTargetsWrapper.css";
 
-const UPDATE_HEIGHTS = "UPDATE_HEIGHTS";
+const POI_HEIGHT = 150;
 
-interface PoiTarget {
-  id: number;
+export interface Detection {
+  x: number;
+  y: number;
+  width: number;
   height: number;
-  incrementing: boolean;
-}
-
-interface Action {
-  type: string;
-}
-
-function reducer(state: PoiTarget[], action: Action): PoiTarget[] {
-  switch (action.type) {
-    case UPDATE_HEIGHTS:
-      return state.map((poi) => {
-        let { height, incrementing } = poi;
-
-        if (incrementing) {
-          if (height < 250) {
-            height += 1;
-          } else {
-            incrementing = false;
-            height -= 1;
-          }
-        } else {
-          if (height > 50) {
-            height -= 1;
-          } else {
-            incrementing = true;
-            height += 1;
-          }
-        }
-
-        return { ...poi, height, incrementing };
-      });
-    default:
-      return state;
-  }
+  confidence: number;
+  class: string;
 }
 
 function PoiTargetsWrapper({
-  rows,
-  columns,
+  detections = [],
 }: {
-  rows: number;
-  columns: number;
+  detections?: Detection[];
 }) {
-  const totalComponents = rows * columns;
+  const visibleDetections = detections.filter((detection) => {
+    if (!detection.class) {
+      return false;
+    }
 
-  const [poiTargets, dispatch] = useReducer(
-    reducer,
-    Array.from({ length: totalComponents }, (_, index) => {
-      const randomHeight = Math.floor(Math.random() * 201) + 50; // Between 50 and 250
-      return {
-        id: index,
-        height: randomHeight,
-        incrementing: Math.random() >= 0.5,
-      };
-    })
-  );
+    return detection.class.toLowerCase() !== "uncategorized";
+  });
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      dispatch({ type: UPDATE_HEIGHTS });
-    }, 16.6666667);
-
-    return () => clearInterval(interval);
-  }, []);
+  // If we have detections, render POIs at detected boat locations
+  if (visibleDetections.length === 0) {
+    return null;
+  }
 
   return (
-    <div
-      className="poi-grid"
-      style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}
-    >
-      {poiTargets.map((poi) => (
-        <ObcPoiTarget key={poi.id} height={poi.height} />
-      ))}
+    <div className="poi-container">
+      {visibleDetections.map((detection, index) => {
+        // Use percentage-based positioning for responsive scaling
+        // Detection coordinates are from video processing (likely 1920x1080)
+        // Convert to percentage of video dimensions
+        const VIDEO_WIDTH = 1920;
+        const VIDEO_HEIGHT = 1080;
+
+        const leftPercent = (detection.x / VIDEO_WIDTH) * 100;
+        const topPercent = (detection.y / VIDEO_HEIGHT) * 100;
+
+        return (
+          <div
+            key={index}
+            style={{
+              position: "absolute",
+              left: `${leftPercent}%`,
+              top: `${topPercent}%`,
+              transform: "translate(-50%, -100%)", // Center POI on detection point
+              zIndex: 10,
+            }}
+          >
+            <ObcPoiTarget height={POI_HEIGHT} />
+          </div>
+        );
+      })}
     </div>
   );
 }

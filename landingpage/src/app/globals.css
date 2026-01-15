@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Color palette */
+    --color-navy-deep: #0b1224;
+    --color-navy-hover: #111c36;
+    --color-navy-bg: #060a12;
+
+    /* Fonts */
+    --font-heading: var(--font-fraunces);
+    --font-body: var(--font-inter);
+
+    /* Background */
+    --gradient-hero: none;
+
+    /* Layout */
+    --page-gutter: clamp(1.5rem, 4vw, 3rem);
+    --section-gap: clamp(2rem, 5vw, 4rem);
+  }
+
+  * {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
+
+  body {
+    font-family: var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: #0b0b0b;
+    background: #ffffff;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading), serif;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  ::selection {
+    background-color: rgba(0, 0, 0, 0.08);
+    color: #0b0b0b;
+  }
+}
+
+@layer components {
+  .section-heading {
+    @apply font-heading text-4xl md:text-5xl font-semibold text-slate-900 mb-4;
+  }
+
+  .section-description {
+    @apply text-slate-600 text-lg leading-relaxed;
+  }
+
+  .section-header {
+    @apply text-center mb-16;
+  }
+
+  .page-container {
+    width: 100%;
+    margin-inline: auto;
+    padding-inline: var(--page-gutter);
+  }
+
+  .page-sections > section + section {
+    margin-top: var(--section-gap);
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: rgba(0, 0, 0, 0.04);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .hero-gradient {
+    background: #ffffff;
+  }
+}
