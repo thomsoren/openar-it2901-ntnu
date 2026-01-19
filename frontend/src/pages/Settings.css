@@ -1,0 +1,56 @@
+.settings-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background-color: var(--container-backdrop-color);
+}
+
+.settings-box {
+  background-color: var(--container-color);
+  border: 1px solid var(--border-subtle-color);
+  border-radius: 8px;
+  padding: 32px;
+  max-width: 600px;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.settings-title {
+  margin: 0 0 24px 0;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--element-active-color);
+}
+
+.settings-section {
+  margin-bottom: 32px;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  margin: 0 0 16px 0;
+  font-family: "Noto Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--element-neutral-color);
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.radio-group obc-radio {
+  padding: 8px 0;
+}
