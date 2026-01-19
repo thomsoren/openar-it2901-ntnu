@@ -5,12 +5,13 @@ Runs detection on the video and saves results
 import os
 import json
 from pathlib import Path
+from dotenv import load_dotenv
 from inference import InferencePipeline
 import supervision as sv
 import cv2
 
 # Configuration
-VIDEO_PATH = "data/raw/video/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+VIDEO_PATH = "../data/raw/video/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
 OUTPUT_DIR = Path("./output")
 MODEL_ID = "boat-detection-model/1"
 
@@ -120,6 +121,10 @@ def on_prediction(predictions, video_frame):
         print(f"Frame {frame_count}: {num_boats} boats detected")
 
 def main():
+    # Load .env from backend/ if present
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    load_dotenv(env_path)
+
     # Check if API key is set
     api_key = os.getenv("ROBOFLOW_API_KEY")
     if not api_key:
