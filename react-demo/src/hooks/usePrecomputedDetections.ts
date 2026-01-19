@@ -15,6 +15,7 @@ export const usePrecomputedDetections = (
   const [currentDetections, setCurrentDetections] = useState<Detection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fpsEstimate, setFpsEstimate] = useState<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
   const trackedDetectionsRef = useRef<TrackedDetection[]>([]);
@@ -33,6 +34,15 @@ export const usePrecomputedDetections = (
         const data: FrameDetection[] = await response.json();
         console.log(`[usePrecomputedDetections] Loaded ${data.length} detection frames from API`);
         setAllDetections(data);
+        if (data.length >= 2) {
+          const first = data[0];
+          const last = data[data.length - 1];
+          const durationSeconds = last.timestamp - first.timestamp;
+          const frameSpan = last.frame - first.frame;
+          if (durationSeconds > 0 && frameSpan > 0) {
+            setFpsEstimate(frameSpan / durationSeconds);
+          }
+        }
         setIsLoading(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load detections");
@@ -125,5 +135,6 @@ export const usePrecomputedDetections = (
     isLoading,
     error,
     totalFrames: allDetections.length,
+    fpsEstimate,
   };
 };

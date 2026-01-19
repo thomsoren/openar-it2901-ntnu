@@ -8,7 +8,7 @@ export const VIDEO_CONFIG = {
   WIDTH: 1920,
   HEIGHT: 1080,
   // Use API endpoints for video and detections
-  SOURCE: `${API_CONFIG.BASE_URL}/api/video`,
+  SOURCE: `${API_CONFIG.BASE_URL}/api/video/stream`,
   DETECTIONS_URL: `${API_CONFIG.BASE_URL}/api/detections`,
   // Fallback to local files if API is not available
   LOCAL_SOURCE: "/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4",
