@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 
+from backend.ais.fetch_ais import fetch_ais
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -156,6 +157,17 @@ async def stream_video():
         }
     )
 
+@app.get("/api/ais")
+async def get_ais_data():
+    """Fetch AIS data from external API (Barentswatch AIS)"""
+    try:
+        ais_data = await fetch_ais()
+        return ais_data
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching AIS data: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
