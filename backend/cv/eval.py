@@ -11,8 +11,8 @@ from datetime import datetime
 from inference import get_model
 
 # Configuration
-TEST_IMAGES_DIR = "../data/raw/Boat Detection Model.v7i.yolov8/test/images"
-TEST_LABELS_DIR = "../data/raw/Boat Detection Model.v7i.yolov8/test/labels"
+TEST_IMAGES_DIR = "./data/raw/Boat Detection Model.v7i.yolov8/test/images"
+TEST_LABELS_DIR = "./data/raw/Boat Detection Model.v7i.yolov8/test/labels"
 OUTPUT_DIR = Path("./output")
 MODEL_ID = "boat-detection-model/1"
 CONFIDENCE_THRESHOLD = 0.3
