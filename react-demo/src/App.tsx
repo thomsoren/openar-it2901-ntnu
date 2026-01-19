@@ -3,7 +3,7 @@ import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.c
 import { ObcTopBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/top-bar/top-bar";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import "./App.css";
-import PoiTargetsWrapper from "./PoiTargetsWrapper.tsx";
+import PoiTargetsWrapper from "./components/poi-targets/PoiTargetsWrapper";
 import { ObcClock } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/clock/clock";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { useVideoDetections } from "./useVideoDetections";
