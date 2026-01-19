@@ -7,7 +7,6 @@ function Settings() {
   const [aisEnabled, setAisEnabled] = useState(true);
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [detectionVisible, setDetectionVisible] = useState(true);
-  const [themeMode, setThemeMode] = useState("auto");
 
   return (
     <div className="settings-container">
@@ -20,71 +19,32 @@ function Settings() {
           <ObcToggleSwitch
             label="Enable AIS"
             checked={aisEnabled}
-            showDescription={true}
             description="Toggle AIS (Automatic Identification System) display"
-            bottomDivider={true}
-            onObc-change={(e: CustomEvent) => setAisEnabled(e.detail.checked)}
+            onChange={(e) => {
+              const target = e.target as HTMLInputElement;
+              setAisEnabled(target.checked);
+            }}
           />
 
           <ObcToggleSwitch
             label="Show Overlay"
             checked={overlayVisible}
-            showDescription={true}
             description="Toggle overlay visibility on video feed"
-            bottomDivider={true}
-            onObc-change={(e: CustomEvent) => setOverlayVisible(e.detail.checked)}
+            onChange={(e) => {
+              const target = e.target as HTMLInputElement;
+              setOverlayVisible(target.checked);
+            }}
           />
 
           <ObcToggleSwitch
             label="Show Detections"
             checked={detectionVisible}
-            showDescription={true}
             description="Toggle detection boxes visibility"
-            bottomDivider={false}
-            onObc-change={(e: CustomEvent) => setDetectionVisible(e.detail.checked)}
+            onChange={(e) => {
+              const target = e.target as HTMLInputElement;
+              setDetectionVisible(target.checked);
+            }}
           />
-        </div>
-
-        <div className="settings-section">
-          <h3 className="section-title">Theme Mode</h3>
-
-          <div className="radio-group">
-            <ObcRadio
-              name="theme"
-              value="auto"
-              label="Auto"
-              checked={themeMode === "auto"}
-              inputId="theme-auto"
-              onChange={(e: Event) => {
-                const target = e.target as HTMLInputElement;
-                if (target.checked) setThemeMode("auto");
-              }}
-            />
-
-            <ObcRadio
-              name="theme"
-              value="light"
-              label="Light Mode"
-              checked={themeMode === "light"}
-              inputId="theme-light"
-              onChange={(e: Event) => {
-                const target = e.target as HTMLInputElement;
-                if (target.checked) setThemeMode("light");
-              }}
-            />
-
-            <ObcRadio
-              name="theme"
-              value="dark"
-              label="Dark Mode"
-              checked={themeMode === "dark"}
-              inputId="theme-dark"
-              onChange={(e: Event) => {
-                const target = e.target as HTMLInputElement;
-                if (target.checked) setThemeMode("dark");
-              }}
-            />
-          </div>
         </div>
 
         <div className="settings-section">
