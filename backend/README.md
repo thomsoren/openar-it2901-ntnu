@@ -1,6 +1,6 @@
-# OpenAR Backend - Boat Detection
+# OpenAR Backend
 
-Python backend for testing boat detection on video using Roboflow Inference locally.
+Python backend for boat detection on video using Roboflow Inference, with FastAPI endpoints for serving detections and video to the frontend.
 
 ## Quick Start
 
@@ -93,9 +93,144 @@ Edit `detect_boats.py` to adjust:
 - Try processing more frames (reduce `process_every_n_frames`)
 - Model may not detect boats in all frames/angles
 
+## FastAPI Server
+
+The backend includes a FastAPI server that serves detections and video to the frontend.
+
+### Starting the API Server
+
+```bash
+cd backend
+
+# Install dependencies (including FastAPI)
+uv sync
+
+# Run the API server
+uv run python api.py
+```
+
+The server will start at `http://localhost:8000`
+
+### API Endpoints
+
+#### Health Check
+```bash
+GET /
+GET /health
+```
+
+Returns server status and file availability.
+
+**Example:**
+```bash
+curl http://localhost:8000/health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "files": {
+    "detections": {
+      "path": "/path/to/detections.json",
+      "exists": true,
+      "size_mb": 1.32
+    },
+    "video": {
+      "path": "/path/to/video.mp4",
+      "exists": true,
+      "size_mb": 59.0
+    }
+  }
+}
+```
+
+#### Get Detections
+```bash
+GET /api/detections
+```
+
+Returns all boat detections from `data/raw/detections.json`.
+
+**Example:**
+```bash
+curl http://localhost:8000/api/detections
+```
+
+**Response:** Array of detection frames
+```json
+[
+  {
+    "frame": 5,
+    "timestamp": 0.2,
+    "detections": [
+      {
+        "x": 540,
+        "y": 360,
+        "width": 120,
+        "height": 80,
+        "confidence": 0.87,
+        "class": "boat"
+      }
+    ]
+  }
+]
+```
+
+#### Stream Video
+```bash
+GET /api/video
+GET /api/video/stream
+```
+
+Streams the video file from `data/processed/video/` with support for seeking.
+
+**Example:**
+```html
+<video src="http://localhost:8000/api/video" controls />
+```
+
+### CORS Configuration
+
+The API is configured to accept requests from:
+- `http://localhost:5173` (Vite dev server)
+- `http://localhost:3000` (Alternative React dev server)
+- `http://127.0.0.1:5173`
+- `http://127.0.0.1:3000`
+
+### API Documentation
+
+Once the server is running, visit:
+- **Swagger UI:** http://localhost:8000/docs
+- **ReDoc:** http://localhost:8000/redoc
+
+### Running with Uvicorn Directly
+
+For production or custom configuration:
+
+```bash
+# Basic
+uvicorn api:app --reload
+
+# Custom host and port
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+
+# Production (no reload)
+uvicorn api:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+### Using the API with Frontend
+
+The React frontend is configured to use these endpoints. Update the frontend `.env` file:
+
+```bash
+# In react-demo/.env
+VITE_API_URL=http://localhost:8000
+```
+
 ## Next Steps
 
 Once detection is working:
-1. Use `detections.json` to understand detection patterns
-2. Integrate detection coordinates into React frontend
-3. Position POI targets based on detection data
+1. Start the FastAPI server: `uv run python api.py`
+2. Start the React frontend (see react-demo/README.md)
+3. The frontend will automatically fetch detections and video from the API

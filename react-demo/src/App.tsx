@@ -2,11 +2,11 @@ import { useState, useRef } from "react";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcTopBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/top-bar/top-bar";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
-import "./App.css";
-import PoiTargetsWrapper from "./components/poi-targets/PoiTargetsWrapper";
 import { ObcClock } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/clock/clock";
-import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
-import { useVideoDetections } from "./useVideoDetections";
+import "./App.css";
+import PoiOverlay from "./components/poi-overlay/PoiOverlay";
+import { usePrecomputedDetections } from "./hooks/usePrecomputedDetections";
+import { VIDEO_CONFIG } from "./config/video";
 
 const handleBrillianceChange = (e: CustomEvent) => {
   document.documentElement.setAttribute("data-obc-theme", e.detail.value);
@@ -17,8 +17,7 @@ function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Load precomputed boat detections from JSON
-  // Fix: Pass videoRef with correct type to useVideoDetections
-  const { detections, isLoading, error, totalFrames } = useVideoDetections(videoRef as React.RefObject<HTMLVideoElement>);
+  const { detections, isLoading, error, totalFrames } = usePrecomputedDetections(videoRef);
 
   const handleDimmingButtonClicked = () => {
     setShowBrillianceMenu((prev) => !prev);
@@ -43,7 +42,6 @@ function App() {
           />
         </ObcTopBar>
       </header>
-      <ObcButton ></ObcButton>
       <main>
         {showBrillianceMenu && (
           <ObcBrillianceMenu
@@ -61,7 +59,7 @@ function App() {
           className="background-video"
         >
           <source
-            src="/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+            src={VIDEO_CONFIG.SOURCE}
             type="video/mp4"
           />
           Your browser does not support the video tag.
@@ -84,7 +82,7 @@ function App() {
           </div>
         )}
 
-        <PoiTargetsWrapper detections={detections} />
+        <PoiOverlay detections={detections} />
       </main>
     </>
   );
