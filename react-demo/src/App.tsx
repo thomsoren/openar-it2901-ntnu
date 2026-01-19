@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcTopBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/top-bar/top-bar";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
@@ -17,12 +17,38 @@ function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Load precomputed boat detections from JSON
-  const { detections, isLoading, error, totalFrames } = usePrecomputedDetections(videoRef);
+  const { detections, isLoading, error, totalFrames, fpsEstimate } = usePrecomputedDetections(videoRef);
+  const [bufferedAheadFrames, setBufferedAheadFrames] = useState(0);
+  const [bufferedAheadSeconds, setBufferedAheadSeconds] = useState(0);
 
   const handleDimmingButtonClicked = () => {
     setShowBrillianceMenu((prev) => !prev);
   };
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      const video = videoRef.current;
+      if (!video || video.readyState === 0) {
+        return;
+      }
+
+      let aheadSeconds = 0;
+      for (let i = 0; i < video.buffered.length; i += 1) {
+        const start = video.buffered.start(i);
+        const end = video.buffered.end(i);
+        if (video.currentTime >= start && video.currentTime <= end) {
+          aheadSeconds = Math.max(0, end - video.currentTime);
+          break;
+        }
+      }
+
+      const fps = fpsEstimate ?? 30;
+      setBufferedAheadSeconds(aheadSeconds);
+      setBufferedAheadFrames(Math.floor(aheadSeconds * fps));
+    }, 250);
+
+    return () => window.clearInterval(intervalId);
+  }, [fpsEstimate]);
 
   return (
     <>
@@ -77,8 +103,10 @@ function App() {
           </div>
         )}
         {!isLoading && !error && totalFrames > 0 && (
-          <div style={{ position: "absolute", top: "60px", left: "20px", color: "white", backgroundColor: "rgba(0,0,0,0.7)", padding: "10px", borderRadius: "5px", zIndex: 20, fontSize: "12px" }}>
-            Detections loaded: {totalFrames} frames | Current: {detections.length} boats
+          <div style={{ position: "absolute", top: "60px", left: "20px", color: "white", backgroundColor: "rgba(0,0,0,0.7)", padding: "10px", borderRadius: "5px", zIndex: 20, fontSize: "12px", maxWidth: "420px", lineHeight: "1.4" }}>
+            <div>Detections loaded: {totalFrames} frames | Current: {detections.length} boats</div>
+            <div>Video mode: stream</div>
+            <div>Buffered ahead: {bufferedAheadFrames} frames ({bufferedAheadSeconds.toFixed(2)}s)</div>
           </div>
         )}
 
