@@ -102,7 +102,7 @@ If tracking state is lost (streak reset to 1), detections will **never** reach t
 
 The hook logs detection processing to the console:
 ```
-[usePrecomputedDetections] Frame 5 @ 0.20s: 1 raw -> 1 tracked -> 0 visible
+[useStreamingDetections] Frame 5 @ 0.20s: 1 raw -> 1 tracked -> 0 visible
 ```
 - **raw:** Detections from JSON/API
 - **tracked:** Total in tracking state
@@ -128,7 +128,7 @@ The hook logs detection processing to the console:
 
 **API Integration:**
 
-The application connects to a FastAPI backend server to fetch detections and video:
+The application connects to a FastAPI backend server to stream MJPEG frames and live detections:
 
 ```typescript
 export const API_CONFIG = {
@@ -138,11 +138,8 @@ export const API_CONFIG = {
 export const VIDEO_CONFIG = {
   WIDTH: 1920,
   HEIGHT: 1080,
-  SOURCE: `${API_CONFIG.BASE_URL}/api/video`,
-  DETECTIONS_URL: `${API_CONFIG.BASE_URL}/api/detections`,
-  // Fallback to local files if needed
-  LOCAL_SOURCE: "/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4",
-  LOCAL_DETECTIONS_URL: "/detections.json",
+  DETECTIONS_STREAM_URL: `${API_CONFIG.BASE_URL}/api/detections/stream`,
+  MJPEG_SOURCE: `${API_CONFIG.BASE_URL}/api/video/mjpeg`,
 } as const;
 ```
 
@@ -155,9 +152,8 @@ VITE_API_URL=http://localhost:8000
 
 **Benefits:**
 - Environment-specific configuration
-- Easy to switch between API and local files
+- Single location for stream endpoints
 - Prevents magic numbers in code
-- Single location for all configuration
 
 ---
 
@@ -166,7 +162,7 @@ VITE_API_URL=http://localhost:8000
 **Purpose:** Custom React hooks encapsulating stateful logic.
 
 **Files:**
-- `usePrecomputedDetections.ts` - Loads and syncs precomputed detections with video playback
+- `useStreamingDetections.ts` - Streams live detections over SSE
 
 **Hook Responsibilities:**
 1. **Data Loading**
@@ -247,16 +243,16 @@ interface PoiOverlayProps {
 
 ```
 Backend FastAPI Server (http://localhost:8000)
-├── GET /api/detections → detections.json
-└── GET /api/video → video.mp4
+├── GET /api/detections/stream → SSE detections
+└── GET /api/video/mjpeg → MJPEG stream
     ↓
 Frontend React App (http://localhost:5173)
     ↓
 Video Element (ref)
     ↓
-[usePrecomputedDetections Hook]
+[useStreamingDetections Hook]
     ↓
-1. Fetch detections from API (http://localhost:8000/api/detections)
+1. Fetch detections from API (http://localhost:8000/api/detections/stream)
 2. Sync with video.currentTime (requestAnimationFrame loop)
 3. Find matching frame (by timestamp)
 4. Apply tracking algorithm (utils/detection-tracking.ts)
@@ -320,8 +316,8 @@ App
 **Architecture:** Frontend fetches data from FastAPI backend server
 
 **Endpoints:**
-- `GET /api/detections` - Detection data (JSON)
-- `GET /api/video` - Video stream (MP4 with range request support)
+- `GET /api/detections/stream` - Live detection stream (SSE)
+- `GET /api/video/mjpeg` - Video stream (MJPEG)
 - `GET /health` - Health check and file availability
 
 **Benefits:**
@@ -441,7 +437,7 @@ This catches errors at compile time and provides IDE autocomplete.
    ```typescript
    useRealtimeInference(videoRef, modelConfig)
    ```
-   - Would return same interface as usePrecomputedDetections
+   - Would return same interface as useStreamingDetections
    - PoiOverlay remains unchanged
 
 2. **Detection Details Panel**
@@ -482,7 +478,7 @@ This catches errors at compile time and provides IDE autocomplete.
 
 ### File Naming
 - Components: PascalCase (PoiOverlay.tsx)
-- Hooks: camelCase with "use" prefix (usePrecomputedDetections.ts)
+- Hooks: camelCase with "use" prefix (useStreamingDetections.ts)
 - Utils: camelCase (detection-tracking.ts)
 - Types: camelCase (detection.ts)
 - Config: camelCase (video.ts)
@@ -518,15 +514,15 @@ This catches errors at compile time and provides IDE autocomplete.
 3. **Verify API endpoints:**
    ```bash
    # Test detections endpoint
-   curl http://localhost:8000/api/detections | jq '. | length'
+   curl -N http://localhost:8000/api/detections/stream | jq '. | length'
 
    # Test video endpoint
-   curl -I http://localhost:8000/api/video
+   curl -I http://localhost:8000/api/video/mjpeg
    ```
 
 **Frontend Issues:**
 1. **Check browser console for logs:**
-   - Should see: `[usePrecomputedDetections] Loaded XXXX detection frames from API`
+   - Should see: `[useStreamingDetections] Loaded XXXX detection frames from API`
    - Should see detection processing logs when video plays
 
 2. **Check video is playing:**
@@ -544,9 +540,9 @@ This catches errors at compile time and provides IDE autocomplete.
 1. Open browser console (F12)
 2. Look for detection logs:
    ```
-   [usePrecomputedDetections] Loaded 4500 detection frames from API
-   [usePrecomputedDetections] Frame 3 @ 0.12s: 1 raw -> 1 tracked -> 0 visible
-   [usePrecomputedDetections] Frame 8 @ 0.32s: 1 raw -> 1 tracked -> 1 visible
+   [useStreamingDetections] Loaded 4500 detection frames from API
+   [useStreamingDetections] Frame 3 @ 0.12s: 1 raw -> 1 tracked -> 0 visible
+   [useStreamingDetections] Frame 8 @ 0.32s: 1 raw -> 1 tracked -> 1 visible
    ```
 3. If you see "0 visible" persistently:
    - Reduce MIN_STABLE_FRAMES in `utils/detection-tracking.ts` (try 1 or 2)
@@ -587,7 +583,7 @@ trackedDetectionsRef.current = trackingState;  // Keeps streak accumulating
 ### Backend connection issues
 1. **"Failed to load detections" error:**
    - Ensure backend is running: `cd backend && uv run python api.py`
-   - Check `backend/data/raw/detections.json` exists
+   - Check the video source exists and `/api/video/mjpeg` returns frames
 
 2. **Video not loading:**
    - Check `backend/data/processed/video/*.mp4` exists

@@ -56,8 +56,8 @@ Python FastAPI backend for serving detections and video streams.
 - Video processing and detection extraction
 
 **API Endpoints:**
-- `GET /api/detections` - Get all detection data
-- `GET /api/video` - Stream video file
+- `GET /api/detections/stream` - Live detection stream (SSE)
+- `GET /api/video/mjpeg` - Video stream (MJPEG)
 - `GET /health` - Health check
 
 See [backend/README.md](./backend/README.md) for detailed setup and API documentation.

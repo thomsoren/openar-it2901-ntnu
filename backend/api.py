@@ -2,14 +2,20 @@
 FastAPI backend for serving detections and video stream to frontend
 """
 import json
+import asyncio
+import time
+import threading
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
+import cv2
+from cv.boat_detection_streamer import BoatDetectionStreamer, StreamConfig
+from streaming.frame_source import FrameSource
 
 load_dotenv()
 
@@ -35,11 +41,66 @@ app.add_middleware(
 
 # File paths (override with env vars if needed)
 BASE_DIR = Path(__file__).parent
-DEFAULT_DETECTIONS_PATH = BASE_DIR / "cv" / "output" / "detections.json"
 DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video"  / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
 
-DETECTIONS_PATH = Path(os.getenv("DETECTIONS_PATH", DEFAULT_DETECTIONS_PATH))
 VIDEO_PATH = Path(os.getenv("VIDEO_PATH", DEFAULT_VIDEO_PATH))
+
+FRAME_SOURCE = FrameSource(str(VIDEO_PATH))
+DETECTION_THREAD: threading.Thread | None = None
+DETECTION_LOCK = threading.Lock()
+DETECTION_SUBSCRIBERS: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
+
+
+def broadcast_detection(frame: Dict[str, Any]) -> None:
+    # Fan out detections to all active SSE subscribers.
+    with DETECTION_LOCK:
+        subscribers = list(DETECTION_SUBSCRIBERS)
+
+    for loop, queue in subscribers:
+        def enqueue(payload: Dict[str, Any] = frame, q: asyncio.Queue = queue) -> None:
+            if q.full():
+                try:
+                    q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                pass
+
+        loop.call_soon_threadsafe(enqueue)
+
+
+def broadcast_detection_error(message: str) -> None:
+    broadcast_detection({"type": "error", "message": message})
+
+
+def start_detection_worker() -> None:
+    global DETECTION_THREAD
+
+    with DETECTION_LOCK:
+        if DETECTION_THREAD is not None and DETECTION_THREAD.is_alive():
+            return
+
+        if not VIDEO_PATH.exists():
+            broadcast_detection_error(f"Video file not found at {VIDEO_PATH}")
+            return
+
+        # Start frame capture once; detections consume the same frames the client sees.
+        FRAME_SOURCE.start()
+
+        def worker() -> None:
+            # Single detector runs continuously; clients just subscribe to its output.
+            streamer = BoatDetectionStreamer(
+                config=StreamConfig(),
+                frame_source=FRAME_SOURCE,
+                on_frame=broadcast_detection,
+                on_error=broadcast_detection_error,
+            )
+            streamer.run()
+
+        DETECTION_THREAD = threading.Thread(target=worker, daemon=True)
+        DETECTION_THREAD.start()
 
 
 @app.get("/")
@@ -49,8 +110,8 @@ def read_root():
         "status": "ok",
         "message": "OpenAR Backend API is running",
         "endpoints": {
-            "detections": "/api/detections",
-            "video": "/api/video",
+            "detections_stream": "/api/detections/stream",
+            "video_mjpeg": "/api/video/mjpeg",
             "health": "/health"
         }
     }
@@ -59,88 +120,89 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Health check with file availability status"""
-    detections_exists = DETECTIONS_PATH.exists()
     video_exists = VIDEO_PATH.exists()
 
     return {
-        "status": "healthy" if (detections_exists and video_exists) else "degraded",
+        "status": "healthy" if video_exists else "degraded",
         "files": {
-            "detections": {
-                "path": str(DETECTIONS_PATH),
-                "exists": detections_exists,
-                "size_mb": round(DETECTIONS_PATH.stat().st_size / (1024 * 1024), 2) if detections_exists else None
-            },
             "video": {
                 "path": str(VIDEO_PATH),
                 "exists": video_exists,
                 "size_mb": round(VIDEO_PATH.stat().st_size / (1024 * 1024), 2) if video_exists else None
             }
-        }
+        },
+        "detections": {
+            "mode": "stream"
+        },
     }
 
 
-@app.get("/api/detections")
-def get_detections() -> List[Dict[str, Any]]:
+@app.get("/api/detections/stream")
+async def stream_detections(
+    start_time: float = 0.0,
+    realtime: bool = True
+):
     """
-    Get all boat detections from JSON file
+    Stream detections in (simulated) real time using Server-Sent Events (SSE).
 
-    Returns:
-        List of detection frames with timestamp and detection data
+    Query params:
+        start_time: start timestamp in seconds (default 0.0)
+        realtime: if false, stream as fast as possible (default true)
     """
-    if not DETECTIONS_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Detections file not found at {DETECTIONS_PATH}"
-        )
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=5)
+    with DETECTION_LOCK:
+        DETECTION_SUBSCRIBERS.append((loop, queue))
+    start_detection_worker()
 
-    try:
-        with open(DETECTIONS_PATH, 'r') as f:
-            detections = json.load(f)
+    async def event_generator():
+        start_wall = None
+        base_timestamp = None
 
-        return detections
-    except json.JSONDecodeError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to parse detections JSON: {str(e)}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error reading detections: {str(e)}"
-        )
+        try:
+            while True:
+                frame = await queue.get()
+                if isinstance(frame, dict) and frame.get("type") == "error":
+                    payload = json.dumps({"message": frame.get("message", "Unknown detection error.")})
+                    yield f"event: detections_error\ndata: {payload}\n\n"
+                    continue
 
+                frame_timestamp = float(frame.get("timestamp", 0.0))
+                if frame_timestamp < start_time:
+                    continue
 
-@app.get("/api/video")
-def get_video():
-    """
-    Stream video file with support for range requests (seeking)
+                if base_timestamp is None:
+                    base_timestamp = frame_timestamp
+                    start_wall = time.monotonic()
 
-    Returns:
-        Video file stream with proper headers for browser playback
-    """
-    if not VIDEO_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Video file not found at {VIDEO_PATH}"
-        )
+                if realtime and start_wall is not None and base_timestamp is not None:
+                    target_elapsed = frame_timestamp - base_timestamp
+                    elapsed = time.monotonic() - start_wall
+                    delay = target_elapsed - elapsed
+                    if delay > 0:
+                        await asyncio.sleep(delay)
 
-    # Return video file with proper headers for streaming
-    return FileResponse(
-        path=VIDEO_PATH,
-        media_type="video/mp4",
-        filename="boat-detection-video.mp4",
-        headers={
-            "Accept-Ranges": "bytes",
-            "Content-Disposition": "inline"
-        }
+                payload = json.dumps(frame)
+                yield f"data: {payload}\n\n"
+        finally:
+            with DETECTION_LOCK:
+                DETECTION_SUBSCRIBERS[:] = [
+                    (subscriber_loop, subscriber_queue)
+                    for subscriber_loop, subscriber_queue in DETECTION_SUBSCRIBERS
+                    if subscriber_queue is not queue
+                ]
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"}
     )
 
 
-@app.get("/api/video/stream")
-async def stream_video():
+@app.get("/api/video/mjpeg")
+async def stream_mjpeg():
     """
-    Advanced video streaming endpoint with range request support
-    This allows seeking in the video player
+    Stream MJPEG frames from the shared frame source.
     """
     if not VIDEO_PATH.exists():
         raise HTTPException(
@@ -148,15 +210,31 @@ async def stream_video():
             detail=f"Video file not found at {VIDEO_PATH}"
         )
 
-    # FileResponse supports Range requests for faster start and seeking.
-    return FileResponse(
-        path=VIDEO_PATH,
-        media_type="video/mp4",
-        filename="boat-detection-video.mp4",
-        headers={
-            "Accept-Ranges": "bytes",
-            "Content-Disposition": "inline; filename=boat-detection-video.mp4"
-        }
+    FRAME_SOURCE.start()
+    loop = asyncio.get_running_loop()
+    queue = FRAME_SOURCE.subscribe_async(loop)
+
+    async def frame_generator():
+        try:
+            while True:
+                packet = await queue.get()
+                ret, jpeg = cv2.imencode(".jpg", packet.frame)
+                if not ret:
+                    continue
+                # MJPEG boundary framing for <img> streaming.
+                payload = jpeg.tobytes()
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" +
+                    payload +
+                    b"\r\n"
+                )
+        finally:
+            FRAME_SOURCE.unsubscribe_async(queue)
+
+    return StreamingResponse(
+        frame_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 
@@ -164,7 +242,6 @@ if __name__ == "__main__":
     import uvicorn
 
     print("Starting OpenAR Backend API...")
-    print(f"Detections path: {DETECTIONS_PATH}")
     print(f"Video path: {VIDEO_PATH}")
 
     uvicorn.run(

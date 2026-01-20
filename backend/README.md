@@ -1,6 +1,6 @@
 # OpenAR Backend
 
-Python backend for boat detection on video using Roboflow Inference, with FastAPI endpoints for serving detections and video to the frontend.
+Python backend for boat detection using Roboflow Inference, with FastAPI endpoints for streaming MJPEG video and live detections to the frontend.
 
 ## Quick Start
 
@@ -19,7 +19,7 @@ export ROBOFLOW_API_KEY=your_roboflow_api_key
 
 Get your API key from: https://app.roboflow.com/settings/api
 
-### 3. Run Detection
+### 3. Run Detection (Offline Script)
 ```bash
 uv run detect_boats.py
 ```
@@ -40,16 +40,14 @@ This installs:
 ## What It Does
 
 1. Connects to the local Inference server at `http://localhost:9001`
-2. Opens the video: `../data/processed/video/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4`
-3. Processes every 5th frame (configurable) to detect boats using `boat-detection-model/1`
-4. Draws bounding boxes on detected boats
-5. Saves:
+2. Runs the detector on the source video using `boat-detection-model/1`
+3. Draws bounding boxes on detected boats
+4. Saves:
    - **`output/detected_boats.mp4`** - Video with bounding boxes
-   - **`output/detections.json`** - All detection data (coordinates, confidence, timestamps)
 
 ## Output Format
 
-### detections.json
+### detections.json (offline script)
 ```json
 [
   {
@@ -131,11 +129,6 @@ curl http://localhost:8000/health
 {
   "status": "healthy",
   "files": {
-    "detections": {
-      "path": "/path/to/detections.json",
-      "exists": true,
-      "size_mb": 1.32
-    },
     "video": {
       "path": "/path/to/video.mp4",
       "exists": true,
@@ -145,50 +138,24 @@ curl http://localhost:8000/health
 }
 ```
 
-#### Get Detections
+#### Stream Detections (SSE)
 ```bash
-GET /api/detections
+GET /api/detections/stream
 ```
-
-Returns all boat detections from `data/raw/detections.json`.
 
 **Example:**
 ```bash
-curl http://localhost:8000/api/detections
+curl -N http://localhost:8000/api/detections/stream
 ```
 
-**Response:** Array of detection frames
-```json
-[
-  {
-    "frame": 5,
-    "timestamp": 0.2,
-    "detections": [
-      {
-        "x": 540,
-        "y": 360,
-        "width": 120,
-        "height": 80,
-        "confidence": 0.87,
-        "class": "boat"
-      }
-    ]
-  }
-]
-```
+**Response:** SSE stream of detection frames
 
-#### Stream Video
+#### Stream Video (MJPEG)
 ```bash
-GET /api/video
-GET /api/video/stream
+GET /api/video/mjpeg
 ```
 
-Streams the video file from `data/processed/video/` with support for seeking.
-
-**Example:**
-```html
-<video src="http://localhost:8000/api/video" controls />
-```
+Streams MJPEG frames from the shared frame source.
 
 ### CORS Configuration
 
