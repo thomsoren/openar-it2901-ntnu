@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 
-from backend.ais.fetch_ais import fetch_ais
+from ais.fetch_ais import fetch_ais
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
