@@ -22,4 +22,3 @@ export const useFetchAIS = () => {
 
     return(data);
 }
-

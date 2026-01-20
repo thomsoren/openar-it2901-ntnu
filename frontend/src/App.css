@@ -6,6 +6,15 @@ header {
   z-index: 100;
 }
 
+.navigation-menu {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  bottom: 0;
+  z-index: 99;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+}
+
 .brilliance {
   position: absolute;
   top: 4px;

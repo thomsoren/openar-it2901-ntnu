@@ -10,6 +10,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(
     title="OpenAR Backend API",
@@ -31,10 +34,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# File paths
+# File paths (override with env vars if needed)
 BASE_DIR = Path(__file__).parent
-DETECTIONS_PATH = BASE_DIR / "data" / "raw" / "detections.json"
-VIDEO_PATH = BASE_DIR / "data" / "processed" / "video" / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+DEFAULT_DETECTIONS_PATH = BASE_DIR / "cv" / "output" / "detections.json"
+DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video"  / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+
+DETECTIONS_PATH = Path(os.getenv("DETECTIONS_PATH", DEFAULT_DETECTIONS_PATH))
+VIDEO_PATH = Path(os.getenv("VIDEO_PATH", DEFAULT_VIDEO_PATH))
 
 
 @app.get("/")
@@ -143,14 +149,11 @@ async def stream_video():
             detail=f"Video file not found at {VIDEO_PATH}"
         )
 
-    def iterfile():
-        """Generator to stream video in chunks"""
-        with open(VIDEO_PATH, mode="rb") as file_like:
-            yield from file_like
-
-    return StreamingResponse(
-        iterfile(),
+    # FileResponse supports Range requests for faster start and seeking.
+    return FileResponse(
+        path=VIDEO_PATH,
         media_type="video/mp4",
+        filename="boat-detection-video.mp4",
         headers={
             "Accept-Ranges": "bytes",
             "Content-Disposition": "inline; filename=boat-detection-video.mp4"
