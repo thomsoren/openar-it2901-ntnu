@@ -3,9 +3,9 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
-    "dev:frontend": "cd react-demo && pnpm dev",
+    "dev:frontend": "cd frontend && pnpm dev",
     "dev:backend": "cd backend && uv run uvicorn api:app --reload",
-    "install:frontend": "cd react-demo && pnpm install",
+    "install:frontend": "cd frontend && pnpm install",
     "install:backend": "cd backend && uv sync",
     "install": "pnpm run install:backend && pnpm run install:frontend"
   },
