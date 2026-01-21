@@ -27,3 +27,7 @@ temp_frame.jpg
 .idea/
 *.swp
 *.swo
+
+# Node.js
+node_modules/
+dist/

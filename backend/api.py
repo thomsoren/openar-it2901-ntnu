@@ -4,20 +4,21 @@ FastAPI backend for boat detection and AIS data.
 Architecture:
 - /api/detections: Returns current detected vessels (YOLO + AIS)
 - /api/video: Streams video for the frontend
-
-Future:
-- Real-time YOLO detection on video stream
-- AIS API integration for vessel data
-- Matching detected boats to AIS vessels
+- /api/ais: Fetches AIS data from external API
 """
+import os
 from pathlib import Path
 from typing import List
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from ais.fetch_ais import fetch_ais
 from schemas import Detection, Vessel, DetectedVessel
+
+load_dotenv()
 
 app = FastAPI(
     title="OpenAR Backend API",
@@ -39,9 +40,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# File paths
+# File paths (override with env vars if needed)
 BASE_DIR = Path(__file__).parent
-VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+VIDEO_PATH = Path(os.getenv("VIDEO_PATH", DEFAULT_VIDEO_PATH))
 
 
 @app.get("/")
@@ -53,6 +55,7 @@ def read_root():
         "endpoints": {
             "detections": "/api/detections",
             "video": "/api/video",
+            "ais": "/api/ais",
             "health": "/health"
         }
     }
@@ -179,19 +182,28 @@ async def stream_video():
             detail=f"Video file not found at {VIDEO_PATH}"
         )
 
-    def iterfile():
-        """Generator to stream video in chunks"""
-        with open(VIDEO_PATH, mode="rb") as file_like:
-            yield from file_like
-
-    return StreamingResponse(
-        iterfile(),
+    return FileResponse(
+        path=VIDEO_PATH,
         media_type="video/mp4",
+        filename="boat-detection-video.mp4",
         headers={
             "Accept-Ranges": "bytes",
             "Content-Disposition": "inline; filename=boat-detection-video.mp4"
         }
     )
+
+
+@app.get("/api/ais")
+async def get_ais_data():
+    """Fetch AIS data from external API (Barentswatch AIS)"""
+    try:
+        ais_data = await fetch_ais()
+        return ais_data
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching AIS data: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
