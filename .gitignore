@@ -10,3 +10,4 @@ processed/
 
 # PyTorch model weights
 *.pt
+node_modules/
