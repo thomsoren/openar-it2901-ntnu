@@ -5,3 +5,4 @@
 venv
 raw/
 processed/
+node_modules/
