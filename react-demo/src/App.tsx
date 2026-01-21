@@ -1,12 +1,12 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcTopBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/top-bar/top-bar";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import { ObcClock } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/clock/clock";
 import "./App.css";
 import PoiOverlay from "./components/poi-overlay/PoiOverlay";
-import { usePrecomputedDetections } from "./hooks/usePrecomputedDetections";
-import { VIDEO_CONFIG } from "./config/video";
+import { useDetections } from "./hooks/useDetections";
+import { VIDEO_CONFIG, DETECTION_CONFIG } from "./config/video";
 
 const handleBrillianceChange = (e: CustomEvent) => {
   document.documentElement.setAttribute("data-obc-theme", e.detail.value);
@@ -14,22 +14,23 @@ const handleBrillianceChange = (e: CustomEvent) => {
 
 function App() {
   const [showBrillianceMenu, setShowBrillianceMenu] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Load precomputed boat detections from JSON
-  const { detections, isLoading, error, totalFrames } = usePrecomputedDetections(videoRef);
+  // Fetch detected vessels from API
+  const { vessels, isLoading, error } = useDetections({
+    url: DETECTION_CONFIG.URL,
+    pollInterval: DETECTION_CONFIG.POLL_INTERVAL,
+  });
 
   const handleDimmingButtonClicked = () => {
     setShowBrillianceMenu((prev) => !prev);
   };
 
-
   return (
     <>
       <header>
         <ObcTopBar
-          appTitle="React"
-          pageName="Demo"
+          appTitle="OpenAR"
+          pageName="Detection"
           showDimmingButton
           showAppsButton
           onDimmingButtonClicked={handleDimmingButtonClicked}
@@ -51,38 +52,24 @@ function App() {
           />
         )}
 
-        <video
-          ref={videoRef}
-          autoPlay
-          loop
-          muted
-          className="background-video"
-        >
-          <source
-            src={VIDEO_CONFIG.SOURCE}
-            type="video/mp4"
-          />
+        <video autoPlay loop muted className="background-video">
+          <source src={VIDEO_CONFIG.SOURCE} type="video/mp4" />
           Your browser does not support the video tag.
         </video>
 
-        {/* Show loading/error status */}
+        {/* Status overlay */}
         {isLoading && (
-          <div style={{ position: "absolute", top: "60px", left: "20px", color: "white", backgroundColor: "rgba(0,0,0,0.7)", padding: "10px", borderRadius: "5px", zIndex: 20 }}>
-            Loading detections...
-          </div>
+          <div className="status-overlay">Loading detections...</div>
         )}
-        {error && (
-          <div style={{ position: "absolute", top: "60px", left: "20px", color: "white", backgroundColor: "rgba(255,0,0,0.8)", padding: "10px", borderRadius: "5px", zIndex: 20 }}>
-            Error: {error}
-          </div>
-        )}
-        {!isLoading && !error && totalFrames > 0 && (
-          <div style={{ position: "absolute", top: "60px", left: "20px", color: "white", backgroundColor: "rgba(0,0,0,0.7)", padding: "10px", borderRadius: "5px", zIndex: 20, fontSize: "12px" }}>
-            Detections loaded: {totalFrames} frames | Current: {detections.length} boats
+        {error && <div className="status-overlay status-error">Error: {error}</div>}
+        {!isLoading && !error && (
+          <div className="status-overlay status-info">
+            Vessels detected: {vessels.length}
           </div>
         )}
 
-        <PoiOverlay detections={detections} />
+        {/* Vessel markers */}
+        <PoiOverlay vessels={vessels} />
       </main>
     </>
   );

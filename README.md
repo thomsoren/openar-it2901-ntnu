@@ -5,44 +5,64 @@ OpenAR - Augmented Reality demo for maritime vessel detection using OpenBridge c
 ## Getting started
 
 ### Prerequisites
-- **Frontend:** Node.js (LTS recommended), npm
-- **Backend:** Python 3.9+, uv (Python package manager)
+- **Node.js:** LTS recommended
+- **pnpm:** Install globally with `npm install -g pnpm`
+- **Python:** 3.9+
+- **uv:** Python package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
 - Access to GitHub Packages for `@ocean-industries-concept-lab`
 
 ### Quick Start
 
-#### 1. Start the Backend API Server
+From the project root:
 
 ```bash
-cd backend
+# Install root dependencies (concurrently for dev script)
+pnpm install
 
-# Install dependencies
-uv sync
+# Install all project dependencies (backend + frontend)
+pnpm run install
 
-# Start the API server
-uv run python api.py
+# Run both backend and frontend
+pnpm dev
 ```
 
-The API will be available at `http://localhost:8000`
+- Backend API: `http://localhost:8000`
+- Frontend: `http://localhost:5173`
 
-#### 2. Start the Frontend
+### Individual Commands
+
+#### Backend only
 
 ```bash
-cd react-demo
-
-# Login to GitHub Packages (first time only)
-npm login --registry https://npm.pkg.github.com/ --scope=ocean-industries-concept-lab
-
-# Install dependencies
-npm install
-
-# Start dev server
-npm run dev
+pnpm dev:backend
+# or manually:
+cd backend && uv run uvicorn api:app --reload
 ```
 
-The frontend will be available at `http://localhost:5173`
+#### Frontend only
 
-**Note:** The frontend is configured to fetch detections and video from the backend API. Make sure the backend is running first.
+```bash
+pnpm dev:frontend
+# or manually:
+cd react-demo && pnpm dev
+```
+
+#### GitHub Packages Authentication (first time only)
+
+```bash
+pnpm login --registry https://npm.pkg.github.com/ --scope=ocean-industries-concept-lab
+```
+
+### Available Scripts
+
+| Script | Description |
+|--------|-------------|
+| `pnpm dev` | Run backend and frontend concurrently |
+| `pnpm dev:frontend` | Run frontend only |
+| `pnpm dev:backend` | Run backend only |
+| `pnpm run install` | Install all dependencies |
+| `pnpm install:frontend` | Install frontend dependencies |
+| `pnpm install:backend` | Install backend dependencies |
 
 ## Project Structure
 
