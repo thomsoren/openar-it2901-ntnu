@@ -38,10 +38,7 @@ function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
               top: `${topPercent}%`,
             }}
           >
-            <ObcPoiTarget
-              height={POI_CONFIG.HEIGHT}
-              label={vessel?.name}
-            />
+            <ObcPoiTarget height={POI_CONFIG.HEIGHT} label={vessel?.name} />
             {/* TODO: Add vessel info tooltip/card with AIS data */}
           </div>
         );
