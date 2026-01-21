@@ -94,16 +94,10 @@ function App() {
             </video>
 
             {/* Status overlay */}
-            {isLoading && (
-              <div className="status-overlay">Loading detections...</div>
-            )}
-            {error && (
-              <div className="status-overlay status-error">Error: {error}</div>
-            )}
+            {isLoading && <div className="status-overlay">Loading detections...</div>}
+            {error && <div className="status-overlay status-error">Error: {error}</div>}
             {!isLoading && !error && (
-              <div className="status-overlay status-info">
-                Vessels detected: {vessels.length}
-              </div>
+              <div className="status-overlay status-info">Vessels detected: {vessels.length}</div>
             )}
 
             {/* Vessel markers */}
