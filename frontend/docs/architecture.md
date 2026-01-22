@@ -31,12 +31,14 @@ src/
 **Purpose:** Centralized type definitions used across the application.
 
 **Files:**
+
 - `detection.ts` - Core detection and tracking types
   - `Detection` - Bounding box object detection data
   - `FrameDetection` - Detection data tied to video frame/timestamp
   - `TrackedDetection` - Detection with tracking metadata (streak, missed frames)
 
 **Benefits:**
+
 - Single source of truth for types
 - Prevents duplicate type definitions
 - Easy to maintain and evolve
@@ -48,6 +50,7 @@ src/
 **Purpose:** Pure utility functions containing business logic.
 
 **Files:**
+
 - `detection-tracking.ts` - Detection tracking and filtering algorithms
   - **Constants:** MIN_STABLE_FRAMES, MAX_MATCH_DISTANCE_PX, MAX_MISSED_FRAMES
   - **Functions:**
@@ -87,11 +90,11 @@ The tracking state **must be preserved** between frames. The hook correctly main
 
 ```typescript
 const { trackingState, visibleDetections } = updateTrackedDetections(
-  trackedDetectionsRef.current,  // Previous state
-  closestFrame.detections         // New raw detections
+  trackedDetectionsRef.current, // Previous state
+  closestFrame.detections // New raw detections
 );
-trackedDetectionsRef.current = trackingState;  // ✅ Preserve full state
-setCurrentDetections(visibleDetections);        // ✅ Display filtered results
+trackedDetectionsRef.current = trackingState; // ✅ Preserve full state
+setCurrentDetections(visibleDetections); // ✅ Display filtered results
 ```
 
 **Why This Matters:**
@@ -101,14 +104,17 @@ If tracking state is lost (streak reset to 1), detections will **never** reach t
 **Debug Logging:**
 
 The hook logs detection processing to the console:
+
 ```
 [usePrecomputedDetections] Frame 5 @ 0.20s: 1 raw -> 1 tracked -> 0 visible
 ```
+
 - **raw:** Detections from JSON/API
 - **tracked:** Total in tracking state
 - **visible:** Passed stability filter (streak ≥ 3)
 
 **Benefits:**
+
 - Testable pure functions
 - No React dependencies
 - Reusable in other contexts
@@ -121,6 +127,7 @@ The hook logs detection processing to the console:
 **Purpose:** Centralized configuration constants.
 
 **Files:**
+
 - `video.ts` - Video, API, and POI configuration
   - `API_CONFIG` - Backend API base URL (configurable via VITE_API_URL env var)
   - `VIDEO_CONFIG` - Video dimensions, API endpoints for video/detections
@@ -149,11 +156,13 @@ export const VIDEO_CONFIG = {
 **Environment Configuration:**
 
 Set the backend URL in `.env`:
+
 ```bash
 VITE_API_URL=http://localhost:8000
 ```
 
 **Benefits:**
+
 - Environment-specific configuration
 - Easy to switch between API and local files
 - Prevents magic numbers in code
@@ -166,9 +175,11 @@ VITE_API_URL=http://localhost:8000
 **Purpose:** Custom React hooks encapsulating stateful logic.
 
 **Files:**
+
 - `usePrecomputedDetections.ts` - Loads and syncs precomputed detections with video playback
 
 **Hook Responsibilities:**
+
 1. **Data Loading**
    - Fetches detection JSON from URL
    - Handles loading and error states
@@ -183,6 +194,7 @@ VITE_API_URL=http://localhost:8000
    - Maintains tracking state across frames
 
 **Returns:**
+
 ```typescript
 {
   detections: Detection[],  // Current filtered & tracked detections
@@ -193,6 +205,7 @@ VITE_API_URL=http://localhost:8000
 ```
 
 **Benefits:**
+
 - Encapsulates complex state management
 - Reusable across components
 - Testable in isolation
@@ -205,6 +218,7 @@ VITE_API_URL=http://localhost:8000
 **Purpose:** React UI components (presentation layer).
 
 **Structure:**
+
 ```
 components/
 └── poi-overlay/
@@ -215,12 +229,14 @@ components/
 #### `PoiOverlay` Component
 
 **Responsibilities:**
+
 - Render POI markers at detection coordinates
 - Convert absolute pixel coordinates to responsive percentages
 - Apply visibility filtering
 - Optimize with React.memo
 
 **Props:**
+
 ```typescript
 interface PoiOverlayProps {
   detections?: Detection[];
@@ -228,12 +244,14 @@ interface PoiOverlayProps {
 ```
 
 **Implementation Details:**
+
 - Uses `filterVisibleDetections()` to exclude uncategorized items
 - Converts coordinates from absolute (1920x1080) to percentage-based positioning
 - Renders `ObcPoiTarget` components from OpenBridge library
 - CSS handles pointer events (non-interactive overlay, interactive markers)
 
 **Benefits:**
+
 - Pure presentation logic
 - Responsive design
 - Performance optimized
@@ -320,11 +338,13 @@ App
 **Architecture:** Frontend fetches data from FastAPI backend server
 
 **Endpoints:**
+
 - `GET /api/detections` - Detection data (JSON)
 - `GET /api/video` - Video stream (MP4 with range request support)
 - `GET /health` - Health check and file availability
 
 **Benefits:**
+
 - **Separation:** Backend handles data storage/processing, frontend handles visualization
 - **Scalability:** Easy to add authentication, caching, or real-time updates
 - **Flexibility:** Can switch data sources without changing frontend code
@@ -333,11 +353,13 @@ App
 **Configuration:**
 
 Environment variable in `.env`:
+
 ```bash
 VITE_API_URL=http://localhost:8000
 ```
 
 Used in config:
+
 ```typescript
 export const API_CONFIG = {
   BASE_URL: import.meta.env.VITE_API_URL || "http://localhost:8000",
@@ -362,15 +384,17 @@ export const API_CONFIG = {
 **Why needed:** Raw detections can be noisy and unstable across frames
 
 **Approach:**
+
 - Match detections frame-to-frame by proximity and class
 - Require minimum stable streak before showing
 - Tolerate missed detections for smoother experience
 
 **Tunable parameters:**
+
 ```typescript
-MIN_STABLE_FRAMES = 3    // Show after 3 consecutive frames
-MAX_MATCH_DISTANCE_PX = 60  // Match threshold
-MAX_MISSED_FRAMES = 6    // Keep for 6 frames after disappearing
+MIN_STABLE_FRAMES = 3; // Show after 3 consecutive frames
+MAX_MATCH_DISTANCE_PX = 60; // Match threshold
+MAX_MISSED_FRAMES = 6; // Keep for 6 frames after disappearing
 ```
 
 ---
@@ -383,6 +407,7 @@ MAX_MISSED_FRAMES = 6    // Keep for 6 frames after disappearing
 **Conversion:** `(x / VIDEO_WIDTH) * 100 + '%'`
 
 **Benefits:**
+
 - Works across different display sizes
 - Maintains correct positioning when video scales
 - CSS transform centers POI on detection point
@@ -392,6 +417,7 @@ MAX_MISSED_FRAMES = 6    // Keep for 6 frames after disappearing
 ### 5. Type Safety
 
 All detection data is strongly typed:
+
 ```typescript
 Detection → FrameDetection → TrackedDetection
 ```
@@ -417,16 +443,19 @@ This catches errors at compile time and provides IDE autocomplete.
 ## Testing Strategy
 
 ### Unit Tests (utils/)
+
 - Test tracking algorithm with various frame sequences
 - Test coordinate conversion functions
 - Test filtering logic
 
 ### Hook Tests (hooks/)
+
 - Mock video ref and fetch
 - Test sync with video playback
 - Test loading/error states
 
 ### Component Tests (components/)
+
 - Test rendering with various detection arrays
 - Test coordinate conversion
 - Test visibility filtering integration
@@ -438,9 +467,11 @@ This catches errors at compile time and provides IDE autocomplete.
 ### Potential Additions
 
 1. **Real-time Inference Hook**
+
    ```typescript
-   useRealtimeInference(videoRef, modelConfig)
+   useRealtimeInference(videoRef, modelConfig);
    ```
+
    - Would return same interface as usePrecomputedDetections
    - PoiOverlay remains unchanged
 
@@ -465,15 +496,18 @@ This catches errors at compile time and provides IDE autocomplete.
 ## Dependencies
 
 ### Core
+
 - React 18+ (hooks, memo)
 - TypeScript (type safety)
 
 ### UI Components
+
 - OpenBridge Web Components (maritime-standard UI)
   - `ObcTopBar`, `ObcClock`, `ObcBrillianceMenu`
   - `ObcPoiTarget` (AR marker)
 
 ### Build Tools
+
 - Vite (fast development and bundling)
 
 ---
@@ -481,6 +515,7 @@ This catches errors at compile time and provides IDE autocomplete.
 ## Conventions
 
 ### File Naming
+
 - Components: PascalCase (PoiOverlay.tsx)
 - Hooks: camelCase with "use" prefix (usePrecomputedDetections.ts)
 - Utils: camelCase (detection-tracking.ts)
@@ -488,11 +523,13 @@ This catches errors at compile time and provides IDE autocomplete.
 - Config: camelCase (video.ts)
 
 ### Folder Structure
+
 - Components get their own folder with co-located CSS
 - One component per file
 - Index files NOT used (explicit imports preferred)
 
 ### Code Style
+
 - Functional components (no classes)
 - Hooks for state management
 - Pure functions where possible
@@ -505,10 +542,13 @@ This catches errors at compile time and provides IDE autocomplete.
 ### Detections not appearing
 
 **Backend API Issues:**
+
 1. **Check backend is running:**
+
    ```bash
    curl http://localhost:8000/health
    ```
+
    Should return `"status": "healthy"` with file information.
 
 2. **Check CORS errors in browser console:**
@@ -516,6 +556,7 @@ This catches errors at compile time and provides IDE autocomplete.
    - Check frontend .env has `VITE_API_URL=http://localhost:8000`
 
 3. **Verify API endpoints:**
+
    ```bash
    # Test detections endpoint
    curl http://localhost:8000/api/detections | jq '. | length'
@@ -525,6 +566,7 @@ This catches errors at compile time and provides IDE autocomplete.
    ```
 
 **Frontend Issues:**
+
 1. **Check browser console for logs:**
    - Should see: `[usePrecomputedDetections] Loaded XXXX detection frames from API`
    - Should see detection processing logs when video plays
@@ -558,10 +600,10 @@ If tracking state is improperly reset, detections will never accumulate streak:
 
 ```typescript
 // ❌ WRONG - This resets streak to 1 every frame
-trackedDetectionsRef.current = detections.map(d => ({
+trackedDetectionsRef.current = detections.map((d) => ({
   detection: d,
-  streak: 1,  // Always 1, never reaches 3!
-  missed: 0
+  streak: 1, // Always 1, never reaches 3!
+  missed: 0,
 }));
 
 // ✅ CORRECT - Preserve tracking state
@@ -569,22 +611,25 @@ const { trackingState, visibleDetections } = updateTrackedDetections(
   trackedDetectionsRef.current,
   detections
 );
-trackedDetectionsRef.current = trackingState;  // Keeps streak accumulating
+trackedDetectionsRef.current = trackingState; // Keeps streak accumulating
 ```
 
 ### Jittery POIs
+
 - Adjust tracking parameters in `utils/detection-tracking.ts`
 - Increase MIN_STABLE_FRAMES for more stability (reduces false positives)
 - Increase MAX_MISSED_FRAMES for smoother transitions (keeps POIs visible longer)
 - Increase MAX_MATCH_DISTANCE_PX if detections move quickly between frames
 
 ### Performance issues
+
 - Check detection count per frame in console logs
 - Consider throttling tracking updates (process every Nth frame)
 - Profile with React DevTools
 - Check if backend is serving video efficiently (check network tab)
 
 ### Backend connection issues
+
 1. **"Failed to load detections" error:**
    - Ensure backend is running: `cd backend && uv run python api.py`
    - Check `backend/data/raw/detections.json` exists

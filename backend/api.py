@@ -1,23 +1,29 @@
 """
-FastAPI backend for serving detections and video stream to frontend
-"""
-import json
-from pathlib import Path
-from typing import List, Dict, Any
+FastAPI backend for boat detection and AIS data.
 
-from ais.fetch_ais import fetch_ais, fetch_ais_stream_geojson
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
+Architecture:
+- /api/detections: Returns current detected vessels (YOLO + AIS)
+- /api/video: Streams video for the frontend
+- /api/ais: Fetches AIS data from external API
+"""
 import os
+from pathlib import Path
+from typing import List
+
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+from ais.fetch_ais import fetch_ais
+from schemas import Detection, Vessel, DetectedVessel
 
 load_dotenv()
 
 app = FastAPI(
     title="OpenAR Backend API",
-    description="API for serving boat detections and video streams",
-    version="0.1.0"
+    description="API for boat detection and AIS vessel data",
+    version="0.2.0"
 )
 
 # Configure CORS to allow frontend requests
@@ -36,10 +42,7 @@ app.add_middleware(
 
 # File paths (override with env vars if needed)
 BASE_DIR = Path(__file__).parent
-DEFAULT_DETECTIONS_PATH = BASE_DIR / "cv" / "output" / "detections.json"
-DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video"  / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
-
-DETECTIONS_PATH = Path(os.getenv("DETECTIONS_PATH", DEFAULT_DETECTIONS_PATH))
+DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
 VIDEO_PATH = Path(os.getenv("VIDEO_PATH", DEFAULT_VIDEO_PATH))
 
 
@@ -52,6 +55,7 @@ def read_root():
         "endpoints": {
             "detections": "/api/detections",
             "video": "/api/video",
+            "ais": "/api/ais",
             "health": "/health"
         }
     }
@@ -60,17 +64,11 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Health check with file availability status"""
-    detections_exists = DETECTIONS_PATH.exists()
     video_exists = VIDEO_PATH.exists()
 
     return {
-        "status": "healthy" if (detections_exists and video_exists) else "degraded",
+        "status": "healthy" if video_exists else "degraded",
         "files": {
-            "detections": {
-                "path": str(DETECTIONS_PATH),
-                "exists": detections_exists,
-                "size_mb": round(DETECTIONS_PATH.stat().st_size / (1024 * 1024), 2) if detections_exists else None
-            },
             "video": {
                 "path": str(VIDEO_PATH),
                 "exists": video_exists,
@@ -80,35 +78,71 @@ def health_check():
     }
 
 
-@app.get("/api/detections")
-def get_detections() -> List[Dict[str, Any]]:
+@app.get("/api/detections", response_model=List[DetectedVessel])
+def get_detections() -> List[DetectedVessel]:
     """
-    Get all boat detections from JSON file
+    Get current detected vessels with AIS data.
 
-    Returns:
-        List of detection frames with timestamp and detection data
+    TODO: Implement real-time detection pipeline:
+    1. Capture frame from video/camera
+    2. Run YOLO detection
+    3. Match detections to AIS vessels
+    4. Return combined data
+
+    For now, returns mock data for frontend development.
     """
-    if not DETECTIONS_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Detections file not found at {DETECTIONS_PATH}"
-        )
+    # Mock data for frontend development
+    # Replace with real YOLO + AIS pipeline
+    mock_vessels: List[DetectedVessel] = [
+        DetectedVessel(
+            detection=Detection(
+                x=500,
+                y=400,
+                width=120,
+                height=80,
+                confidence=0.92,
+                track_id=1
+            ),
+            vessel=Vessel(
+                mmsi="259000001",
+                name="MS Nordkapp",
+                ship_type="Passenger",
+                speed=15.2,
+                heading=45.0,
+                destination="Tromsø"
+            )
+        ),
+        DetectedVessel(
+            detection=Detection(
+                x=1200,
+                y=350,
+                width=80,
+                height=50,
+                confidence=0.85,
+                track_id=2
+            ),
+            vessel=Vessel(
+                mmsi="259000002",
+                name="Fishing Vessel",
+                ship_type="Fishing",
+                speed=8.5,
+                heading=180.0
+            )
+        ),
+        DetectedVessel(
+            detection=Detection(
+                x=800,
+                y=500,
+                width=60,
+                height=40,
+                confidence=0.78,
+                track_id=3
+            ),
+            vessel=None  # Detected but no AIS match
+        ),
+    ]
 
-    try:
-        with open(DETECTIONS_PATH, 'r') as f:
-            detections = json.load(f)
-
-        return detections
-    except json.JSONDecodeError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to parse detections JSON: {str(e)}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error reading detections: {str(e)}"
-        )
+    return mock_vessels
 
 
 @app.get("/api/video")
@@ -125,7 +159,6 @@ def get_video():
             detail=f"Video file not found at {VIDEO_PATH}"
         )
 
-    # Return video file with proper headers for streaming
     return FileResponse(
         path=VIDEO_PATH,
         media_type="video/mp4",
@@ -149,7 +182,6 @@ async def stream_video():
             detail=f"Video file not found at {VIDEO_PATH}"
         )
 
-    # FileResponse supports Range requests for faster start and seeking.
     return FileResponse(
         path=VIDEO_PATH,
         media_type="video/mp4",
@@ -159,6 +191,7 @@ async def stream_video():
             "Content-Disposition": "inline; filename=boat-detection-video.mp4"
         }
     )
+
 
 @app.get("/api/ais")
 async def get_ais_data():
@@ -196,11 +229,35 @@ async def stream_ais_geojson():
         }
     )
 
+
+@app.get("/api/ais/stream")
+async def stream_ais_geojson():
+    """
+    Stream live AIS data as GeoJSON to frontend via Server-Sent Events.
+    Frontend establishes EventSource connection and receives updates in real-time.
+    """
+    async def event_generator():
+        try:
+            async for feature in fetch_ais_stream_geojson():
+                # Format as Server-Sent Events
+                yield f"data: {json.dumps(feature)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no"  # Disable proxy buffering
+        }
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
 
     print("Starting OpenAR Backend API...")
-    print(f"Detections path: {DETECTIONS_PATH}")
     print(f"Video path: {VIDEO_PATH}")
 
     uvicorn.run(

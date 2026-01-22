@@ -3,5 +3,11 @@
 .venv
 .npmrc
 venv
+node_modules/
 raw/
 processed/
+.claude/
+
+# PyTorch model weights
+*.pt
+node_modules/
