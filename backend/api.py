@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 
-from ais.fetch_ais import fetch_ais
+from ais.fetch_ais import fetch_ais, fetch_ais_stream_geojson
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -171,6 +171,30 @@ async def get_ais_data():
             status_code=500,
             detail=f"Error fetching AIS data: {str(e)}"
         )
+
+
+@app.get("/api/ais/stream")
+async def stream_ais_geojson():
+    """
+    Stream live AIS data as GeoJSON to frontend via Server-Sent Events.
+    Frontend establishes EventSource connection and receives updates in real-time.
+    """
+    async def event_generator():
+        try:
+            async for feature in fetch_ais_stream_geojson():
+                # Format as Server-Sent Events
+                yield f"data: {json.dumps(feature)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no"  # Disable proxy buffering
+        }
+    )
 
 if __name__ == "__main__":
     import uvicorn
