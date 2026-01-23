@@ -1,14 +1,12 @@
 import os
-import json
-import asyncio
 import aiohttp
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key, find_dotenv
 
 load_dotenv()
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
-API_KEY = ""
+API_KEY = os.getenv("AIS_API_KEY")
 
 # Refresh the API key using client credentials (Expires every hour)
 async def refresh_api_key():
@@ -30,7 +28,11 @@ async def refresh_api_key():
               raise ValueError(f"HTTP error {response.status}: {error_text}")
           data = await response.json()
           access_token = data.get("access_token")
+
+          # Update the environment variable in the .env file
           os.environ["AIS_API_KEY"] = access_token
+          dotenv_path = find_dotenv()
+          set_key(dotenv_path, "AIS_API_KEY", access_token)
 
           return access_token
 
@@ -39,6 +41,10 @@ async def fetch_ais(api_key=None):
   if not CLIENT_ID or not CLIENT_SECRET:
       print("Error: CLIENT_ID or CLIENT_SECRET not set in environment. Make sure it matches .env.example")
       return
+  
+  # Use provided api_key or fall back to the globally set API_KEY
+  if api_key is None:
+      api_key = API_KEY
       
   async with aiohttp.ClientSession() as session:
     async with session.get(
