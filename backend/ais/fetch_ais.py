@@ -1,7 +1,7 @@
 import os
 import json
-import asyncio
 import aiohttp
+import math
 
 API_KEY = os.getenv("AIS_API_KEY")
 print(f"API_KEY loaded: {API_KEY[:50] if API_KEY else 'None'}...")
@@ -19,139 +19,95 @@ async def fetch_ais():
         raise ValueError(f"HTTP error {response.status}")
       return await response.json()
 
-
-async def fetch_ais_in_area(
-    since: str = "2026-01-21T14:12:02.950Z",
-    coordinates: list = None
+async def fetch_ais_stream_geojson(
+    timeout: int = 120,
+    ship_lat: float = None,
+    ship_lon: float = None,
+    heading: float = 0,
+    offset_meters: float = 1000,
+    fov_degrees: float = 60
 ):
-  """
-  Fetch AIS data for vessels in a geographic area during a time range.
-  Uses historic API with polygon query.
-  
-  Args:
-    msgtimefrom: Start time in ISO format (default: 2022-10-25)
-    msgtimeto: End time in ISO format (default: 2022-11-02)
-    coordinates: Polygon coordinates as list of [lon, lat] pairs (default: Risøyhavn area)
-  
-  Returns:
-    List of MMSI and vessel data in the specified area
-  """
-  if not API_KEY:
-    raise ValueError("AIS_API_KEY not set in environment")
-  
-  # Default polygon area (coordinates near Trondheim/Risøyhavn area)
-  if coordinates is None:
-    coordinates = [
-      [10.399613501747382, 63.44313934810131],
-      [10.367365255252821, 63.44313934810131],
-      [10.367365255252821, 63.43120885914223],
-      [10.399613501747382, 63.43120885914223],
-      [10.399613501747382, 63.44313934810131]
-    ]
-  
-  payload = {
-    "since": since,
-    "polygon": {
-      "coordinates": [coordinates],
-      "type": "Polygon"
-    }
-  }
-  
-  async with aiohttp.ClientSession() as session:
-    async with session.post(
-      "https://historic.ais.barentswatch.no/v1/historic/mmsiinarea",
-      headers={
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-      },
-      json=payload
-    ) as response:
-      if response.status != 200:
-        raise ValueError(f"HTTP error {response.status}: {await response.text()}")
-      return await response.json()
-
-async def fetch_ais_stream_geojson(timeout: int = 30, coordinates: list = None):
     """
-    Fetch AIS data stream filtered by geographic polygon.
-    Streams NDJSON objects from BarentsWatch using server-side filtering.
+    Fetch AIS data stream in a triangular field of view from ship's position.
     
     Args:
         timeout: Connection timeout in seconds
-        coordinates: Polygon coordinates as list of [lon, lat] pairs (default: Risøyhavn area)
+        ship_lat: Ship latitude (default: Trondheim harbor)
+        ship_lon: Ship longitude (default: Trondheim harbor)
+        heading: Ship heading in degrees (0 = North, 90 = East)
+        offset_meters: Distance from ship to triangle base in meters
+        fov_degrees: Field of view angle in degrees
     
     Yields:
-        GeoJSON Feature objects from the stream
+        AIS data objects from the stream
     """
-
     if not API_KEY:
-        raise ValueError("AIS_API_KEY not set in environment")
+        raise ValueError("AIS_API_KEY not set")
 
-    # Default polygon area (coordinates near Trondheim/Risøyhavn area)
-    if coordinates is None:
-        # Expanded area - larger coverage around Norwegian coast
-        coordinates = [
-            [10.2, 63.3],
-            [10.6, 63.3],
-            [10.6, 63.5],
-            [10.2, 63.5],
-            [10.2, 63.3]
-        ]
+    # Default to Trondheim harbor
+    if ship_lat is None or ship_lon is None:
+        ship_lat, ship_lon = 63.4365, 10.3835
+
+    # Calculate triangle coordinates
+    half_fov = fov_degrees / 2
     
-    print(f"Stream: Using coordinates: {coordinates}")
-
-    url = "https://live.ais.barentswatch.no/live/v1/combined"
-
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
+    # Convert offset to degrees (approximate)
+    meters_per_degree_lat = 111320
+    meters_per_degree_lon = 111320 * math.cos(math.radians(ship_lat))
+    
+    offset_lat = offset_meters / meters_per_degree_lat
+    offset_lon = offset_meters / meters_per_degree_lon
+    
+    # Calculate left and right points
+    left_angle = heading - half_fov
+    right_angle = heading + half_fov
+    
+    left_lat = ship_lat + offset_lat * math.cos(math.radians(left_angle))
+    left_lon = ship_lon + offset_lon * math.sin(math.radians(left_angle))
+    
+    right_lat = ship_lat + offset_lat * math.cos(math.radians(right_angle))
+    right_lon = ship_lon + offset_lon * math.sin(math.radians(right_angle))
+    
+    # Triangle: ship position + left point + right point + close triangle
+    coordinates = [
+        [ship_lon, ship_lat],
+        [left_lon, left_lat],
+        [right_lon, right_lat],
+        [ship_lon, ship_lat]
+    ]
+    print(coordinates)
 
     request_body = {
         "modelType": "Simple",
         "modelFormat": "Json",
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [coordinates]
-        },
+        "geometry": {"type": "Polygon", "coordinates": [coordinates]},
         "downsample": True
     }
 
-    timeout_cfg = aiohttp.ClientTimeout(total=timeout)
+    timeout_cfg = aiohttp.ClientTimeout(total=None, sock_read=120)
 
     try:
         async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
-            async with session.post(url, headers=headers, json=request_body) as response:
-
+            async with session.post(
+                "https://live.ais.barentswatch.no/live/v1/combined",
+                headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+                json=request_body
+            ) as response:
+                print(f"API Response status: {response.status}")
                 if response.status != 200:
-                    raise ValueError(
-                        f"HTTP {response.status}: {await response.text()}"
-                    )
+                    error_text = await response.text()
+                    print(f"API Error: {error_text}")
+                    raise ValueError(f"HTTP {response.status}: {error_text}")
 
                 async for line in response.content:
                     line = line.decode("utf-8").strip()
-                    if not line:
-                        continue
-
-                    try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError:
-                        print("Invalid JSON line:", line[:200])
-
-    except asyncio.TimeoutError:
-        print(f"Stream timed out after {timeout} seconds")
-      
-def main():
-    if not API_KEY:
-      print("Warning: AIS_API_KEY not set in environment")
-      return
-    try:
-      ais_data = asyncio.run(fetch_ais())
-      with open("ais_data.json", "w") as f:
-        json.dump(ais_data, f, indent=2)
-      print("AIS data fetched and saved to ais_data.json")
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            print(f"Raw data from BarentsWatch: {json.dumps(data, indent=2)[:500]}")
+                            yield data
+                        except json.JSONDecodeError:
+                            continue
     except Exception as e:
-      print(f"\nError fetching AIS data: {e}")
-
-if __name__ == "__main__":
-    main()
+        print(f"Stream error in fetch_ais_stream_geojson: {type(e).__name__}: {str(e)}")
+        raise

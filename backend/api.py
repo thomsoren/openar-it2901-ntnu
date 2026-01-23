@@ -6,11 +6,15 @@ Architecture:
 - /api/video: Streams video for the frontend
 - /api/ais: Fetches AIS data from external API
 """
+import asyncio
+import json
 import os
 from pathlib import Path
 from typing import List
 
 from dotenv import load_dotenv
+from fastapi.responses import StreamingResponse
+from ais.fetch_ais import fetch_ais_stream_geojson
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +42,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    allow_origin_regex=".*",
 )
 
 # File paths (override with env vars if needed)
@@ -206,50 +212,39 @@ async def get_ais_data():
         )
 
 
+# FastAPI endpoint
 @app.get("/api/ais/stream")
-async def stream_ais_geojson():
-    """
-    Stream live AIS data as GeoJSON to frontend via Server-Sent Events.
-    Frontend establishes EventSource connection and receives updates in real-time.
-    """
+async def stream_ais_geojson(
+    ship_lat: float = 63.4365,
+    ship_lon: float = 10.3835,
+    heading: float = 0,
+    offset_meters: float = 1000,
+    fov_degrees: float = 60
+):
+    """Stream AIS data in ship's field of view"""
     async def event_generator():
         try:
-            async for feature in fetch_ais_stream_geojson():
-                # Format as Server-Sent Events
+            print(f"Stream params: lat={ship_lat}, lon={ship_lon}, heading={heading}, offset={offset_meters}m, fov={fov_degrees}°")
+            async for feature in fetch_ais_stream_geojson(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                heading=heading,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):
                 yield f"data: {json.dumps(feature)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            print(f"Stream error: {error_msg}")
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
     
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no"  # Disable proxy buffering
-        }
-    )
-
-
-@app.get("/api/ais/stream")
-async def stream_ais_geojson():
-    """
-    Stream live AIS data as GeoJSON to frontend via Server-Sent Events.
-    Frontend establishes EventSource connection and receives updates in real-time.
-    """
-    async def event_generator():
-        try:
-            async for feature in fetch_ais_stream_geojson():
-                # Format as Server-Sent Events
-                yield f"data: {json.dumps(feature)}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no"  # Disable proxy buffering
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
         }
     )
 
