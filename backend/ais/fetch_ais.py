@@ -2,30 +2,59 @@ import os
 import json
 import asyncio
 import aiohttp
+from dotenv import load_dotenv
 
-API_KEY = os.getenv("AIS_API_KEY")
+load_dotenv()
 
-async def fetch_ais():
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+API_KEY = ""
+
+# Refresh the API key using client credentials (Expires every hour)
+async def refresh_api_key():
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+          "https://id.barentswatch.no/connect/token",
+          headers={
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          data={
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "grant_type": "client_credentials",
+            "scope": "ais"
+          }
+        ) as response:
+          if response.status != 200:
+              error_text = await response.text()
+              raise ValueError(f"HTTP error {response.status}: {error_text}")
+          data = await response.json()
+          access_token = data.get("access_token")
+          os.environ["AIS_API_KEY"] = access_token
+
+          return access_token
+
+# Fetch AIS data with automatic API key refresh (User only needs CLIENT_ID and CLIENT_SECRET in .env)
+async def fetch_ais(api_key=None):
+  if not CLIENT_ID or not CLIENT_SECRET:
+      print("Error: CLIENT_ID or CLIENT_SECRET not set in environment. Make sure it matches .env.example")
+      return
+      
   async with aiohttp.ClientSession() as session:
     async with session.get(
       "https://historic.ais.barentswatch.no/v1/historic/trackslast24hours/257111020",
       headers={
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Accept": "application/json"
       }
     ) as response:
+      
+      # If unauthorized (status 401), refresh the API key and retry
+      if response.status == 401:
+        new_key = await refresh_api_key()
+        return await fetch_ais(new_key)
+      
       if response.status != 200:
         raise ValueError(f"HTTP error {response.status}")
-      return await response.json()
       
-def main():
-    if not API_KEY:
-      print("Warning: AIS_API_KEY not set in environment")
-      return
-    try:
-      ais_data = asyncio.run(fetch_ais())
-      with open("ais_data.json", "w") as f:
-        json.dump(ais_data, f, indent=2)
-      print("AIS data fetched and saved to ais_data.json")
-    except Exception as e:
-      print(f"\nError fetching AIS data: {e}")
+      return await response.json()
