@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AISData } from "../types/AisData";
+import { AISData } from "../types/aisData";
 
 /** Barebones hook to fetch unfiltered AIS data from backend API */
 export const useFetchAIS = () => {

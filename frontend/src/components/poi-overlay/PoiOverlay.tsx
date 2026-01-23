@@ -2,18 +2,20 @@ import React from "react";
 import { ObcPoiTarget } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-target/poi-target";
 import { Detection } from "../../types/detection";
 import { filterVisibleDetections } from "../../utils/detection-tracking";
-import { VIDEO_CONFIG, POI_CONFIG } from "../../config/video";
+import { POI_CONFIG } from "../../config/video";
+import { VideoTransform } from "../../hooks/useVideoTransform";
 import "./PoiOverlay.css";
 
 interface PoiOverlayProps {
   detections?: Detection[];
+  videoTransform: VideoTransform;
 }
 
 /**
  * Overlay component that displays POI markers at detected object locations
- * Converts detection coordinates to responsive percentage-based positioning
+ * Converts detection coordinates to screen positions accounting for video scaling and offset
  */
-function PoiOverlay({ detections = [] }: PoiOverlayProps) {
+function PoiOverlay({ detections = [], videoTransform }: PoiOverlayProps) {
   const visibleDetections = filterVisibleDetections(detections);
 
   if (visibleDetections.length === 0) {
@@ -23,17 +25,22 @@ function PoiOverlay({ detections = [] }: PoiOverlayProps) {
   return (
     <div className="poi-overlay">
       {visibleDetections.map((detection, index) => {
-        // Convert absolute coordinates to percentage-based positioning
-        const leftPercent = (detection.x / VIDEO_CONFIG.WIDTH) * 100;
-        const topPercent = (detection.y / VIDEO_CONFIG.HEIGHT) * 100;
+        // Map detection coordinates (from native video resolution) to actual rendered position
+        // 1. Scale coordinates from native resolution to rendered size
+        const scaledX = detection.x * videoTransform.scaleX;
+        const scaledY = detection.y * videoTransform.scaleY;
+
+        // 2. Add offset to account for letterbox/pillarbox
+        const screenX = scaledX + videoTransform.offsetX;
+        const screenY = scaledY + videoTransform.offsetY;
 
         return (
           <div
             key={index}
             className="poi-marker"
             style={{
-              left: `${leftPercent}%`,
-              top: `${topPercent}%`,
+              left: `${screenX}px`,
+              top: `${screenY}px`,
             }}
           >
             <ObcPoiTarget height={POI_CONFIG.HEIGHT} />

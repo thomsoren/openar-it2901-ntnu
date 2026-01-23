@@ -9,6 +9,8 @@ import "./App.css";
 import PoiOverlay from "./components/poi-overlay/PoiOverlay";
 import Settings from "./pages/Settings";
 import { usePrecomputedDetections } from "./hooks/usePrecomputedDetections";
+import { useVideoTransform } from "./hooks/useVideoTransform";
+import { useSettings } from "./contexts/SettingsContext";
 import { VIDEO_CONFIG } from "./config/video";
 
 const handleBrillianceChange = (e: CustomEvent) => {
@@ -20,11 +22,16 @@ function App() {
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
   const [currentPage, setCurrentPage] = useState<"demo" | "settings">("demo");
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { videoFitMode, detectionVisible } = useSettings();
 
   // Load precomputed boat detections from JSON
   const { detections, isLoading, error, totalFrames, fpsEstimate } = usePrecomputedDetections(videoRef);
   const [bufferedAheadFrames, setBufferedAheadFrames] = useState(0);
   const [bufferedAheadSeconds, setBufferedAheadSeconds] = useState(0);
+
+  // Calculate video transform for accurate POI positioning
+  const videoTransform = useVideoTransform(videoRef, containerRef, videoFitMode);
 
   const handleDimmingButtonClicked = () => {
     setShowBrillianceMenu((prev) => !prev);
@@ -103,7 +110,7 @@ function App() {
         </ObcNavigationMenu>
       )}
 
-      <main>
+      <main ref={containerRef}>
         {showBrillianceMenu && (
           <ObcBrillianceMenu
             onPaletteChanged={handleBrillianceChange}
@@ -120,6 +127,7 @@ function App() {
               loop
               muted
               className="background-video"
+              style={{ objectFit: videoFitMode }}
             >
               <source
                 src={VIDEO_CONFIG.SOURCE}
@@ -147,7 +155,9 @@ function App() {
               </div>
             )}
 
-            <PoiOverlay detections={detections} />
+            {detectionVisible && (
+              <PoiOverlay detections={detections} videoTransform={videoTransform} />
+            )}
           </>
         ) : (
           <Settings />
