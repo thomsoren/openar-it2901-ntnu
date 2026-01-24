@@ -8,7 +8,7 @@ import { ObcNavigationItem } from "@ocean-industries-concept-lab/openbridge-webc
 import "./App.css";
 import PoiOverlay from "./components/poi-overlay/PoiOverlay";
 import Settings from "./pages/Settings";
-import { useDetections } from "./hooks/useDetections";
+import { useDetectionsWebSocket } from "./hooks/useDetectionsWebSocket";
 import { VIDEO_CONFIG, DETECTION_CONFIG } from "./config/video";
 
 const handleBrillianceChange = (e: CustomEvent) => {
@@ -20,10 +20,11 @@ function App() {
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
   const [currentPage, setCurrentPage] = useState<"demo" | "settings">("demo");
 
-  // Fetch detected vessels from API
-  const { vessels, isLoading, error } = useDetections({
-    url: DETECTION_CONFIG.URL,
-    pollInterval: DETECTION_CONFIG.POLL_INTERVAL,
+  // Receive detection updates via WebSocket (runs at YOLO speed ~5 FPS)
+  // Video plays independently at native 25 FPS
+  const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
+    url: DETECTION_CONFIG.WS_URL,
+    config: { track: true, loop: true },
   });
 
   const handleDimmingButtonClicked = () => {
@@ -88,19 +89,22 @@ function App() {
 
         {currentPage === "demo" ? (
           <>
+            {/* Native video playback at 25 FPS */}
             <video autoPlay loop muted className="background-video">
               <source src={VIDEO_CONFIG.SOURCE} type="video/mp4" />
-              Your browser does not support the video tag.
             </video>
 
             {/* Status overlay */}
-            {isLoading && <div className="status-overlay">Loading detections...</div>}
+            {isLoading && <div className="status-overlay">Connecting to detection stream...</div>}
             {error && <div className="status-overlay status-error">Error: {error}</div>}
             {!isLoading && !error && (
-              <div className="status-overlay status-info">Vessels detected: {vessels.length}</div>
+              <div className="status-overlay status-info">
+                {isConnected ? "Connected" : "Disconnected"} | Detection: {fps.toFixed(1)} FPS |
+                Vessels: {vessels.length}
+              </div>
             )}
 
-            {/* Vessel markers */}
+            {/* Vessel markers overlay */}
             <PoiOverlay vessels={vessels} />
           </>
         ) : (

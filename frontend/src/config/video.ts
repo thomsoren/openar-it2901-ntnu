@@ -1,6 +1,8 @@
 // API configuration
 export const API_CONFIG = {
   BASE_URL: import.meta.env.VITE_API_URL || "http://localhost:8000",
+  // WebSocket URL (ws:// for http, wss:// for https)
+  WS_BASE_URL: import.meta.env.VITE_WS_URL || "ws://localhost:8000",
 } as const;
 
 // Video configuration
@@ -13,6 +15,8 @@ export const VIDEO_CONFIG = {
 // Detection API configuration
 export const DETECTION_CONFIG = {
   URL: `${API_CONFIG.BASE_URL}/api/detections`,
+  /** WebSocket URL for real-time streaming detections */
+  WS_URL: `${API_CONFIG.WS_BASE_URL}/api/detections/ws`,
   POLL_INTERVAL: 1000, // ms (1 FPS - adjust as needed for real-time detection)
 } as const;
 

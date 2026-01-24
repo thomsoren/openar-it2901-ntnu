@@ -3,20 +3,23 @@ FastAPI backend for boat detection and AIS data.
 
 Architecture:
 - /api/detections: Returns current detected vessels (YOLO + AIS)
+- /api/detections/ws: WebSocket for real-time YOLO streaming detections
 - /api/video: Streams video for the frontend
 - /api/ais: Fetches AIS data from external API
 """
+import asyncio
 import os
 from pathlib import Path
 from typing import List
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from ais.fetch_ais import fetch_ais
 from schemas import Detection, Vessel, DetectedVessel
+from cv.yolo_stream import get_processor
 
 load_dotenv()
 
@@ -54,6 +57,7 @@ def read_root():
         "message": "OpenAR Backend API is running",
         "endpoints": {
             "detections": "/api/detections",
+            "detections_ws": "/api/detections/ws",
             "video": "/api/video",
             "ais": "/api/ais",
             "health": "/health"
@@ -204,6 +208,126 @@ async def get_ais_data():
             status_code=500,
             detail=f"Error fetching AIS data: {str(e)}"
         )
+
+
+@app.websocket("/api/detections/ws")
+async def websocket_detections(websocket: WebSocket):
+    """
+    WebSocket endpoint for YOLO detection streaming.
+
+    Sends detection updates as YOLO processes video frames.
+    Frontend plays video separately at native speed.
+
+    Config (via initial message):
+        source: Video source (default: VIDEO_PATH)
+        track: Enable tracking (default: true)
+        loop: Loop video (default: true)
+    """
+    await websocket.accept()
+    stop_event = asyncio.Event()
+
+    try:
+        # Wait for config or use defaults
+        try:
+            config = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+        except asyncio.TimeoutError:
+            config = {}
+
+        source = config.get("source", str(VIDEO_PATH))
+        track = config.get("track", True)
+        loop = config.get("loop", True)
+
+        # Validate source
+        if isinstance(source, str) and not source.startswith(("rtsp://", "http://")):
+            if not source.isdigit() and not Path(source).exists():
+                await websocket.send_json({"type": "error", "message": f"Source not found: {source}"})
+                await websocket.close()
+                return
+
+        # Get video dimensions for frontend
+        import cv2
+        cap = cv2.VideoCapture(source)
+        video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        cap.release()
+
+        await websocket.send_json({
+            "type": "ready",
+            "source": str(source),
+            "width": video_width,
+            "height": video_height,
+            "fps": video_fps,
+        })
+
+        processor = get_processor()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=5)
+
+        async def producer():
+            loop_ref = asyncio.get_event_loop()
+
+            def process():
+                try:
+                    for frame_data in processor.process_video(source=source, track=track, loop=loop):
+                        if stop_event.is_set():
+                            break
+                        future = asyncio.run_coroutine_threadsafe(queue.put(frame_data), loop_ref)
+                        try:
+                            future.result(timeout=5.0)
+                        except Exception:
+                            break
+                except Exception as e:
+                    print(f"Processing error: {e}")
+                finally:
+                    asyncio.run_coroutine_threadsafe(queue.put(None), loop_ref)
+
+            await loop_ref.run_in_executor(None, process)
+
+        async def consumer():
+            while not stop_event.is_set():
+                try:
+                    frame_data = await asyncio.wait_for(queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
+
+                if frame_data is None:
+                    await websocket.send_json({"type": "complete"})
+                    break
+
+                vessels = [
+                    {
+                        "detection": {
+                            "x": d.x,
+                            "y": d.y,
+                            "width": d.width,
+                            "height": d.height,
+                            "confidence": d.confidence,
+                            "track_id": d.track_id,
+                        },
+                        "vessel": None
+                    }
+                    for d in frame_data.detections
+                ]
+
+                await websocket.send_json({
+                    "type": "detections",
+                    "frame_index": frame_data.frame_index,
+                    "timestamp_ms": frame_data.timestamp_ms,
+                    "fps": round(frame_data.fps, 1),
+                    "vessels": vessels,
+                })
+
+        await asyncio.gather(producer(), consumer())
+
+    except WebSocketDisconnect:
+        print("Client disconnected")
+        stop_event.set()
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

@@ -67,3 +67,13 @@ main {
 .status-info {
   background-color: rgba(0, 0, 0, 0.6);
 }
+
+/* Video placeholder while loading */
+.video-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a1a2e;
+  color: #666;
+  font-size: 18px;
+}
