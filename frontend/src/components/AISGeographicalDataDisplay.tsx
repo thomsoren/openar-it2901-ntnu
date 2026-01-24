@@ -46,18 +46,10 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
 
         <div className="ais-stream-controls">
-          <ObcButton
-            variant="raised"
-            onClick={() => setShouldStream(true)}
-            disabled={isStreaming}
-          >
+          <ObcButton variant="raised" onClick={() => setShouldStream(true)} disabled={isStreaming}>
             Start Stream
           </ObcButton>
-          <ObcButton
-            variant="flat"
-            onClick={() => setShouldStream(false)}
-            disabled={!isStreaming}
-          >
+          <ObcButton variant="flat" onClick={() => setShouldStream(false)} disabled={!isStreaming}>
             Stop
           </ObcButton>
         </div>
@@ -152,25 +144,19 @@ export const AISGeographicalDataDisplay: React.FC = () => {
                   {feature?.navigationalStatus !== undefined && (
                     <div className="feature-detail">
                       <span className="feature-detail-label">Status</span>
-                      <span className="feature-detail-value">
-                        {feature.navigationalStatus}
-                      </span>
+                      <span className="feature-detail-value">{feature.navigationalStatus}</span>
                     </div>
                   )}
                   {feature?.speedOverGround !== undefined && (
                     <div className="feature-detail">
                       <span className="feature-detail-label">Speed</span>
-                      <span className="feature-detail-value">
-                        {feature.speedOverGround} knots
-                      </span>
+                      <span className="feature-detail-value">{feature.speedOverGround} knots</span>
                     </div>
                   )}
                   {feature?.courseOverGround !== undefined && (
                     <div className="feature-detail">
                       <span className="feature-detail-label">Course</span>
-                      <span className="feature-detail-value">
-                        {feature.courseOverGround}°
-                      </span>
+                      <span className="feature-detail-value">{feature.courseOverGround}°</span>
                     </div>
                   )}
                   {feature?.trueHeading !== undefined && (

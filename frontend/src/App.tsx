@@ -45,9 +45,7 @@ function App() {
       <header>
         <ObcTopBar
           appTitle="OpenAR"
-          pageName={
-            currentPage === "demo" ? "Demo" : currentPage === "ais" ? "AIS" : "Settings"
-          }
+          pageName={currentPage === "demo" ? "Demo" : currentPage === "ais" ? "AIS" : "Settings"}
           showDimmingButton
           showAppsButton
           menuButtonActivated={showNavigationMenu}
