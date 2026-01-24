@@ -8,6 +8,7 @@ import { ObcNavigationItem } from "@ocean-industries-concept-lab/openbridge-webc
 import "./App.css";
 import PoiOverlay from "./components/poi-overlay/PoiOverlay";
 import Settings from "./pages/Settings";
+import AIS from "./pages/AIS";
 import { useDetections } from "./hooks/useDetections";
 import { VIDEO_CONFIG, DETECTION_CONFIG } from "./config/video";
 
@@ -18,7 +19,7 @@ const handleBrillianceChange = (e: CustomEvent) => {
 function App() {
   const [showBrillianceMenu, setShowBrillianceMenu] = useState(false);
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
-  const [currentPage, setCurrentPage] = useState<"demo" | "settings">("demo");
+  const [currentPage, setCurrentPage] = useState<"demo" | "ais" | "settings">("demo");
 
   // Fetch detected vessels from API
   const { vessels, isLoading, error } = useDetections({
@@ -34,7 +35,7 @@ function App() {
     setShowNavigationMenu((prev) => !prev);
   };
 
-  const handleNavigationItemClick = (page: "demo" | "settings") => {
+  const handleNavigationItemClick = (page: "demo" | "ais" | "settings") => {
     setCurrentPage(page);
     setShowNavigationMenu(false);
   };
@@ -44,7 +45,9 @@ function App() {
       <header>
         <ObcTopBar
           appTitle="OpenAR"
-          pageName={currentPage === "demo" ? "Demo" : "Settings"}
+          pageName={
+            currentPage === "demo" ? "Demo" : currentPage === "ais" ? "AIS" : "Settings"
+          }
           showDimmingButton
           showAppsButton
           menuButtonActivated={showNavigationMenu}
@@ -67,6 +70,11 @@ function App() {
               label="Demo"
               checked={currentPage === "demo"}
               onClick={() => handleNavigationItemClick("demo")}
+            />
+            <ObcNavigationItem
+              label="AIS"
+              checked={currentPage === "ais"}
+              onClick={() => handleNavigationItemClick("ais")}
             />
             <ObcNavigationItem
               label="Settings"
@@ -103,6 +111,8 @@ function App() {
             {/* Vessel markers */}
             <PoiOverlay vessels={vessels} />
           </>
+        ) : currentPage === "ais" ? (
+          <AIS />
         ) : (
           <Settings />
         )}

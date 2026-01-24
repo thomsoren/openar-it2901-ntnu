@@ -2,123 +2,85 @@
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
-  background: #f5f5f5;
+  padding: 16px;
+  background: var(--container-color);
+  border: 1px solid var(--border-subtle-color);
   border-radius: 8px;
+  font-family: "Noto Sans", sans-serif;
 }
 
 .ais-stream-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  border-bottom: 2px solid #ddd;
+  gap: 16px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid var(--border-subtle-color);
   padding-bottom: 15px;
+}
+
+.ais-stream-title {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .ais-stream-header h2 {
   margin: 0;
-  color: #333;
+  color: var(--element-active-color);
   font-size: 24px;
+}
+
+.ais-stream-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .ais-stream-controls {
   display: flex;
   gap: 10px;
+  flex-shrink: 0;
 }
 
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+.ais-stream-controls obc-button {
+  min-width: 120px;
 }
 
-.btn-primary {
-  background: #0066cc;
-  color: white;
+.ais-stream-params {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: #0052a3;
-}
-
-.btn-primary:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.btn-danger {
-  background: #d32f2f;
-  color: white;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #b71c1c;
-}
-
-.btn-danger:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.ais-stream-status {
+.param-group {
   display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 15px;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.status-badge {
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 500;
+.param-label {
+  color: var(--element-neutral-color);
+  font-size: 12px;
 }
 
-.status-badge.streaming {
-  background: #d4edda;
-  color: #155724;
-}
-
-.status-badge.idle {
-  background: #e7e7e7;
-  color: #666;
-}
-
-.status-error {
-  color: #d32f2f;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.ais-stream-stats {
-  background: white;
-  padding: 10px 15px;
-  border-radius: 4px;
-  margin-bottom: 15px;
-  font-size: 14px;
-}
-
-.ais-stream-stats p {
-  margin: 0;
+.param-group obc-input {
+  width: 100%;
 }
 
 .ais-stream-list {
-  background: white;
+  background: var(--container-backdrop-color);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-subtle-color);
 }
 
 .empty-state {
   padding: 40px 20px;
   text-align: center;
-  color: #999;
+  color: var(--element-neutral-color);
 }
 
 .empty-state p {
@@ -134,61 +96,47 @@
 }
 
 .feature-card {
-  background: #fafafa;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  padding: 15px;
-  transition: all 0.2s ease;
+  height: 100%;
 }
 
-.feature-card:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  border-color: #0066cc;
-}
-
-.feature-header {
+.feature-label {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 8px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.feature-header h4 {
-  margin: 0;
-  color: #333;
-  font-size: 14px;
-  font-weight: 600;
+.feature-name {
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.mmsi {
-  background: #e3f2fd;
-  color: #1976d2;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  margin-left: 10px;
+.feature-label obc-tag {
+  flex-shrink: 0;
 }
 
 .feature-details {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.feature-detail {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
-.feature-details p {
-  margin: 0;
-  font-size: 12px;
-  color: #555;
+.feature-detail-label {
+  color: var(--element-neutral-color);
+  font-weight: 600;
 }
 
-.feature-details strong {
-  color: #333;
-  font-weight: 600;
+.feature-detail-value {
+  color: var(--element-active-color);
 }
 
 @media (max-width: 768px) {
@@ -202,8 +150,12 @@
     width: 100%;
   }
 
-  .btn {
+  .ais-stream-controls obc-button {
     flex: 1;
+  }
+
+  .ais-stream-header h2 {
+    font-size: 20px;
   }
 
   .features-grid {

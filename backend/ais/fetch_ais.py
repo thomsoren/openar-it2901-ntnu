@@ -12,6 +12,7 @@ API_KEY = os.getenv("AIS_API_KEY")
 
 # Refresh the API key using client credentials (Expires every hour)
 async def refresh_api_key():
+    global API_KEY
     async with aiohttp.ClientSession() as session:
         async with session.post(
           "https://id.barentswatch.no/connect/token",
@@ -33,6 +34,7 @@ async def refresh_api_key():
 
           # Update the environment variable in the .env file
           os.environ["AIS_API_KEY"] = access_token
+          API_KEY = access_token
           dotenv_path = find_dotenv()
           set_key(dotenv_path, "AIS_API_KEY", access_token)
 
@@ -89,6 +91,12 @@ async def fetch_ais_stream_geojson(
     Yields:
         AIS data objects from the stream
     """
+    if not CLIENT_ID or not CLIENT_SECRET:
+        raise ValueError("CLIENT_ID or CLIENT_SECRET not set")
+
+    if not API_KEY:
+        await refresh_api_key()
+
     if not API_KEY:
         raise ValueError("AIS_API_KEY not set")
 
@@ -136,26 +144,31 @@ async def fetch_ais_stream_geojson(
 
     try:
         async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
-            async with session.post(
-                "https://live.ais.barentswatch.no/live/v1/combined",
-                headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-                json=request_body
-            ) as response:
-                print(f"API Response status: {response.status}")
-                if response.status != 200:
-                    error_text = await response.text()
-                    print(f"API Error: {error_text}")
-                    raise ValueError(f"HTTP {response.status}: {error_text}")
+            for attempt in range(2):
+                async with session.post(
+                    "https://live.ais.barentswatch.no/live/v1/combined",
+                    headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+                    json=request_body
+                ) as response:
+                    print(f"API Response status: {response.status}")
+                    if response.status == 401 and attempt == 0:
+                        await refresh_api_key()
+                        continue
+                    if response.status != 200:
+                        error_text = await response.text()
+                        print(f"API Error: {error_text}")
+                        raise ValueError(f"HTTP {response.status}: {error_text}")
 
-                async for line in response.content:
-                    line = line.decode("utf-8").strip()
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            print(f"Raw data from BarentsWatch: {json.dumps(data, indent=2)[:500]}")
-                            yield data
-                        except json.JSONDecodeError:
-                            continue
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                print(f"Raw data from BarentsWatch: {json.dumps(data, indent=2)[:500]}")
+                                yield data
+                            except json.JSONDecodeError:
+                                continue
+                    return
     except Exception as e:
         print(f"Stream error in fetch_ais_stream_geojson: {type(e).__name__}: {str(e)}")
         raise
