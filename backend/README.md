@@ -93,6 +93,10 @@ Edit `detect_boats.py` to adjust:
 - Try processing more frames (reduce `process_every_n_frames`)
 - Model may not detect boats in all frames/angles
 
+**"error: externally-managed-environment" or missing `lap`**
+- Install deps with `uv sync` from `backend/` (includes `lap`)
+- Run scripts via `uv run ...` so they use the managed environment
+
 ## FastAPI Server
 
 The backend includes a FastAPI server that serves detections and video to the frontend.
@@ -197,6 +201,20 @@ The API is configured to accept requests from:
 - `http://localhost:3000` (Alternative React dev server)
 - `http://127.0.0.1:5173`
 - `http://127.0.0.1:3000`
+
+## Demo Samples (FVessel)
+
+Use `DEMO_SAMPLE_ID` to switch the backend to the FVessel samples added under
+`data/raw/fvessel/`. Available samples can be listed via:
+
+```
+GET /api/demo/samples
+```
+
+Optional overrides (see `.env.example`):
+- `VIDEO_PATH`
+- `AIS_CSV_PATH`
+- `GT_FUSION_PATH`
 
 ### API Documentation
 

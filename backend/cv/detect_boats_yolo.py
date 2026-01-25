@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 # Configuration
-VIDEO_PATH = ".data/raw/video/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+VIDEO_PATH = "../data/raw/video/hurtigruta-demo.mp4"
 OUTPUT_DIR = Path(".output")
 
 # Create output directory
