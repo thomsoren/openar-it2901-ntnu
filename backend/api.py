@@ -181,3 +181,9 @@ async def get_ais_data():
 @app.websocket("/api/detections/ws")
 async def websocket_detections(websocket: WebSocket):
     await pipeline.handle_detections_ws(websocket)
+
+
+@app.websocket("/api/fusion/ws")
+async def websocket_fusion(websocket: WebSocket):
+    """Dedicated WebSocket endpoint for Fusion page with ground truth data."""
+    await pipeline.handle_fusion_ws(websocket)

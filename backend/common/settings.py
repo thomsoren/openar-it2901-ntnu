@@ -30,12 +30,12 @@ DEFAULT_COMPONENTS_BG_PATH = BASE_DIR / "data" / "raw" / "oceanbackground.png"
 DEFAULT_DETECTIONS_PATH = BASE_DIR / "output" / "detections.json"
 SAMPLES_CONFIG_PATH = BASE_DIR / "fusion" / "samples.json"
 MODELS_DIR = BASE_DIR / "cv" / "models"
-DETECTIONS_WS_MODE = os.getenv("DETECTIONS_WS_MODE", "live").strip().lower()
+DETECTIONS_WS_MODE = os.getenv("DETECTIONS_WS_MODE", "file").strip().lower()
 
 
 class SampleConfig(BaseModel):
     id: str
-    name: str
+    label: str
     video_path: Optional[str] = None
     ais_path: Optional[str] = None
     gt_fusion_path: Optional[str] = None
