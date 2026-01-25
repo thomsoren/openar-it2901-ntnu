@@ -4,6 +4,7 @@ body {
   padding: 0;
   height: 100%;
   background-color: var(--container-backdrop-color);
+  font-family: "Noto Sans", sans-serif;
 }
 
 @font-face {

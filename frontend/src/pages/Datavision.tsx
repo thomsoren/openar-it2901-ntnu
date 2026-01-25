@@ -3,11 +3,11 @@ import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { VIDEO_CONFIG, DETECTION_CONFIG } from "../config/video";
 
 function Datavision() {
-  // Receive detection updates via WebSocket - streams precomputed detections from S3
+  // Receive detection updates via WebSocket (runs at YOLO speed ~5 FPS)
   // Video plays independently at native 25 FPS
   const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
     url: DETECTION_CONFIG.WS_URL,
-    config: { mode: "file", track: true, loop: true },
+    config: { track: true, loop: true },
   });
 
   return (

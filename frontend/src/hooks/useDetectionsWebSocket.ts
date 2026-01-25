@@ -8,8 +8,6 @@ interface WebSocketConfig {
   track?: boolean;
   /** Loop video when it ends (default: true) */
   loop?: boolean;
-  /** Streaming mode: "file" (precomputed detections) or "fusion" (time-synced) */
-  mode?: "file" | "fusion" | "live";
 }
 
 interface UseDetectionsWebSocketOptions {
@@ -220,14 +218,11 @@ export const useDetectionsWebSocket = ({
   autoReconnect = true,
   reconnectDelay = 3000,
 }: UseDetectionsWebSocketOptions): UseDetectionsWebSocketResult => {
-  // Stringify config to create stable dependency for useMemo
-  const configJson = JSON.stringify(config);
-
-  // Create store with proper dependencies to ensure each page gets its own store
+  // Create store once using useMemo - intentionally ignoring deps to create once
   const store = useMemo(
     () => createWebSocketStore(url, config, autoReconnect, reconnectDelay),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [url, configJson, autoReconnect, reconnectDelay]
+    []
   );
 
   const state = useSyncExternalStore(store.subscribe, store.getState);

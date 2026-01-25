@@ -1,26 +1,36 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
-import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useDetections } from "../hooks/useDetections";
 import { API_CONFIG, DETECTION_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
 
 function Fusion() {
-  // Use dedicated fusion WebSocket endpoint
-  const fusionWsUrl = DETECTION_CONFIG.WS_URL.replace("/detections/ws", "/fusion/ws");
-  const { vessels, error, isConnected } = useDetectionsWebSocket({
-    url: fusionWsUrl,
-    config: {}, // Fusion endpoint doesn't need config
+  const [detectionsEnabled, setDetectionsEnabled] = useState(false);
+  const { vessels, isLoading, error } = useDetections({
+    url: DETECTION_CONFIG.URL,
+    pollInterval: 1000,
+    enabled: detectionsEnabled,
   });
 
   useEffect(() => {
+    let cancelled = false;
+
     const resetFusionTimer = async () => {
       try {
         await fetch(`${API_CONFIG.BASE_URL}/api/fusion/reset`, { method: "POST" });
       } catch (err) {
         console.warn("Failed to reset fusion timer", err);
+      } finally {
+        if (!cancelled) {
+          setDetectionsEnabled(true);
+        }
       }
     };
 
     resetFusionTimer();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -29,9 +39,9 @@ function Fusion() {
         <source src={FUSION_VIDEO_CONFIG.SOURCE} type="video/mp4" />
       </video>
 
-      {!isConnected && <div className="status-overlay">Connecting to fusion stream...</div>}
+      {isLoading && <div className="status-overlay">Loading FVessel demo...</div>}
       {error && <div className="status-overlay status-error">Error: {error}</div>}
-      {isConnected && !error && (
+      {!isLoading && !error && (
         <div className="status-overlay status-info">
           FVessel | Fusion | Vessels: {vessels.length}
         </div>
