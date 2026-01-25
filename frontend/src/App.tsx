@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcTopBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/top-bar/top-bar";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
@@ -6,10 +6,27 @@ import { ObcClock } from "@ocean-industries-concept-lab/openbridge-webcomponents
 import { ObcNavigationMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-menu/navigation-menu";
 import { ObcNavigationItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-item/navigation-item";
 import "./App.css";
-import PoiOverlay from "./components/poi-overlay/PoiOverlay";
+import Ais from "./pages/Ais";
+import Fusion from "./pages/Fusion";
+import Components from "./pages/Components";
+import Datavision from "./pages/Datavision";
 import Settings from "./pages/Settings";
-import { useDetectionsWebSocket } from "./hooks/useDetectionsWebSocket";
-import { VIDEO_CONFIG, DETECTION_CONFIG } from "./config/video";
+
+const PAGE_STORAGE_KEY = "openar.currentPage";
+const PAGES = ["datavision", "ais", "components", "fusion", "settings"] as const;
+type PageId = (typeof PAGES)[number];
+
+const getStoredPage = (): PageId => {
+  try {
+    const stored = localStorage.getItem(PAGE_STORAGE_KEY) as PageId | null;
+    if (stored && PAGES.includes(stored)) {
+      return stored;
+    }
+  } catch {
+    // Ignore storage failures (private mode, blocked storage, etc.).
+  }
+  return "datavision";
+};
 
 const handleBrillianceChange = (e: CustomEvent) => {
   document.documentElement.setAttribute("data-obc-theme", e.detail.value);
@@ -18,14 +35,15 @@ const handleBrillianceChange = (e: CustomEvent) => {
 function App() {
   const [showBrillianceMenu, setShowBrillianceMenu] = useState(false);
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
-  const [currentPage, setCurrentPage] = useState<"demo" | "settings">("demo");
+  const [currentPage, setCurrentPage] = useState<PageId>(() => getStoredPage());
 
-  // Receive detection updates via WebSocket (runs at YOLO speed ~5 FPS)
-  // Video plays independently at native 25 FPS
-  const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
-    url: DETECTION_CONFIG.WS_URL,
-    config: { track: true, loop: true },
-  });
+  const pageLabels = {
+    datavision: "Datavision",
+    ais: "AIS",
+    components: "Components",
+    fusion: "Fusion",
+    settings: "Settings",
+  } as const;
 
   const handleDimmingButtonClicked = () => {
     setShowBrillianceMenu((prev) => !prev);
@@ -35,17 +53,25 @@ function App() {
     setShowNavigationMenu((prev) => !prev);
   };
 
-  const handleNavigationItemClick = (page: "demo" | "settings") => {
+  const handleNavigationItemClick = (page: PageId) => {
     setCurrentPage(page);
     setShowNavigationMenu(false);
   };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PAGE_STORAGE_KEY, currentPage);
+    } catch {
+      // Ignore storage failures (private mode, blocked storage, etc.).
+    }
+  }, [currentPage]);
 
   return (
     <>
       <header>
         <ObcTopBar
           appTitle="OpenAR"
-          pageName={currentPage === "demo" ? "Demo" : "Settings"}
+          pageName={pageLabels[currentPage]}
           showDimmingButton
           showAppsButton
           menuButtonActivated={showNavigationMenu}
@@ -65,9 +91,24 @@ function App() {
         <ObcNavigationMenu className="navigation-menu">
           <div slot="main">
             <ObcNavigationItem
-              label="Demo"
-              checked={currentPage === "demo"}
-              onClick={() => handleNavigationItemClick("demo")}
+              label="Fusion"
+              checked={currentPage === "fusion"}
+              onClick={() => handleNavigationItemClick("fusion")}
+            />
+            <ObcNavigationItem
+              label="Datavision"
+              checked={currentPage === "datavision"}
+              onClick={() => handleNavigationItemClick("datavision")}
+            />
+            <ObcNavigationItem
+              label="AIS"
+              checked={currentPage === "ais"}
+              onClick={() => handleNavigationItemClick("ais")}
+            />
+            <ObcNavigationItem
+              label="Components"
+              checked={currentPage === "components"}
+              onClick={() => handleNavigationItemClick("components")}
             />
             <ObcNavigationItem
               label="Settings"
@@ -78,7 +119,15 @@ function App() {
         </ObcNavigationMenu>
       )}
 
-      <main>
+      <main
+        className={[
+          "main",
+          showNavigationMenu ? "main--with-sidebar" : "",
+          currentPage === "components" ? "main--no-padding" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         {showBrillianceMenu && (
           <ObcBrillianceMenu
             onPaletteChanged={handleBrillianceChange}
@@ -87,29 +136,11 @@ function App() {
           />
         )}
 
-        {currentPage === "demo" ? (
-          <>
-            {/* Native video playback at 25 FPS */}
-            <video autoPlay loop muted className="background-video">
-              <source src={VIDEO_CONFIG.SOURCE} type="video/mp4" />
-            </video>
-
-            {/* Status overlay */}
-            {isLoading && <div className="status-overlay">Connecting to detection stream...</div>}
-            {error && <div className="status-overlay status-error">Error: {error}</div>}
-            {!isLoading && !error && (
-              <div className="status-overlay status-info">
-                {isConnected ? "Connected" : "Disconnected"} | Detection: {fps.toFixed(1)} FPS |
-                Vessels: {vessels.length}
-              </div>
-            )}
-
-            {/* Vessel markers overlay */}
-            <PoiOverlay vessels={vessels} />
-          </>
-        ) : (
-          <Settings />
-        )}
+        {currentPage === "datavision" && <Datavision />}
+        {currentPage === "ais" && <Ais />}
+        {currentPage === "components" && <Components />}
+        {currentPage === "fusion" && <Fusion />}
+        {currentPage === "settings" && <Settings />}
       </main>
     </>
   );

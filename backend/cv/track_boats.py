@@ -29,8 +29,8 @@ import cv2
 # CONFIGURATION & CONSTANTS
 # =============================================================================
 
-# Placeholder for Roboflow API key - set via environment variable or replace
-ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "HFhObvI2p0ari1OBoh2x")
+# Roboflow API key (set via environment variable)
+ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "")
 ROBOFLOW_MODEL_ID = "boat-detection-model/1"  # Your trained model
 
 # Default tracker parameters
@@ -685,7 +685,7 @@ class RoboflowInferenceDetector:
 
         self.client = InferenceHTTPClient(
             api_url=self.server_url,
-            api_key=os.getenv("ROBOFLOW_API_KEY", "")
+            api_key=ROBOFLOW_API_KEY
         )
         print(f"Connected to Roboflow Inference Server at {self.server_url}")
         print(f"Model: {self.model_id}")
@@ -1066,8 +1066,8 @@ Parameter Tuning Guide:
     # Initialize detector
     print(f"Initializing detector: {args.detector}")
     if args.detector == "roboflow_api":
-        api_key = os.getenv("ROBOFLOW_API_KEY", ROBOFLOW_API_KEY)
-        if api_key == "YOUR_ROBOFLOW_API_KEY":
+        api_key = ROBOFLOW_API_KEY
+        if not api_key:
             print("Error: Please set ROBOFLOW_API_KEY environment variable")
             print("  export ROBOFLOW_API_KEY=your_key_here")
             sys.exit(1)

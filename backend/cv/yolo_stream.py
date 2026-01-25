@@ -4,13 +4,16 @@ YOLO streaming detection service.
 Processes video with YOLO and streams detection results.
 Video playback is handled separately by the frontend.
 """
-import os
 import time
 from typing import Generator, Optional
 from dataclasses import dataclass
 
 import cv2
 from ultralytics import YOLO
+
+DEFAULT_MODEL_PATH = "yolov8s.pt"
+DEFAULT_CONFIDENCE = 0.25
+DEFAULT_FILTER_BOATS_ONLY = True
 
 
 @dataclass
@@ -213,13 +216,13 @@ def get_processor() -> YOLOVideoProcessor:
     if _processor is None:
         import torch
         default_device = "cuda" if torch.cuda.is_available() else "cpu"
-        device = os.getenv("YOLO_DEVICE", default_device)
+        device = default_device
         print(f"YOLO device: {device} (CUDA: {torch.cuda.is_available()})")
 
         _processor = YOLOVideoProcessor(
-            model_path=os.getenv("YOLO_MODEL", "yolov8s.pt"),
-            confidence_threshold=float(os.getenv("YOLO_CONFIDENCE", "0.25")),
-            filter_boats_only=os.getenv("YOLO_FILTER_BOATS", "true").lower() == "true",
+            model_path=DEFAULT_MODEL_PATH,
+            confidence_threshold=DEFAULT_CONFIDENCE,
+            filter_boats_only=DEFAULT_FILTER_BOATS_ONLY,
             device=device,
         )
     return _processor

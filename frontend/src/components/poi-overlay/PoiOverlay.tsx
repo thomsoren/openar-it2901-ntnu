@@ -6,6 +6,8 @@ import "./PoiOverlay.css";
 
 interface PoiOverlayProps {
   vessels?: DetectedVessel[];
+  width?: number;
+  height?: number;
 }
 
 interface SmoothedPosition {
@@ -26,7 +28,7 @@ const SMOOTHING_FACTOR = 0.15; // Lower = smoother but more lag
  * Overlay component that displays POI markers at detected vessel locations.
  * Uses interpolation for smooth marker movement between detection updates.
  */
-function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
+function PoiOverlay({ vessels = [], width = VIDEO_CONFIG.WIDTH, height = VIDEO_CONFIG.HEIGHT }: PoiOverlayProps) {
   const positionsRef = useRef<Map<number, SmoothedPosition>>(new Map());
   const [smoothedVessels, setSmoothedVessels] = useState<
     Array<{
@@ -103,7 +105,7 @@ function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
           y: pos.y,
           width: pos.width,
           height: pos.height,
-          vessel: vesselData?.vessel ?? null,
+          vessel: vesselData?.vessel,
         });
       });
 
@@ -128,8 +130,8 @@ function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
     <div className="poi-overlay">
       {smoothedVessels.map((item) => {
         // Convert absolute coordinates to percentage-based positioning
-        const leftPercent = (item.x / VIDEO_CONFIG.WIDTH) * 100;
-        const topPercent = (item.y / VIDEO_CONFIG.HEIGHT) * 100;
+        const leftPercent = (item.x / width) * 100;
+        const topPercent = (item.y / height) * 100;
 
         return (
           <div
@@ -140,7 +142,8 @@ function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
               top: `${topPercent}%`,
             }}
           >
-            <ObcPoiTarget height={POI_CONFIG.HEIGHT} label={item.vessel?.name} />
+            <ObcPoiTarget height={POI_CONFIG.HEIGHT} />
+            {item.vessel?.name && <span className="poi-label">{item.vessel.name}</span>}
           </div>
         );
       })}
