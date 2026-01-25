@@ -9,7 +9,7 @@ dependencies = [
     "inference-sdk",
     "roboflow",
     "supervision",
-    "opencv-python",
+    "opencv-python-headless",
     "pillow",
     "numpy",
     "scipy",
