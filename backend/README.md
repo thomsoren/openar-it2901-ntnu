@@ -77,6 +77,28 @@ Edit `detect_boats.py` to adjust:
 - `MODEL_ID` - Roboflow model ID (default: `boat-detection-model/1`)
 - `process_every_n_frames` - Process every Nth frame (default: 5 for speed)
 
+## S3 Storage (Hetzner)
+
+The backend can fetch assets from S3-compatible storage and generate presigned
+URLs for frontend upload/download. Only these values are configured via
+`backend/.env`:
+
+- `S3_ACCESS_KEY` / `S3_SECRET_KEY`
+- `S3_PUBLIC_BASE_URL` (optional public base)
+- `S3_PRESIGN_EXPIRES` (seconds)
+
+Bucket/region/prefix and object keys are coded in `backend/common/settings.py`.
+
+When S3 keys are provided, `/api/video`, `/api/video/fusion`, and
+`/api/assets/oceanbackground` redirect to S3. To let the frontend upload or
+download arbitrary objects, call:
+
+```bash
+curl -X POST http://localhost:8000/api/storage/presign \
+  -H "Content-Type: application/json" \
+  -d '{"key":"video/example.mp4","method":"PUT","content_type":"video/mp4"}'
+```
+
 ## Troubleshooting
 
 **"Could not connect to inference server"**
@@ -92,6 +114,10 @@ Edit `detect_boats.py` to adjust:
 - Check your API key is set correctly
 - Try processing more frames (reduce `process_every_n_frames`)
 - Model may not detect boats in all frames/angles
+
+**"error: externally-managed-environment" or missing `lap`**
+- Install deps with `uv sync` from `backend/` (includes `lap`)
+- Run scripts via `uv run ...` so they use the managed environment
 
 ## FastAPI Server
 
@@ -181,6 +207,12 @@ curl http://localhost:8000/api/detections
 ```bash
 GET /api/video
 GET /api/video/stream
+GET /api/video/fusion
+```
+
+#### Assets
+```bash
+GET /api/assets/oceanbackground
 ```
 
 Streams the video file from `data/processed/video/` with support for seeking.
@@ -197,6 +229,15 @@ The API is configured to accept requests from:
 - `http://localhost:3000` (Alternative React dev server)
 - `http://127.0.0.1:5173`
 - `http://127.0.0.1:3000`
+
+## Samples (FVessel)
+
+Samples are defined in `fusion/samples.json` and are used for AIS + Datavision
+streaming. Available samples can be listed via:
+
+```
+GET /api/samples
+```
 
 ### API Documentation
 

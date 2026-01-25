@@ -14,3 +14,17 @@
   z-index: 10;
   pointer-events: auto; /* Allow interaction with POIs themselves */
 }
+
+.poi-label {
+  position: absolute;
+  top: 100%; /* Position below the marker */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  margin-top: 4px;
+}
