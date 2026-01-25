@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AISData } from "../types/AisData";
+import { API_CONFIG } from "../config/video";
 
 /** Barebones hook to fetch unfiltered AIS data from backend API */
 export const useFetchAIS = () => {
@@ -8,7 +9,7 @@ export const useFetchAIS = () => {
   useEffect(() => {
     const fetchAISData = async () => {
       try {
-        const response = await fetch("http://localhost:8000/api/ais");
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/ais`);
         const data = await response.json();
         console.log("Fetched AIS Data:", data);
         setData(data);
