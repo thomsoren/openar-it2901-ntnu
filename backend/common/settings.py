@@ -77,8 +77,8 @@ FUSION_VIDEO_S3_KEY = (
     "2022_05_10_19_22_05_2022_05_10_19_25_04_b.mp4"
 )
 COMPONENTS_BG_S3_KEY = "image/oceanbackground.png"
-AIS_S3_KEY = "fvessel/video-01/segment-001/ais.csv"
-GT_FUSION_S3_KEY = "fvessel/video-01/segment-001/Video-01_gt_fusion.txt"
+AIS_S3_KEY = "fvessel/segment-001/ais.csv"
+GT_FUSION_S3_KEY = "fvessel/segment-001/Video-01_gt_fusion.txt"
 DETECTIONS_S3_KEY = "detection/detections_yolo.json"
 
 
