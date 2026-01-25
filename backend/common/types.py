@@ -16,6 +16,8 @@ class Detection(BaseModel):
     width: float       # Bounding box width (pixels)
     height: float      # Bounding box height (pixels)
     confidence: float  # Detection confidence (0-1)
+    class_id: int | None = None
+    class_name: str | None = "boat"
     track_id: int | None = None  # Persistent ID for tracking same boat across frames
 
 

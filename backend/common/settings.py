@@ -7,8 +7,10 @@ import json
 import os
 import time
 from pathlib import Path
+from typing import List, Optional
 
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(dotenv_path=BASE_DIR / ".env")
@@ -27,21 +29,48 @@ DEFAULT_FUSION_VIDEO_PATH = (
 DEFAULT_COMPONENTS_BG_PATH = BASE_DIR / "data" / "raw" / "oceanbackground.png"
 DEFAULT_DETECTIONS_PATH = BASE_DIR / "output" / "detections.json"
 SAMPLES_CONFIG_PATH = BASE_DIR / "fusion" / "samples.json"
-
-# S3 configuration (coded in, only secrets in env)
-S3_ENDPOINT = "https://hel1.your-objectstorage.com"
-S3_REGION = "hel1"
-S3_BUCKET = "bridgable"
-S3_PREFIX = "openar"
-S3_ALLOWED_PREFIXES = ["fvessel", "detection", "image", "video"]
-
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
-S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()
-S3_PUBLIC_BASE_URL = os.getenv("S3_PUBLIC_BASE_URL", "").strip()
-S3_PRESIGN_EXPIRES = int(os.getenv("S3_PRESIGN_EXPIRES", "900"))
+MODELS_DIR = BASE_DIR / "cv" / "models"
 DETECTIONS_WS_MODE = os.getenv("DETECTIONS_WS_MODE", "live").strip().lower()
 
-# S3 object keys (relative to S3_PREFIX)
+
+class SampleConfig(BaseModel):
+    id: str
+    name: str
+    video_path: Optional[str] = None
+    ais_path: Optional[str] = None
+    gt_fusion_path: Optional[str] = None
+    start_sec: int = 0
+    end_sec: int = 0
+    description: Optional[str] = None
+
+
+class S3Config(BaseModel):
+    endpoint: str = "https://hel1.your-objectstorage.com"
+    region: str = "hel1"
+    bucket: str = "bridgable"
+    prefix: str = "openar"
+    allowed_prefixes: List[str] = ["fvessel", "detection", "image", "video"]
+    access_key: str = Field(default_factory=lambda: os.getenv("S3_ACCESS_KEY", "").strip())
+    secret_key: str = Field(default_factory=lambda: os.getenv("S3_SECRET_KEY", "").strip())
+    public_base_url: str = Field(default_factory=lambda: os.getenv("S3_PUBLIC_BASE_URL", "").strip())
+    presign_expires: int = Field(default_factory=lambda: int(os.getenv("S3_PRESIGN_EXPIRES", "900")))
+
+
+# S3 configuration
+s3_config = S3Config()
+
+# Backwards compatibility constants
+S3_ENDPOINT = s3_config.endpoint
+S3_REGION = s3_config.region
+S3_BUCKET = s3_config.bucket
+S3_PREFIX = s3_config.prefix
+S3_ALLOWED_PREFIXES = s3_config.allowed_prefixes
+S3_ACCESS_KEY = s3_config.access_key
+S3_SECRET_KEY = s3_config.secret_key
+S3_PUBLIC_BASE_URL = s3_config.public_base_url
+S3_PRESIGN_EXPIRES = s3_config.presign_expires
+
+# S3 object keys (relative to s3_config.prefix)
 VIDEO_S3_KEY = "video/hurtigruta-demo.mp4"
 FUSION_VIDEO_S3_KEY = (
     "fvessel/segment-001/"
@@ -60,34 +89,29 @@ def _resolve_sample_path(path_value: str | None) -> Path | None:
     return path if path.is_absolute() else (BASE_DIR / path)
 
 
-def _load_sample(sample_id: str | None) -> dict | None:
+def load_samples() -> list[SampleConfig]:
     if not SAMPLES_CONFIG_PATH.exists():
-        return None
+        return []
     try:
         data = json.loads(SAMPLES_CONFIG_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
+    except (json.JSONDecodeError, OSError):
+        return []
+    
+    samples_raw = data.get("samples", [])
+    return [SampleConfig(**s) for s in samples_raw]
 
-    samples = data.get("samples", [])
+
+def _load_sample(sample_id: str | None) -> SampleConfig | None:
+    samples = load_samples()
     if not samples:
         return None
 
     if sample_id:
         for sample in samples:
-            if sample.get("id") == sample_id:
+            if sample.id == sample_id:
                 return sample
 
     return samples[0]
-
-
-def load_samples() -> list[dict]:
-    if not SAMPLES_CONFIG_PATH.exists():
-        return []
-    try:
-        data = json.loads(SAMPLES_CONFIG_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return []
-    return data.get("samples", [])
 
 
 def resolve_local_path(
@@ -100,11 +124,11 @@ def resolve_local_path(
 
 
 SAMPLE = _load_sample(None)
-SAMPLE_VIDEO_PATH = _resolve_sample_path(SAMPLE.get("video_path") if SAMPLE else None)
-SAMPLE_AIS_PATH = _resolve_sample_path(SAMPLE.get("ais_path") if SAMPLE else None)
-SAMPLE_GT_FUSION_PATH = _resolve_sample_path(SAMPLE.get("gt_fusion_path") if SAMPLE else None)
-SAMPLE_START_SEC = int(SAMPLE["start_sec"]) if SAMPLE else None
-SAMPLE_END_SEC = int(SAMPLE["end_sec"]) if SAMPLE else None
+SAMPLE_VIDEO_PATH = _resolve_sample_path(SAMPLE.video_path if SAMPLE else None)
+SAMPLE_AIS_PATH = _resolve_sample_path(SAMPLE.ais_path if SAMPLE else None)
+SAMPLE_GT_FUSION_PATH = _resolve_sample_path(SAMPLE.gt_fusion_path if SAMPLE else None)
+SAMPLE_START_SEC = SAMPLE.start_sec if SAMPLE else None
+SAMPLE_END_SEC = SAMPLE.end_sec if SAMPLE else None
 SAMPLE_DURATION = (
     (SAMPLE_END_SEC - SAMPLE_START_SEC + 1)
     if SAMPLE_START_SEC is not None and SAMPLE_END_SEC is not None
@@ -118,6 +142,7 @@ def reset_sample_timer() -> float:
     global SAMPLE_START_MONO
     SAMPLE_START_MONO = time.monotonic()
     return SAMPLE_START_MONO
+
 
 VIDEO_PATH = resolve_local_path(SAMPLE_VIDEO_PATH, DEFAULT_VIDEO_PATH)
 FUSION_VIDEO_PATH = resolve_local_path(SAMPLE_VIDEO_PATH, DEFAULT_FUSION_VIDEO_PATH)

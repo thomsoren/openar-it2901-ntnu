@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "askbridge": {
-      "url": "https://mcp.bridgable.no/mcp",
-      "type": "http"
-    }
-  }
-}

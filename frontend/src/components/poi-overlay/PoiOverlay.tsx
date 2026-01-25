@@ -28,7 +28,11 @@ const SMOOTHING_FACTOR = 0.15; // Lower = smoother but more lag
  * Overlay component that displays POI markers at detected vessel locations.
  * Uses interpolation for smooth marker movement between detection updates.
  */
-function PoiOverlay({ vessels = [], width = VIDEO_CONFIG.WIDTH, height = VIDEO_CONFIG.HEIGHT }: PoiOverlayProps) {
+function PoiOverlay({
+  vessels = [],
+  width = VIDEO_CONFIG.WIDTH,
+  height = VIDEO_CONFIG.HEIGHT,
+}: PoiOverlayProps) {
   const positionsRef = useRef<Map<number, SmoothedPosition>>(new Map());
   const [smoothedVessels, setSmoothedVessels] = useState<
     Array<{

@@ -60,26 +60,40 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Health check with file availability status"""
-    return s3.health_status()
+    try:
+        return s3.health_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
 
 
 @app.get("/api/samples")
 def list_samples():
     """List available AIS + Datavision samples."""
-    return {"samples": settings.load_samples()}
+    try:
+        return {"samples": settings.load_samples()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading samples: {str(e)}")
 
 
 @app.post("/api/fusion/reset")
 def reset_fusion_timer():
     """Reset fusion sample timer to sync detections with video playback."""
-    start = settings.reset_sample_timer()
-    return {"status": "ok", "start_mono": start}
+    try:
+        start = settings.reset_sample_timer()
+        return {"status": "ok", "start_mono": start}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resetting fusion timer: {str(e)}")
 
 
 @app.post("/api/storage/presign")
 def presign_storage(request: s3.PresignRequest):
     """Generate a presigned URL for GET/PUT against S3 storage."""
-    return s3.presign_storage(request)
+    try:
+        return s3.presign_storage(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating presigned URL: {str(e)}")
 
 
 @app.get("/api/detections", response_model=List[DetectedVessel])
@@ -87,53 +101,69 @@ def get_detections() -> List[DetectedVessel]:
     """
     Get current detected vessels with AIS data.
 
-    TODO: Implement real-time detection pipeline:
-    1. Capture frame from video/camera
-    2. Run YOLO detection
-    3. Match detections to AIS vessels
-    4. Return combined data
-
     For now, returns mock data or FVessel samples for frontend development.
     """
-    return pipeline.get_detections()
+    try:
+        return pipeline.get_detections()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching detections: {str(e)}")
 
 
 @app.get("/api/detections/file")
 def get_detections_file(request: Request):
     """Serve precomputed detections JSON via backend (S3/local fallback)."""
-    return s3.detections_response(request)
+    try:
+        return s3.detections_response(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Detections file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error serving detections file: {str(e)}")
 
 
 @app.get("/api/video")
 def get_video(request: Request):
     """
     Stream video file with support for range requests (seeking)
-
-    Returns:
-        Video file stream with proper headers for browser playback
     """
-    return s3.video_response(request)
+    try:
+        return s3.video_response(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Video file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
 
 
 @app.get("/api/video/fusion")
 def get_fusion_video(request: Request):
     """Stream FVessel sample video for AIS + Datavision."""
-    return s3.fusion_video_response(request)
+    try:
+        return s3.fusion_video_response(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Fusion video file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error streaming fusion video: {str(e)}")
 
 
 @app.get("/api/assets/oceanbackground")
 def get_components_background():
     """Serve the Components page background image."""
-    return s3.components_background_response()
+    try:
+        return s3.components_background_response()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Background image not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error serving background image: {str(e)}")
 
 
 @app.get("/api/video/stream")
 async def stream_video(request: Request):
     """
     Advanced video streaming endpoint with range request support
-    This allows seeking in the video player
     """
-    return s3.video_stream_response(request)
+    try:
+        return s3.video_stream_response(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error in video stream: {str(e)}")
 
 
 @app.get("/api/ais")
