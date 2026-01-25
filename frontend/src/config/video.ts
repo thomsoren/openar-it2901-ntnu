@@ -1,8 +1,13 @@
 // API configuration
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+// Automatically derive WebSocket URL from API URL
+// https:// -> wss://, http:// -> ws://
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || BASE_URL.replace(/^http/, "ws");
+
 export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_URL || "http://localhost:8000",
-  // WebSocket URL (ws:// for http, wss:// for https)
-  WS_BASE_URL: import.meta.env.VITE_WS_URL || "ws://localhost:8000",
+  BASE_URL,
+  WS_BASE_URL,
 } as const;
 
 // Video configuration
