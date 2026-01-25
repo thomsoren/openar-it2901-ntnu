@@ -1,7 +1,10 @@
 import os
-import json
-import asyncio
 import aiohttp
+import asyncio
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 AIS_CLIENT_ID = os.getenv("AIS_CLIENT_ID", "").strip()
 AIS_CLIENT_SECRET = os.getenv("AIS_CLIENT_SECRET", "").strip()
@@ -29,8 +32,12 @@ async def _fetch_token(session: aiohttp.ClientSession) -> str:
       raise ValueError("Token response missing access_token")
     return token
 
-
+# Fetch AIS data with automatic API key refresh
 async def fetch_ais():
+  if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
+      print("Error: AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment. Make sure it matches .env.example")
+      return
+  
   async with aiohttp.ClientSession() as session:
     token = await _fetch_token(session)
     async with session.get(
@@ -40,10 +47,12 @@ async def fetch_ais():
         "Accept": "application/json"
       }
     ) as response:
+      
       if response.status != 200:
         raise ValueError(f"HTTP error {response.status}")
-      return await response.json()
       
+      return await response.json()
+
 def main():
     if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
       print("Warning: AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment")
@@ -55,3 +64,6 @@ def main():
       print("AIS data fetched and saved to ais_data.json")
     except Exception as e:
       print(f"\nError fetching AIS data: {e}")
+
+if __name__ == "__main__":
+    main()
