@@ -20,6 +20,7 @@ ENV/
 output/
 *.mp4
 *.json
+!fusion/samples.json
 temp_frame.jpg
 
 # IDE

@@ -1,0 +1,37 @@
+{
+  "samples": [
+    {
+      "id": "video-01/segment-001",
+      "label": "FVessel V1.0 Video-01 segment 001 (19:22:05-19:25:04)",
+      "video_path": "data/raw/fvessel/video-01/segment-001/2022_05_10_19_22_05_2022_05_10_19_25_04_b.mp4",
+      "ais_path": "data/raw/fvessel/video-01/segment-001/ais.csv",
+      "gt_detection_path": "data/raw/fvessel/video-01/segment-001/Video-01_gt_detection.txt",
+      "gt_tracking_path": "data/raw/fvessel/video-01/segment-001/Video-01_gt_tracking.txt",
+      "gt_fusion_path": "data/raw/fvessel/video-01/segment-001/Video-01_gt_fusion.txt",
+      "start_sec": 60,
+      "end_sec": 239
+    },
+    {
+      "id": "video-01/segment-002",
+      "label": "FVessel V1.0 Video-01 segment 002 (19:25:05-19:28:04)",
+      "video_path": "data/raw/fvessel/video-01/segment-002/2022_05_10_19_25_05_2022_05_10_19_28_04_b.mp4",
+      "ais_path": "data/raw/fvessel/video-01/segment-002/ais.csv",
+      "gt_detection_path": "data/raw/fvessel/video-01/segment-002/Video-01_gt_detection.txt",
+      "gt_tracking_path": "data/raw/fvessel/video-01/segment-002/Video-01_gt_tracking.txt",
+      "gt_fusion_path": "data/raw/fvessel/video-01/segment-002/Video-01_gt_fusion.txt",
+      "start_sec": 240,
+      "end_sec": 419
+    },
+    {
+      "id": "video-01/segment-003",
+      "label": "FVessel V1.0 Video-01 segment 003 (19:28:05-19:31:04)",
+      "video_path": "data/raw/fvessel/video-01/segment-003/2022_05_10_19_28_05_2022_05_10_19_31_04_b.mp4",
+      "ais_path": "data/raw/fvessel/video-01/segment-003/ais.csv",
+      "gt_detection_path": "data/raw/fvessel/video-01/segment-003/Video-01_gt_detection.txt",
+      "gt_tracking_path": "data/raw/fvessel/video-01/segment-003/Video-01_gt_tracking.txt",
+      "gt_fusion_path": "data/raw/fvessel/video-01/segment-003/Video-01_gt_fusion.txt",
+      "start_sec": 420,
+      "end_sec": 599
+    }
+  ]
+}
