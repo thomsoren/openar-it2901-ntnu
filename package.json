@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
     "dev:frontend": "cd frontend && pnpm dev",
-    "dev:backend": "cd backend && uv run uvicorn api:app --reload",
+    "dev:backend": "cd backend && uv run main.py",
     "install:frontend": "cd frontend && pnpm install",
     "install:backend": "cd backend && uv sync",
     "install": "pnpm run install:backend && pnpm run install:frontend",

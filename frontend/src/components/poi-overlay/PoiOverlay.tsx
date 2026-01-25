@@ -6,13 +6,19 @@ import "./PoiOverlay.css";
 
 interface PoiOverlayProps {
   vessels?: DetectedVessel[];
+  width?: number;
+  height?: number;
 }
 
 /**
  * Overlay component that displays POI markers at detected vessel locations.
  * Shows vessel info from AIS data when available.
  */
-function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
+function PoiOverlay({
+  vessels = [],
+  width = VIDEO_CONFIG.WIDTH,
+  height = VIDEO_CONFIG.HEIGHT,
+}: PoiOverlayProps) {
   if (vessels.length === 0) {
     return null;
   }
@@ -20,14 +26,15 @@ function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
   return (
     <div className="poi-overlay">
       {vessels.map((item, index) => {
-        const { detection, vessel } = item;
+        const { detection } = item;
 
         // Convert absolute coordinates to percentage-based positioning
-        const leftPercent = (detection.x / VIDEO_CONFIG.WIDTH) * 100;
-        const topPercent = (detection.y / VIDEO_CONFIG.HEIGHT) * 100;
+        const leftPercent = (detection.x / width) * 100;
+        const topPercent = (detection.y / height) * 100;
 
-        // Use track_id as key if available, otherwise fall back to index
-        const key = detection.track_id ?? index;
+        // IMPORTANT: Use track_id as key for stable identity
+        // This prevents React from unmounting/remounting the same boat
+        const key = detection.track_id ?? `temp-${index}`;
 
         return (
           <div
@@ -38,8 +45,7 @@ function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
               top: `${topPercent}%`,
             }}
           >
-            <ObcPoiTarget height={POI_CONFIG.HEIGHT} label={vessel?.name} />
-            {/* TODO: Add vessel info tooltip/card with AIS data */}
+            <ObcPoiTarget height={POI_CONFIG.HEIGHT} />
           </div>
         );
       })}
@@ -47,4 +53,27 @@ function PoiOverlay({ vessels = [] }: PoiOverlayProps) {
   );
 }
 
-export default React.memo(PoiOverlay);
+// Memoize with custom comparison to prevent unnecessary re-renders
+export default React.memo(PoiOverlay, (prevProps, nextProps) => {
+  const prevVessels = prevProps.vessels || [];
+  const nextVessels = nextProps.vessels || [];
+
+  // Only re-render if vessels array actually changed
+  if (prevVessels.length !== nextVessels.length) {
+    return false;
+  }
+
+  // Check if vessel positions or IDs changed
+  for (let i = 0; i < prevVessels.length; i++) {
+    const prev = prevVessels[i]?.detection;
+    const next = nextVessels[i]?.detection;
+
+    if (!prev || !next) return false;
+
+    if (prev.track_id !== next.track_id || prev.x !== next.x || prev.y !== next.y) {
+      return false;
+    }
+  }
+
+  return true; // No changes, skip re-render
+});
