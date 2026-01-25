@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
-import { useDetections } from "../hooks/useDetections";
-import { API_CONFIG, DETECTION_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
+import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
 
 function Fusion() {
   const [detectionsEnabled, setDetectionsEnabled] = useState(false);
-  const { vessels, isLoading, error } = useDetections({
-    url: DETECTION_CONFIG.URL,
-    pollInterval: 1000,
+
+  // Use WebSocket for real-time fusion detections
+  const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
+    url: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws`,
+    config: { track: true, loop: true },
     enabled: detectionsEnabled,
   });
 
@@ -43,7 +45,8 @@ function Fusion() {
       {error && <div className="status-overlay status-error">Error: {error}</div>}
       {!isLoading && !error && (
         <div className="status-overlay status-info">
-          FVessel | Fusion | Vessels: {vessels.length}
+          {isConnected ? "Connected" : "Disconnected"} | FVessel | Fusion | {fps.toFixed(1)} FPS |
+          Vessels: {vessels.length}
         </div>
       )}
 
