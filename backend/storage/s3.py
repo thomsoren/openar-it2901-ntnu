@@ -231,19 +231,41 @@ def read_text_from_sources(
     s3_key: str | None,
     local_path,
 ) -> str | None:
+    print(f"[DEBUG] read_text_from_sources for {label}:")
+    print(f"  - s3_key: {s3_key}")
+    print(f"  - local_path: {local_path}")
+    print(f"  - S3 enabled: {s3_enabled()}")
+    
     if s3_key:
         if s3_enabled():
             try:
-                if head_object(s3_key) is not None:
-                    return read_text(s3_key)
+                print(f"[DEBUG] Attempting to check if S3 object exists: {s3_key}")
+                head_result = head_object(s3_key)
+                print(f"[DEBUG] head_object result: {head_result}")
+                if head_result is not None:
+                    print(f"[DEBUG] Reading text from S3: {s3_key}")
+                    text = read_text(s3_key)
+                    print(f"[DEBUG] Successfully read {len(text)} chars from S3")
+                    return text
+                else:
+                    print(f"[DEBUG] S3 object does not exist: {s3_key}")
             except Exception as exc:
-                print(f"Failed to load {label} data from S3: {exc}")
+                print(f"[ERROR] Failed to load {label} data from S3: {exc}")
+                import traceback
+                traceback.print_exc()
         else:
-            print(f"{label} S3 key is set but S3 is not configured; ignoring.")
+            print(f"[DEBUG] {label} S3 key is set but S3 is not configured; ignoring.")
 
-    if local_path and local_path.exists():
-        return local_path.read_text(encoding="utf-8", errors="ignore")
+    if local_path:
+        print(f"[DEBUG] Checking local path: {local_path} (exists: {local_path.exists() if local_path else 'N/A'})")
+        if local_path.exists():
+            text = local_path.read_text(encoding="utf-8", errors="ignore")
+            print(f"[DEBUG] Successfully read {len(text)} chars from local path")
+            return text
+    else:
+        print(f"[DEBUG] No local path provided")
 
+    print(f"[ERROR] No data found for {label} from either S3 or local path")
     return None
 
 

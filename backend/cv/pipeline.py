@@ -108,9 +108,23 @@ def _load_fusion_by_second_from_lines(lines: List[str]) -> dict[int, list[dict]]
     return by_second
 
 def _load_fusion_data() -> dict[int, list[dict]]:
+    print(f"[DEBUG] Loading fusion data:")
+    print(f"  - S3 Key: {settings.GT_FUSION_S3_KEY}")
+    print(f"  - Local Path: {settings.GT_FUSION_PATH}")
+    print(f"  - SAMPLE: {settings.SAMPLE}")
+    print(f"  - SAMPLE_START_SEC: {settings.SAMPLE_START_SEC}")
+    print(f"  - SAMPLE_DURATION: {settings.SAMPLE_DURATION}")
+    
     text = s3.read_text_from_sources("Fusion", settings.GT_FUSION_S3_KEY, settings.GT_FUSION_PATH)
-    if not text: return {}
-    return _load_fusion_by_second_from_lines(text.splitlines())
+    
+    if not text:
+        print(f"[ERROR] No fusion data text loaded from S3 or local path")
+        return {}
+    
+    print(f"[DEBUG] Fusion data loaded: {len(text)} characters, {len(text.splitlines())} lines")
+    result = _load_fusion_by_second_from_lines(text.splitlines())
+    print(f"[DEBUG] Parsed into {len(result)} seconds of data")
+    return result
 
 FUSION_BY_SECOND = _load_fusion_data()
 
