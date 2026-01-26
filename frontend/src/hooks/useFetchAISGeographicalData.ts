@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { AISData } from "../types/AisData";
+import { AISData } from "../types/aisData";
 // React hook
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,
