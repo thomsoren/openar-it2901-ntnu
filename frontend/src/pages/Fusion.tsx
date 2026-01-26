@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useVideoTransform } from "../hooks/useVideoTransform";
+import { useSettings } from "../contexts/SettingsContext";
 import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
 
 function Fusion() {
   const [detectionsEnabled, setDetectionsEnabled] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { videoFitMode, detectionVisible } = useSettings();
 
   // Use WebSocket for real-time fusion detections
   const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
@@ -12,6 +17,9 @@ function Fusion() {
     config: { track: true, loop: true },
     enabled: detectionsEnabled,
   });
+
+  // Calculate video transform for accurate POI positioning
+  const videoTransform = useVideoTransform(videoRef, containerRef, videoFitMode);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,8 +44,15 @@ function Fusion() {
   }, []);
 
   return (
-    <>
-      <video autoPlay loop muted className="background-video">
+    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
+      <video
+        ref={videoRef}
+        autoPlay
+        loop
+        muted
+        className="background-video"
+        style={{ objectFit: videoFitMode }}
+      >
         <source src={FUSION_VIDEO_CONFIG.SOURCE} type="video/mp4" />
       </video>
 
@@ -50,12 +65,8 @@ function Fusion() {
         </div>
       )}
 
-      <PoiOverlay
-        vessels={vessels}
-        width={FUSION_VIDEO_CONFIG.WIDTH}
-        height={FUSION_VIDEO_CONFIG.HEIGHT}
-      />
-    </>
+      {detectionVisible && <PoiOverlay vessels={vessels} videoTransform={videoTransform} />}
+    </div>
   );
 }
 

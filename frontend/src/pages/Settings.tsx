@@ -1,12 +1,19 @@
-import { useState } from "react";
 import { ObcToggleSwitch } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/toggle-switch/toggle-switch";
 import { ObcRadio } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/radio/radio";
+import { useSettings } from "../contexts/SettingsContext";
 import "./Settings.css";
 
 function Settings() {
-  const [aisEnabled, setAisEnabled] = useState(true);
-  const [overlayVisible, setOverlayVisible] = useState(true);
-  const [detectionVisible, setDetectionVisible] = useState(true);
+  const {
+    videoFitMode,
+    setVideoFitMode,
+    aisEnabled,
+    setAisEnabled,
+    overlayVisible,
+    setOverlayVisible,
+    detectionVisible,
+    setDetectionVisible,
+  } = useSettings();
 
   return (
     <div className="settings-container">
@@ -45,6 +52,30 @@ function Settings() {
               setDetectionVisible(target.checked);
             }}
           />
+        </div>
+
+        <div className="settings-section">
+          <h3 className="section-title">Video Display Mode</h3>
+
+          <div className="radio-group">
+            <ObcRadio
+              name="videoFit"
+              value="contain"
+              label="Fit to Screen (Letterbox)"
+              checked={videoFitMode === "contain"}
+              inputId="video-fit-contain"
+              onChange={() => setVideoFitMode("contain")}
+            />
+
+            <ObcRadio
+              name="videoFit"
+              value="cover"
+              label="Fill Screen (Crop)"
+              checked={videoFitMode === "cover"}
+              inputId="video-fit-cover"
+              onChange={() => setVideoFitMode("cover")}
+            />
+          </div>
         </div>
 
         <div className="settings-section">

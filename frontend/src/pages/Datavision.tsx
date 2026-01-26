@@ -1,8 +1,15 @@
+import { useRef } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useVideoTransform } from "../hooks/useVideoTransform";
+import { useSettings } from "../contexts/SettingsContext";
 import { VIDEO_CONFIG, DETECTION_CONFIG } from "../config/video";
 
 function Datavision() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { videoFitMode, detectionVisible } = useSettings();
+
   // Receive detection updates via WebSocket (runs at YOLO speed ~5 FPS)
   // Video plays independently at native 25 FPS
   const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
@@ -10,10 +17,20 @@ function Datavision() {
     config: { track: true, loop: true },
   });
 
+  // Calculate video transform for accurate POI positioning
+  const videoTransform = useVideoTransform(videoRef, containerRef, videoFitMode);
+
   return (
-    <>
+    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
       {/* Native video playback at 25 FPS */}
-      <video autoPlay loop muted className="background-video">
+      <video
+        ref={videoRef}
+        autoPlay
+        loop
+        muted
+        className="background-video"
+        style={{ objectFit: videoFitMode }}
+      >
         <source src={VIDEO_CONFIG.SOURCE} type="video/mp4" />
       </video>
 
@@ -28,8 +45,8 @@ function Datavision() {
       )}
 
       {/* Vessel markers overlay */}
-      <PoiOverlay vessels={vessels} />
-    </>
+      {detectionVisible && <PoiOverlay vessels={vessels} videoTransform={videoTransform} />}
+    </div>
   );
 }
 

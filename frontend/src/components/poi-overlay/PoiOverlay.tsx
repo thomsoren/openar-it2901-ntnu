@@ -1,13 +1,13 @@
 import React, { useRef, useEffect, useState } from "react";
 import { ObcPoiTarget } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-target/poi-target";
 import { DetectedVessel } from "../../types/detection";
-import { VIDEO_CONFIG, POI_CONFIG } from "../../config/video";
+import { POI_CONFIG } from "../../config/video";
+import { VideoTransform } from "../../hooks/useVideoTransform";
 import "./PoiOverlay.css";
 
 interface PoiOverlayProps {
   vessels?: DetectedVessel[];
-  width?: number;
-  height?: number;
+  videoTransform: VideoTransform;
 }
 
 interface SmoothedPosition {
@@ -27,12 +27,9 @@ const SMOOTHING_FACTOR = 0.15; // Lower = smoother but more lag
 /**
  * Overlay component that displays POI markers at detected vessel locations.
  * Uses interpolation for smooth marker movement between detection updates.
+ * Accounts for video scaling and offset based on object-fit mode.
  */
-function PoiOverlay({
-  vessels = [],
-  width = VIDEO_CONFIG.WIDTH,
-  height = VIDEO_CONFIG.HEIGHT,
-}: PoiOverlayProps) {
+function PoiOverlay({ vessels = [], videoTransform }: PoiOverlayProps) {
   const positionsRef = useRef<Map<number, SmoothedPosition>>(new Map());
   const [smoothedVessels, setSmoothedVessels] = useState<
     Array<{
@@ -133,17 +130,22 @@ function PoiOverlay({
   return (
     <div className="poi-overlay">
       {smoothedVessels.map((item) => {
-        // Convert absolute coordinates to percentage-based positioning
-        const leftPercent = (item.x / width) * 100;
-        const topPercent = (item.y / height) * 100;
+        // Map detection coordinates (from native video resolution) to actual rendered position
+        // 1. Scale coordinates from native resolution to rendered size
+        const scaledX = item.x * videoTransform.scaleX;
+        const scaledY = item.y * videoTransform.scaleY;
+
+        // 2. Add offset to account for letterbox/pillarbox
+        const screenX = scaledX + videoTransform.offsetX;
+        const screenY = scaledY + videoTransform.offsetY;
 
         return (
           <div
             key={item.trackId}
             className="poi-marker"
             style={{
-              left: `${leftPercent}%`,
-              top: `${topPercent}%`,
+              left: `${screenX}px`,
+              top: `${screenY}px`,
             }}
           >
             <ObcPoiTarget height={POI_CONFIG.HEIGHT} />
