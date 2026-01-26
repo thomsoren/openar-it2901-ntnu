@@ -1,5 +1,4 @@
 import { useEffect, useState, RefObject } from "react";
-import { VIDEO_CONFIG } from "../config/video";
 import { VideoFitMode } from "../contexts/SettingsContext";
 
 export interface VideoTransform {
@@ -23,11 +22,13 @@ export interface VideoTransform {
 export function useVideoTransform(
   videoRef: RefObject<HTMLVideoElement | null>,
   containerRef: RefObject<HTMLDivElement | null>,
-  fitMode: VideoFitMode
+  fitMode: VideoFitMode,
+  nativeWidth: number,
+  nativeHeight: number
 ): VideoTransform {
   const [transform, setTransform] = useState<VideoTransform>({
-    videoWidth: VIDEO_CONFIG.WIDTH,
-    videoHeight: VIDEO_CONFIG.HEIGHT,
+    videoWidth: nativeWidth,
+    videoHeight: nativeHeight,
     offsetX: 0,
     offsetY: 0,
     scaleX: 1,
@@ -47,12 +48,8 @@ export function useVideoTransform(
       const containerWidth = container.clientWidth;
       const containerHeight = container.clientHeight;
 
-      // Get the video's native dimensions
-      const videoNativeWidth = VIDEO_CONFIG.WIDTH;
-      const videoNativeHeight = VIDEO_CONFIG.HEIGHT;
-
       // Calculate aspect ratios
-      const videoAspectRatio = videoNativeWidth / videoNativeHeight;
+      const videoAspectRatio = nativeWidth / nativeHeight;
       const containerAspectRatio = containerWidth / containerHeight;
 
       let videoWidth: number;
@@ -93,8 +90,8 @@ export function useVideoTransform(
       }
 
       // Calculate scale factors (rendered size / native size)
-      const scaleX = videoWidth / videoNativeWidth;
-      const scaleY = videoHeight / videoNativeHeight;
+      const scaleX = videoWidth / nativeWidth;
+      const scaleY = videoHeight / nativeHeight;
 
       setTransform({
         videoWidth,
@@ -117,7 +114,7 @@ export function useVideoTransform(
     return () => {
       resizeObserver.disconnect();
     };
-  }, [videoRef, containerRef, fitMode]);
+  }, [videoRef, containerRef, fitMode, nativeWidth, nativeHeight]);
 
   return transform;
 }

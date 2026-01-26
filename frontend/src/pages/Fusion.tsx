@@ -19,7 +19,13 @@ function Fusion() {
   });
 
   // Calculate video transform for accurate POI positioning
-  const videoTransform = useVideoTransform(videoRef, containerRef, videoFitMode);
+  const videoTransform = useVideoTransform(
+    videoRef,
+    containerRef,
+    videoFitMode,
+    FUSION_VIDEO_CONFIG.WIDTH,
+    FUSION_VIDEO_CONFIG.HEIGHT
+  );
 
   useEffect(() => {
     let cancelled = false;

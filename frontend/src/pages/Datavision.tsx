@@ -18,7 +18,13 @@ function Datavision() {
   });
 
   // Calculate video transform for accurate POI positioning
-  const videoTransform = useVideoTransform(videoRef, containerRef, videoFitMode);
+  const videoTransform = useVideoTransform(
+    videoRef,
+    containerRef,
+    videoFitMode,
+    VIDEO_CONFIG.WIDTH,
+    VIDEO_CONFIG.HEIGHT
+  );
 
   return (
     <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
