@@ -65,8 +65,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
       <div className="ais-stream-params">
         <div className="param-group">
           <span className="param-label">Ship Latitude</span>
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
           <ObcInput
+            /* @ts-expect-error - OpenBridge component type mismatch */
             type="number"
             value={String(shipLat)}
             placeholder="63.4365"
@@ -77,8 +77,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Ship Longitude</span>
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
           <ObcInput
+            /* @ts-expect-error - OpenBridge component type mismatch */
             type="number"
             value={String(shipLon)}
             placeholder="10.3835"
@@ -89,8 +89,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Heading (°)</span>
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
           <ObcInput
+            /* @ts-expect-error - OpenBridge component type mismatch */
             type="number"
             value={String(heading)}
             placeholder="0"
@@ -101,8 +101,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Range (m)</span>
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
           <ObcInput
+            /* @ts-expect-error - OpenBridge component type mismatch */
             type="number"
             value={String(offsetMeters)}
             placeholder="1000"
@@ -113,8 +113,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">FOV (°)</span>
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
           <ObcInput
+            /* @ts-expect-error - OpenBridge component type mismatch */
             type="number"
             value={String(fovDegrees)}
             placeholder="60"
@@ -144,9 +144,9 @@ export const AISGeographicalDataDisplay: React.FC = () => {
                   <span className="feature-name">
                     {feature?.name || feature?.mmsi || "Unknown Vessel"}
                   </span>
-                  {/* @ts-expect-error - OpenBridge component type mismatch */}
                   <ObcTag
                     label={feature?.mmsi ? `MMSI ${feature.mmsi}` : "MMSI N/A"}
+                    /* @ts-expect-error - OpenBridge component type mismatch */
                     color="blue"
                   />
                 </div>
