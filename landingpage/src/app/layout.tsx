@@ -31,11 +31,17 @@ export const metadata: Metadata = {
     "open source",
   ],
   authors: [{ name: "OpenAR Team" }],
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
   openGraph: {
     title: "OpenAR - Web Based Maritime AR Overlays",
     description:
       "Open source standard for maritime augmented reality overlays in the browser",
     type: "website",
+    images: ["/logo.png"],
   },
 };
 
