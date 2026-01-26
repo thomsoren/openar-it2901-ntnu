@@ -6,13 +6,17 @@ Architecture:
 - /api/detections/ws: WebSocket for real-time YOLO streaming detections
 - /api/video: Streams video for the frontend
 - /api/ais: Fetches AIS data from external API
+- /api/ais/stream: Streams live AIS data in geographical field of view
 """
+import json
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from ais import service as ais_service
+from ais.fetch_ais import fetch_ais_stream_geojson
 from common import settings
 from common.types import DetectedVessel
 from cv import pipeline
@@ -52,6 +56,7 @@ def read_root():
             "detections_ws": "/api/detections/ws",
             "video": "/api/video",
             "ais": "/api/ais",
+            "ais_stream": "/api/ais/stream",
             "samples": "/api/samples",
             "storage_presign": "/api/storage/presign",
             "health": "/health"
@@ -178,6 +183,40 @@ async def get_ais_data():
             status_code=500,
             detail=f"Error fetching AIS data: {str(e)}"
         )
+
+
+@app.get("/api/ais/stream")
+async def stream_ais_geojson(
+    ship_lat: float = 63.4365,
+    ship_lon: float = 10.3835,
+    heading: float = 0,
+    offset_meters: float = 1000,
+    fov_degrees: float = 60
+):
+    """Stream live AIS data in ship's triangular field of view"""
+    async def event_generator():
+        try:
+            async for feature in fetch_ais_stream_geojson(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                heading=heading,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):
+                yield f"data: {json.dumps(feature)}\n\n"
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
 
 
 @app.websocket("/api/detections/ws")
