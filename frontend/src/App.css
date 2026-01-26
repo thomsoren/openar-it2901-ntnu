@@ -30,11 +30,10 @@ header {
   right: 0;
   bottom: 0;
   overflow: hidden;
-  padding: 16px;
 }
 
 .main--with-sidebar {
-  padding-left: 256px;
+  padding-left: 240px;
 }
 
 .main--no-padding {
