@@ -15,8 +15,18 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
+// Detect if device is mobile (viewport width < 768px or touch device)
+const isMobileDevice = (): boolean => {
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isSmallScreen = window.innerWidth < 768;
+  return isTouchDevice || isSmallScreen;
+};
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [videoFitMode, setVideoFitMode] = useState<VideoFitMode>("cover");
+  // Default to "contain" (letterbox) on mobile, "cover" on desktop
+  const [videoFitMode, setVideoFitMode] = useState<VideoFitMode>(
+    isMobileDevice() ? "contain" : "cover"
+  );
   const [aisEnabled, setAisEnabled] = useState(true);
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [detectionVisible, setDetectionVisible] = useState(true);

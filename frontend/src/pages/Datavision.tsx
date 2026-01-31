@@ -34,6 +34,7 @@ function Datavision() {
         autoPlay
         loop
         muted
+        playsInline
         className="background-video"
         style={{ objectFit: videoFitMode }}
       >

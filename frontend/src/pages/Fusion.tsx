@@ -56,6 +56,7 @@ function Fusion() {
         autoPlay
         loop
         muted
+        playsInline
         className="background-video"
         style={{ objectFit: videoFitMode }}
       >
