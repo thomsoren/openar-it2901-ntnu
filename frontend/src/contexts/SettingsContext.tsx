@@ -17,7 +17,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 // Detect if device is mobile (viewport width < 768px or touch device)
 const isMobileDevice = (): boolean => {
-  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
   const isSmallScreen = window.innerWidth < 768;
   return isTouchDevice || isSmallScreen;
 };
