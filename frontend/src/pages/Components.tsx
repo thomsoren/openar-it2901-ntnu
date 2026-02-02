@@ -134,11 +134,11 @@ function Components() {
               }}
             >
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <ObcPoiTarget type={ObcPoiTargetButtonType.Button} />
+                <ObcPoiTarget type={ObcPoiTargetButtonType.Button} values={sampleValues} />
                 <p style={{ fontSize: "12px", opacity: 0.5, marginTop: "1rem" }}>Normal</p>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <ObcPoiTarget type={ObcPoiTargetButtonType.Enhanced} />
+                <ObcPoiTarget type={ObcPoiTargetButtonType.Enhanced} values={sampleValues} />
                 <p style={{ fontSize: "12px", opacity: 0.5, marginTop: "1rem" }}>Enhanced</p>
               </div>
             </div>
