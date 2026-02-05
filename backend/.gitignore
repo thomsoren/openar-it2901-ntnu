@@ -32,3 +32,6 @@ temp_frame.jpg
 # Node.js
 node_modules/
 dist/
+
+# Data
+data/SeaShips/

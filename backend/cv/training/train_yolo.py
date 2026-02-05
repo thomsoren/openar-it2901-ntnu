@@ -3,7 +3,7 @@ from ultralytics import YOLO
 def main():
     model = YOLO('yolo26s.pt')
 
-    # Train the model with relevant inputs
+    # Train the model with the relevant inputs
     model.train(
         data='configs/data.yaml',  
         epochs=1,                                     
