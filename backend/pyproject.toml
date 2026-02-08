@@ -22,6 +22,8 @@ dependencies = [
     "websockets>=12.0",
     "torch",
     "torchvision",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.0.0",
 ]
 
 [[tool.uv.index]]
