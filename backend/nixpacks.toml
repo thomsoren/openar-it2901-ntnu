@@ -1,6 +1,6 @@
 # nixpacks.toml
 [phases.setup]
-aptPkgs = ["libgl1-mesa-glx", "libglib2.0-0"]
+aptPkgs = ["libgl1", "libglib2.0-0"]
 
 [start]
 cmd = "uv run uvicorn main:app --host 0.0.0.0 --port 8443 --workers 4"
