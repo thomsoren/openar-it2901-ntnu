@@ -33,5 +33,8 @@ temp_frame.jpg
 node_modules/
 dist/
 
-# Data
-data/SeaShips/
+# Data & Training
+data/
+!data/.gitkeep
+cv/training/runs/
+cv/training/logs/
