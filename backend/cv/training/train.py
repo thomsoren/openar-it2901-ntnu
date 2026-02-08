@@ -333,7 +333,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     parser.add_argument("--imgsz", type=int, default=640, help="Input image size")
     parser.add_argument("--batch", type=int, default=16, help="Batch size")
-    parser.add_argument("--device", type=str, default="0", help="CUDA device(s) or 'cpu'")
+    parser.add_argument("--device", type=str, default="mps", help="Device: 'mps' (Mac), '0' (CUDA), or 'cpu'")
 
     # Output arguments
     parser.add_argument("--project", type=str, default="runs/train", help="Project directory")
@@ -349,6 +349,7 @@ def main():
     # Step 1: Convert COCO to YOLO
     if not args.skip_convert:
         print("\n[1/2] Converting COCO to YOLO format...")
+        create_val_split_from_train(data_dir)
         class_info = convert_coco_to_yolo(data_dir)
     else:
         print("\n[1/2] Skipping conversion (--skip-convert)")
