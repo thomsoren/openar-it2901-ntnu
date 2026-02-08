@@ -11,9 +11,10 @@ import Fusion from "./pages/Fusion";
 import Components from "./pages/Components";
 import Datavision from "./pages/Datavision";
 import Settings from "./pages/Settings";
+import Upload from "./pages/Upload";
 
 const PAGE_STORAGE_KEY = "openar.currentPage";
-const PAGES = ["datavision", "ais", "components", "fusion", "settings"] as const;
+const PAGES = ["datavision", "ais", "components", "fusion", "settings", "upload"] as const;
 type PageId = (typeof PAGES)[number];
 
 const getStoredPage = (): PageId => {
@@ -43,6 +44,7 @@ function App() {
     components: "Components",
     fusion: "Fusion",
     settings: "Settings",
+    upload: "Upload",
   } as const;
 
   const handleDimmingButtonClicked = () => {
@@ -115,6 +117,11 @@ function App() {
               checked={currentPage === "settings"}
               onClick={() => handleNavigationItemClick("settings")}
             />
+            <ObcNavigationItem
+              label="Upload"
+              checked={currentPage === "upload"}
+              onClick={() => handleNavigationItemClick("upload")}
+            />
           </div>
         </ObcNavigationMenu>
       )}
@@ -141,6 +148,7 @@ function App() {
         {currentPage === "components" && <Components />}
         {currentPage === "fusion" && <Fusion />}
         {currentPage === "settings" && <Settings />}
+        {currentPage === "upload" && <Upload />}
       </main>
     </>
   );
