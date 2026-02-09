@@ -228,3 +228,8 @@ async def websocket_detections(websocket: WebSocket):
 async def websocket_fusion(websocket: WebSocket):
     """Dedicated WebSocket endpoint for Fusion page with ground truth data."""
     await pipeline.handle_fusion_ws(websocket)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

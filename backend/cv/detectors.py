@@ -1,99 +1,110 @@
 """
-Unified boat detectors (YOLO & Roboflow).
+RT-DETR boat detector.
 """
-import os
-from typing import List, Optional
+from pathlib import Path
+from typing import List
+
 import numpy as np
-from ultralytics import YOLO
-from common.types import Detection
+from ultralytics import RTDETR
+
 from common import settings
+from common.types import Detection
 
-class BaseDetector:
-    def detect(self, frame: np.ndarray) -> List[Detection]:
-        raise NotImplementedError
 
-class YOLODetector(BaseDetector):
-    """Local YOLOv8 detector."""
-    BOAT_CLASS_ID = 8
+class RTDETRDetector:
+    """
+    RT-DETR detector for boat detection.
 
-    def __init__(self, model_path: str = "yolov8s.pt", confidence: float = 0.25):
-        # Try to find model in cv/models
-        full_path = settings.MODELS_DIR / model_path
-        if not full_path.exists():
-            # Fallback to model name (ultralytics will download)
-            self.model = YOLO(model_path)
-        else:
-            self.model = YOLO(str(full_path))
-            
+    Uses a trained RT-DETR model for real-time object detection.
+    Falls back to pretrained model if custom weights not found.
+    """
+
+    DEFAULT_MODEL = "rtdetr-l.pt"
+
+    def __init__(
+        self,
+        model_path: str | None = None,
+        confidence: float = 0.25,
+    ):
+        """
+        Initialize RT-DETR detector.
+
+        Args:
+            model_path: Path to model weights. If None, uses default.
+            confidence: Minimum confidence threshold for detections.
+        """
         self.confidence = confidence
+        self.model = self._load_model(model_path)
+
+    def _load_model(self, model_path: str | None) -> RTDETR:
+        """Load RT-DETR model from path or use default."""
+        if model_path:
+            path = Path(model_path)
+            if path.exists():
+                return RTDETR(str(path))
+
+            # Try models directory
+            models_path = settings.MODELS_DIR / model_path
+            if models_path.exists():
+                return RTDETR(str(models_path))
+
+        # Try default model in models directory
+        default_path = settings.MODELS_DIR / self.DEFAULT_MODEL
+        if default_path.exists():
+            return RTDETR(str(default_path))
+
+        # Fall back to downloading pretrained model
+        return RTDETR(self.DEFAULT_MODEL)
 
     def detect(self, frame: np.ndarray) -> List[Detection]:
+        """
+        Run detection on a frame.
+
+        Args:
+            frame: BGR image as numpy array.
+
+        Returns:
+            List of Detection objects.
+        """
         results = self.model(frame, conf=self.confidence, verbose=False)[0]
         detections = []
-        
+
         if results.boxes is None:
             return detections
 
         for box in results.boxes:
+            xyxy = box.xyxy[0].cpu().numpy()
+            conf = float(box.conf[0])
             class_id = int(box.cls[0])
-            # Filter for boats (class 8 in COCO)
-            if class_id == self.BOAT_CLASS_ID:
-                xyxy = box.xyxy[0].cpu().numpy()
-                conf = float(box.conf[0])
-                
-                w = xyxy[2] - xyxy[0]
-                h = xyxy[3] - xyxy[1]
-                
-                detections.append(Detection(
-                    x=float(xyxy[0] + w / 2),
-                    y=float(xyxy[1] + h / 2),
-                    width=float(w),
-                    height=float(h),
-                    confidence=conf,
-                    class_id=class_id,
-                    class_name="boat"
-                ))
-        return detections
 
-class RoboflowDetector(BaseDetector):
-    """Roboflow Inference SDK detector."""
-    def __init__(self, model_id: str = "boat-detection-model/1", confidence: float = 0.3):
-        try:
-            from inference_sdk import InferenceHTTPClient
-        except ImportError:
-            raise ImportError("inference-sdk not installed")
-            
-        api_key = os.getenv("ROBOFLOW_API_KEY")
-        self.client = InferenceHTTPClient(
-            api_url="http://localhost:9001",
-            api_key=api_key
-        )
-        self.model_id = model_id
-        self.confidence = confidence
+            # Get class name from model
+            class_name = results.names.get(class_id, "boat")
 
-    def detect(self, frame: np.ndarray) -> List[Detection]:
-        result = self.client.infer(frame, model_id=self.model_id)
-        detections = []
-        
-        for pred in result.get('predictions', []):
-            if pred['confidence'] < self.confidence:
-                continue
-                
+            w = xyxy[2] - xyxy[0]
+            h = xyxy[3] - xyxy[1]
+
             detections.append(Detection(
-                x=float(pred['x']),
-                y=float(pred['y']),
-                width=float(pred['width']),
-                height=float(pred['height']),
-                confidence=float(pred['confidence']),
-                class_id=pred.get('class_id'),
-                class_name=pred.get('class', 'boat')
+                x=float(xyxy[0] + w / 2),
+                y=float(xyxy[1] + h / 2),
+                width=float(w),
+                height=float(h),
+                confidence=conf,
+                class_id=class_id,
+                class_name=class_name,
             ))
+
         return detections
 
-def get_detector(detector_type: str = "yolo", **kwargs) -> BaseDetector:
-    if detector_type == "yolo":
-        return YOLODetector(**kwargs)
-    elif detector_type == "roboflow":
-        return RoboflowDetector(**kwargs)
-    else:
-        raise ValueError(f"Unknown detector type: {detector_type}")
+
+def get_detector(confidence: float = 0.25, model_path: str | None = None) -> RTDETRDetector:
+    """
+    Get the RT-DETR detector instance.
+
+    Args:
+        confidence: Minimum confidence threshold.
+        model_path: Optional path to custom model weights.
+
+    Returns:
+        Configured RTDETRDetector instance.
+    """
+    return RTDETRDetector(model_path=model_path, confidence=confidence)

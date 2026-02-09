@@ -24,10 +24,10 @@ from .trackers import ByteTracker
 class VideoPipeline:
     """
     Main processing pipeline for video streams.
-    Combines detection, tracking, and AIS matching.
+    Combines RT-DETR detection, tracking, and AIS matching.
     """
-    def __init__(self, detector_type: str = "yolo", track: bool = True):
-        self.detector = get_detector(detector_type)
+    def __init__(self, confidence: float = 0.25, track: bool = True):
+        self.detector = get_detector(confidence=confidence)
         self.tracker = ByteTracker() if track else None
         self.track_enabled = track
 
@@ -108,23 +108,20 @@ def _load_fusion_by_second_from_lines(lines: List[str]) -> dict[int, list[dict]]
     return by_second
 
 def _load_fusion_data() -> dict[int, list[dict]]:
-    print(f"[DEBUG] Loading fusion data:")
-    print(f"  - S3 Key: {settings.GT_FUSION_S3_KEY}")
-    print(f"  - Local Path: {settings.GT_FUSION_PATH}")
-    print(f"  - SAMPLE: {settings.SAMPLE}")
-    print(f"  - SAMPLE_START_SEC: {settings.SAMPLE_START_SEC}")
-    print(f"  - SAMPLE_DURATION: {settings.SAMPLE_DURATION}")
-    
-    text = s3.read_text_from_sources("Fusion", settings.GT_FUSION_S3_KEY, settings.GT_FUSION_PATH)
-    
-    if not text:
-        print(f"[ERROR] No fusion data text loaded from S3 or local path")
+    """Load fusion ground truth data. Returns empty dict if unavailable."""
+    try:
+        text = s3.read_text_from_sources("Fusion", settings.GT_FUSION_S3_KEY, settings.GT_FUSION_PATH)
+
+        if not text:
+            print("[INFO] Fusion data not available - fusion features disabled")
+            return {}
+
+        result = _load_fusion_by_second_from_lines(text.splitlines())
+        print(f"[INFO] Fusion data loaded: {len(result)} seconds of data")
+        return result
+    except Exception as e:
+        print(f"[WARN] Failed to load fusion data: {e} - fusion features disabled")
         return {}
-    
-    print(f"[DEBUG] Fusion data loaded: {len(text)} characters, {len(text.splitlines())} lines")
-    result = _load_fusion_by_second_from_lines(text.splitlines())
-    print(f"[DEBUG] Parsed into {len(result)} seconds of data")
-    return result
 
 FUSION_BY_SECOND = _load_fusion_data()
 
@@ -135,36 +132,30 @@ def _get_sample_second() -> int | None:
     return settings.SAMPLE_START_SEC + (elapsed % settings.SAMPLE_DURATION)
 
 def get_detections() -> List[DetectedVessel]:
-    """Fallback for REST API detections (used by Fusion page)."""
-    global FUSION_BY_SECOND
-    
+    """Return current detected vessels. Returns empty list if fusion data unavailable."""
     if not FUSION_BY_SECOND:
-        print("Fusion data empty, attempting to reload...")
-        FUSION_BY_SECOND = _load_fusion_data()
+        return []
 
-    if FUSION_BY_SECOND:
-        current_second = _get_sample_second()
-        if current_second is not None:
-            vessels: List[DetectedVessel] = []
-            frame_data = FUSION_BY_SECOND.get(current_second, [])
-            print(f"Second {current_second}: Found {len(frame_data)} detections")
-            for row in frame_data:
-                vessel = ais_service.build_vessel_from_ais(str(row["mmsi"]))
-                vessels.append(DetectedVessel(
-                    detection=Detection(
-                        x=row["left"] + row["width"] / 2,
-                        y=row["top"] + row["height"] / 2,
-                        width=row["width"],
-                        height=row["height"],
-                        confidence=row["confidence"],
-                        track_id=int(row["mmsi"]) if row["mmsi"].isdigit() else None
-                    ),
-                    vessel=vessel
-                ))
-            return vessels
-    else:
-        print("Fusion data still empty after reload attempt.")
-    return []
+    current_second = _get_sample_second()
+    if current_second is None:
+        return []
+
+    vessels: List[DetectedVessel] = []
+    frame_data = FUSION_BY_SECOND.get(current_second, [])
+    for row in frame_data:
+        vessel = ais_service.build_vessel_from_ais(str(row["mmsi"]))
+        vessels.append(DetectedVessel(
+            detection=Detection(
+                x=row["left"] + row["width"] / 2,
+                y=row["top"] + row["height"] / 2,
+                width=row["width"],
+                height=row["height"],
+                confidence=row["confidence"],
+                track_id=int(row["mmsi"]) if row["mmsi"].isdigit() else None
+            ),
+            vessel=vessel
+        ))
+    return vessels
 
 def _apply_temporal_smoothing(frames: list[dict], hold_duration: float = 0.3, min_confidence: float = 0.4) -> list[dict]:
     """
