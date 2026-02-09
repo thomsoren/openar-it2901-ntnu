@@ -16,7 +16,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 # File paths (local fallback)
-DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / "hurtigruta-demo.mp4"
+DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
 DEFAULT_FUSION_VIDEO_PATH = (
     BASE_DIR
     / "data"
@@ -30,7 +30,6 @@ DEFAULT_COMPONENTS_BG_PATH = BASE_DIR / "data" / "raw" / "oceanbackground.png"
 DEFAULT_DETECTIONS_PATH = BASE_DIR / "output" / "detections.json"
 SAMPLES_CONFIG_PATH = BASE_DIR / "fusion" / "samples.json"
 MODELS_DIR = BASE_DIR / "cv" / "models"
-DETECTIONS_WS_MODE = os.getenv("DETECTIONS_WS_MODE", "file").strip().lower()
 
 
 class SampleConfig(BaseModel):

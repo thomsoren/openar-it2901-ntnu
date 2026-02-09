@@ -8,18 +8,22 @@ Architecture:
 - /api/ais: Fetches AIS data from external API
 - /api/ais/stream: Streams live AIS data in geographical field of view
 """
+import asyncio
 import json
-from typing import List
+from contextlib import asynccontextmanager
+from typing import List, Set
 
+import cv2
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
 from common import settings
 from common.types import DetectedVessel
-from cv import pipeline
+from cv import worker
+from fusion import fusion
 from storage import s3
 
 app = FastAPI(
@@ -111,7 +115,7 @@ def get_detections() -> List[DetectedVessel]:
     For now, returns mock data or FVessel samples for frontend development.
     """
     try:
-        return pipeline.get_detections()
+        return fusion.get_detections()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching detections: {str(e)}")
 
@@ -128,16 +132,34 @@ def get_detections_file(request: Request):
 
 
 @app.get("/api/video")
-def get_video(request: Request):
-    """
-    Stream video file with support for range requests (seeking)
-    """
-    try:
-        return s3.video_response(request)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Video file not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
+def get_video():
+    """Serve video file directly."""
+    path = settings.VIDEO_PATH
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail=f"Video not found: {path}")
+    return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/api/video/mjpeg")
+async def stream_mjpeg():
+    """MJPEG stream from inference worker - synced with detections."""
+    if not frame_queue:
+        raise HTTPException(status_code=503, detail="Video stream not available")
+
+    async def generate():
+        while True:
+            data = await asyncio.to_thread(frame_queue.get)
+            if data is None:
+                break
+            frame, _, _ = data
+            _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
+    )
 
 
 @app.get("/api/video/fusion")
@@ -219,17 +241,74 @@ async def stream_ais_geojson(
     )
 
 
+inference_queue = None
+frame_queue = None
+connected_clients: Set[WebSocket] = set()
+broadcast_task = None
+
+video_info = None
+
+async def broadcast_detections():
+    global video_info
+    while True:
+        data = await asyncio.to_thread(inference_queue.get)
+        if data is None:
+            break
+        if data.get("type") == "ready":
+            video_info = data
+            continue
+        dead = []
+        for ws in connected_clients:
+            try:
+                await ws.send_json({"type": "detections", **data})
+            except:
+                dead.append(ws)
+        for ws in dead:
+            connected_clients.discard(ws)
+
+@asynccontextmanager
+async def lifespan(_):
+    global inference_queue, frame_queue, broadcast_task
+    process = None
+    if settings.VIDEO_PATH and settings.VIDEO_PATH.exists():
+        process, inference_queue, frame_queue = worker.start(settings.VIDEO_PATH)
+        broadcast_task = asyncio.create_task(broadcast_detections())
+    yield
+    if broadcast_task:
+        broadcast_task.cancel()
+    if process:
+        process.terminate()
+        process.join(timeout=2)
+        if process.is_alive():
+            process.kill()
+
+app.router.lifespan_context = lifespan
+
 @app.websocket("/api/detections/ws")
 async def websocket_detections(websocket: WebSocket):
-    await pipeline.handle_detections_ws(websocket)
+    await websocket.accept()
+    if not inference_queue:
+        await websocket.send_json({"type": "error", "message": "No video configured"})
+        return
+
+    if video_info:
+        await websocket.send_json(video_info)
+    connected_clients.add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except:
+        pass
+    finally:
+        connected_clients.discard(websocket)
 
 
 @app.websocket("/api/fusion/ws")
 async def websocket_fusion(websocket: WebSocket):
     """Dedicated WebSocket endpoint for Fusion page with ground truth data."""
-    await pipeline.handle_fusion_ws(websocket)
+    await fusion.handle_fusion_ws(websocket)
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, workers=1, loop="asyncio")

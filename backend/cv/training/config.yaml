@@ -1,0 +1,24 @@
+# RT-DETR Training Configuration
+
+# Data
+data_dir: ../data/SeaShips
+
+# Model
+model: rtdetr-l.pt  # rtdetr-l.pt or rtdetr-x.pt
+
+# Training
+epochs: 100
+batch: 16
+imgsz: 640
+device: "0"  # "0" for CUDA, "mps" for Mac, "cpu" for CPU
+
+# Output
+project: runs/train
+name: seaships
+
+# Performance
+workers: 8
+cache: true
+amp: true
+patience: 10
+save_period: 10
