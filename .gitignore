@@ -11,3 +11,4 @@ processed/
 # PyTorch model weights
 *.pt
 node_modules/
+backend/data/SeaShips/
