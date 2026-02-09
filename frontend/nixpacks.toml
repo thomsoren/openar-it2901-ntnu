@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "pnpm"]
+
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm run build"]
+
+[start]
+cmd = "pnpm run preview --host 0.0.0.0 --port ${PORT:-4542}"

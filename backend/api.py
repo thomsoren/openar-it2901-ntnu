@@ -3,22 +3,24 @@ FastAPI backend for boat detection and AIS data.
 
 Architecture:
 - /api/detections: Returns current detected vessels (YOLO + AIS)
+- /api/detections/ws: WebSocket for real-time YOLO streaming detections
 - /api/video: Streams video for the frontend
 - /api/ais: Fetches AIS data from external API
+- /api/ais/stream: Streams live AIS data in geographical field of view
 """
-import os
-from pathlib import Path
+import json
 from typing import List
 
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
-from ais.fetch_ais import fetch_ais
-from schemas import Detection, Vessel, DetectedVessel
-
-load_dotenv()
+from ais import service as ais_service
+from ais.fetch_ais import fetch_ais_stream_geojson
+from common import settings
+from common.types import DetectedVessel
+from cv import pipeline
+from storage import s3
 
 app = FastAPI(
     title="OpenAR Backend API",
@@ -34,17 +36,13 @@ app.add_middleware(
         "http://localhost:3000",  # Alternative React dev server
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "https://demo.bridgable.ai",  # Production frontend
+        "http://demo.bridgable.ai",   # Production frontend (HTTP)
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# File paths (override with env vars if needed)
-BASE_DIR = Path(__file__).parent
-DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
-VIDEO_PATH = Path(os.getenv("VIDEO_PATH", DEFAULT_VIDEO_PATH))
-
 
 @app.get("/")
 def read_root():
@@ -54,8 +52,13 @@ def read_root():
         "message": "OpenAR Backend API is running",
         "endpoints": {
             "detections": "/api/detections",
+            "detections_file": "/api/detections/file",
+            "detections_ws": "/api/detections/ws",
             "video": "/api/video",
             "ais": "/api/ais",
+            "ais_stream": "/api/ais/stream",
+            "samples": "/api/samples",
+            "storage_presign": "/api/storage/presign",
             "health": "/health"
         }
     }
@@ -64,18 +67,40 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Health check with file availability status"""
-    video_exists = VIDEO_PATH.exists()
+    try:
+        return s3.health_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
 
-    return {
-        "status": "healthy" if video_exists else "degraded",
-        "files": {
-            "video": {
-                "path": str(VIDEO_PATH),
-                "exists": video_exists,
-                "size_mb": round(VIDEO_PATH.stat().st_size / (1024 * 1024), 2) if video_exists else None
-            }
-        }
-    }
+
+@app.get("/api/samples")
+def list_samples():
+    """List available AIS + Datavision samples."""
+    try:
+        return {"samples": settings.load_samples()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading samples: {str(e)}")
+
+
+@app.post("/api/fusion/reset")
+def reset_fusion_timer():
+    """Reset fusion sample timer to sync detections with video playback."""
+    try:
+        start = settings.reset_sample_timer()
+        return {"status": "ok", "start_mono": start}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resetting fusion timer: {str(e)}")
+
+
+@app.post("/api/storage/presign")
+def presign_storage(request: s3.PresignRequest):
+    """Generate a presigned URL for GET/PUT against S3 storage."""
+    try:
+        return s3.presign_storage(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating presigned URL: {str(e)}")
 
 
 @app.get("/api/detections", response_model=List[DetectedVessel])
@@ -83,122 +108,76 @@ def get_detections() -> List[DetectedVessel]:
     """
     Get current detected vessels with AIS data.
 
-    TODO: Implement real-time detection pipeline:
-    1. Capture frame from video/camera
-    2. Run YOLO detection
-    3. Match detections to AIS vessels
-    4. Return combined data
-
-    For now, returns mock data for frontend development.
+    For now, returns mock data or FVessel samples for frontend development.
     """
-    # Mock data for frontend development
-    # Replace with real YOLO + AIS pipeline
-    mock_vessels: List[DetectedVessel] = [
-        DetectedVessel(
-            detection=Detection(
-                x=500,
-                y=400,
-                width=120,
-                height=80,
-                confidence=0.92,
-                track_id=1
-            ),
-            vessel=Vessel(
-                mmsi="259000001",
-                name="MS Nordkapp",
-                ship_type="Passenger",
-                speed=15.2,
-                heading=45.0,
-                destination="Tromsø"
-            )
-        ),
-        DetectedVessel(
-            detection=Detection(
-                x=1200,
-                y=350,
-                width=80,
-                height=50,
-                confidence=0.85,
-                track_id=2
-            ),
-            vessel=Vessel(
-                mmsi="259000002",
-                name="Fishing Vessel",
-                ship_type="Fishing",
-                speed=8.5,
-                heading=180.0
-            )
-        ),
-        DetectedVessel(
-            detection=Detection(
-                x=800,
-                y=500,
-                width=60,
-                height=40,
-                confidence=0.78,
-                track_id=3
-            ),
-            vessel=None  # Detected but no AIS match
-        ),
-    ]
+    try:
+        return pipeline.get_detections()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching detections: {str(e)}")
 
-    return mock_vessels
+
+@app.get("/api/detections/file")
+def get_detections_file(request: Request):
+    """Serve precomputed detections JSON via backend (S3/local fallback)."""
+    try:
+        return s3.detections_response(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Detections file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error serving detections file: {str(e)}")
 
 
 @app.get("/api/video")
-def get_video():
+def get_video(request: Request):
     """
     Stream video file with support for range requests (seeking)
-
-    Returns:
-        Video file stream with proper headers for browser playback
     """
-    if not VIDEO_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Video file not found at {VIDEO_PATH}"
-        )
+    try:
+        return s3.video_response(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Video file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
 
-    return FileResponse(
-        path=VIDEO_PATH,
-        media_type="video/mp4",
-        filename="boat-detection-video.mp4",
-        headers={
-            "Accept-Ranges": "bytes",
-            "Content-Disposition": "inline"
-        }
-    )
+
+@app.get("/api/video/fusion")
+def get_fusion_video(request: Request):
+    """Stream FVessel sample video for AIS + Datavision."""
+    try:
+        return s3.fusion_video_response(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Fusion video file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error streaming fusion video: {str(e)}")
+
+
+@app.get("/api/assets/oceanbackground")
+def get_components_background():
+    """Serve the Components page background image."""
+    try:
+        return s3.components_background_response()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Background image not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error serving background image: {str(e)}")
 
 
 @app.get("/api/video/stream")
-async def stream_video():
+async def stream_video(request: Request):
     """
     Advanced video streaming endpoint with range request support
-    This allows seeking in the video player
     """
-    if not VIDEO_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Video file not found at {VIDEO_PATH}"
-        )
-
-    return FileResponse(
-        path=VIDEO_PATH,
-        media_type="video/mp4",
-        filename="boat-detection-video.mp4",
-        headers={
-            "Accept-Ranges": "bytes",
-            "Content-Disposition": "inline; filename=boat-detection-video.mp4"
-        }
-    )
+    try:
+        return s3.video_stream_response(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error in video stream: {str(e)}")
 
 
 @app.get("/api/ais")
 async def get_ais_data():
     """Fetch AIS data from external API (Barentswatch AIS)"""
     try:
-        ais_data = await fetch_ais()
-        return ais_data
+        return await ais_service.get_ais_data()
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -206,15 +185,46 @@ async def get_ais_data():
         )
 
 
-if __name__ == "__main__":
-    import uvicorn
-
-    print("Starting OpenAR Backend API...")
-    print(f"Video path: {VIDEO_PATH}")
-
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info"
+@app.get("/api/ais/stream")
+async def stream_ais_geojson(
+    ship_lat: float = 63.4365,
+    ship_lon: float = 10.3835,
+    heading: float = 0,
+    offset_meters: float = 1000,
+    fov_degrees: float = 60
+):
+    """Stream live AIS data in ship's triangular field of view"""
+    async def event_generator():
+        try:
+            async for feature in fetch_ais_stream_geojson(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                heading=heading,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):
+                yield f"data: {json.dumps(feature)}\n\n"
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
     )
+
+
+@app.websocket("/api/detections/ws")
+async def websocket_detections(websocket: WebSocket):
+    await pipeline.handle_detections_ws(websocket)
+
+
+@app.websocket("/api/fusion/ws")
+async def websocket_fusion(websocket: WebSocket):
+    """Dedicated WebSocket endpoint for Fusion page with ground truth data."""
+    await pipeline.handle_fusion_ws(websocket)
