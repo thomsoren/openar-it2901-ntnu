@@ -12,3 +12,4 @@ processed/
 *.pt
 node_modules/
 backend/data/SeaShips/
+backend/data/CombinedShips/
