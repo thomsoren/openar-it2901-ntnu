@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
-from common import settings
+from common.config import VIDEO_PATH, load_samples
 from common.types import DetectedVessel
 from cv import worker
 from fusion import fusion
@@ -81,7 +81,7 @@ def health_check():
 def list_samples():
     """List available AIS + Datavision samples."""
     try:
-        return {"samples": settings.load_samples()}
+        return {"samples": load_samples()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading samples: {str(e)}")
 
@@ -90,7 +90,7 @@ def list_samples():
 def reset_fusion_timer():
     """Reset fusion sample timer to sync detections with video playback."""
     try:
-        start = settings.reset_sample_timer()
+        start = fusion.reset_sample_timer()
         return {"status": "ok", "start_mono": start}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error resetting fusion timer: {str(e)}")
@@ -134,7 +134,7 @@ def get_detections_file(request: Request):
 @app.get("/api/video")
 def get_video():
     """Serve video file directly."""
-    path = settings.VIDEO_PATH
+    path = VIDEO_PATH
     if not path or not path.exists():
         raise HTTPException(status_code=404, detail=f"Video not found: {path}")
     return FileResponse(path, media_type="video/mp4")
@@ -261,7 +261,7 @@ async def broadcast_detections():
         for ws in connected_clients:
             try:
                 await ws.send_json({"type": "detections", **data})
-            except:
+            except Exception:
                 dead.append(ws)
         for ws in dead:
             connected_clients.discard(ws)
@@ -270,8 +270,8 @@ async def broadcast_detections():
 async def lifespan(_):
     global inference_queue, frame_queue, broadcast_task
     process = None
-    if settings.VIDEO_PATH and settings.VIDEO_PATH.exists():
-        process, inference_queue, frame_queue = worker.start(settings.VIDEO_PATH)
+    if VIDEO_PATH and VIDEO_PATH.exists():
+        process, inference_queue, frame_queue = worker.start(VIDEO_PATH)
         broadcast_task = asyncio.create_task(broadcast_detections())
     yield
     if broadcast_task:
@@ -297,7 +297,7 @@ async def websocket_detections(websocket: WebSocket):
     try:
         while True:
             await websocket.receive_text()
-    except:
+    except Exception:
         pass
     finally:
         connected_clients.discard(websocket)

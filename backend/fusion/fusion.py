@@ -13,9 +13,22 @@ from typing import List
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ais import service as ais_service
-from common import settings
+from common.config import (
+    GT_FUSION_S3_KEY, GT_FUSION_PATH,
+    SAMPLE_START_SEC, SAMPLE_DURATION,
+)
 from common.types import Detection, DetectedVessel
 from storage import s3
+
+# Sample timing state (module-level for this fusion feature)
+_SAMPLE_START_MONO = time.monotonic()
+
+
+def reset_sample_timer() -> float:
+    """Reset sample timing so detections sync with video playback start."""
+    global _SAMPLE_START_MONO
+    _SAMPLE_START_MONO = time.monotonic()
+    return _SAMPLE_START_MONO
 
 
 def _load_fusion_by_second(lines: List[str]) -> dict[int, list[dict]]:
@@ -46,7 +59,7 @@ def _load_fusion_by_second(lines: List[str]) -> dict[int, list[dict]]:
 def _load_fusion_data() -> dict[int, list[dict]]:
     """Load fusion ground truth data. Returns empty dict if unavailable."""
     try:
-        text = s3.read_text_from_sources("Fusion", settings.GT_FUSION_S3_KEY, settings.GT_FUSION_PATH)
+        text = s3.read_text_from_sources(GT_FUSION_S3_KEY, GT_FUSION_PATH)
         if not text:
             print("[INFO] Fusion data not available - fusion features disabled")
             return {}
@@ -64,10 +77,27 @@ FUSION_BY_SECOND = _load_fusion_data()
 
 def _get_sample_second() -> int | None:
     """Get current playback second based on sample timing."""
-    if settings.SAMPLE_START_SEC is None or settings.SAMPLE_DURATION is None:
+    if SAMPLE_START_SEC is None or SAMPLE_DURATION is None:
         return None
-    elapsed = int(time.monotonic() - settings.SAMPLE_START_MONO)
-    return settings.SAMPLE_START_SEC + (elapsed % settings.SAMPLE_DURATION)
+    elapsed = int(time.monotonic() - _SAMPLE_START_MONO)
+    return SAMPLE_START_SEC + (elapsed % SAMPLE_DURATION)
+
+
+def _build_vessel_from_row(row: dict) -> DetectedVessel:
+    """Build DetectedVessel from fusion row data."""
+    mmsi = str(row["mmsi"])
+    vessel = ais_service.build_vessel_from_ais(mmsi)
+    return DetectedVessel(
+        detection=Detection(
+            x=row["left"] + row["width"] / 2,
+            y=row["top"] + row["height"] / 2,
+            width=row["width"],
+            height=row["height"],
+            confidence=row["confidence"],
+            track_id=int(mmsi) if mmsi.isdigit() else None,
+        ),
+        vessel=vessel,
+    )
 
 
 def get_detections() -> List[DetectedVessel]:
@@ -79,21 +109,7 @@ def get_detections() -> List[DetectedVessel]:
     if current_second is None:
         return []
 
-    vessels: List[DetectedVessel] = []
-    for row in FUSION_BY_SECOND.get(current_second, []):
-        vessel = ais_service.build_vessel_from_ais(str(row["mmsi"]))
-        vessels.append(DetectedVessel(
-            detection=Detection(
-                x=row["left"] + row["width"] / 2,
-                y=row["top"] + row["height"] / 2,
-                width=row["width"],
-                height=row["height"],
-                confidence=row["confidence"],
-                track_id=int(row["mmsi"]) if row["mmsi"].isdigit() else None
-            ),
-            vessel=vessel
-        ))
-    return vessels
+    return [_build_vessel_from_row(row) for row in FUSION_BY_SECOND.get(current_second, [])]
 
 
 async def handle_fusion_ws(websocket: WebSocket) -> None:
@@ -121,24 +137,14 @@ async def handle_fusion_ws(websocket: WebSocket) -> None:
             current_second = _get_sample_second()
 
             if current_second is not None and current_second != last_second:
-                frame_data = FUSION_BY_SECOND.get(current_second, [])
-                vessels_payload = []
-
-                for row in frame_data:
-                    vessel = ais_service.build_vessel_from_ais(str(row["mmsi"]))
-                    vessels_payload.append({
-                        "detection": {
-                            "x": float(row["left"] + row["width"] / 2),
-                            "y": float(row["top"] + row["height"] / 2),
-                            "width": float(row["width"]),
-                            "height": float(row["height"]),
-                            "confidence": float(row["confidence"]),
-                            "track_id": int(row["mmsi"]) if str(row["mmsi"]).isdigit() else None,
-                            "class_id": None,
-                            "class_name": "boat"
-                        },
-                        "vessel": vessel.model_dump() if vessel else None
-                    })
+                vessels = [_build_vessel_from_row(row) for row in FUSION_BY_SECOND.get(current_second, [])]
+                vessels_payload = [
+                    {
+                        "detection": v.detection.model_dump(),
+                        "vessel": v.vessel.model_dump() if v.vessel else None,
+                    }
+                    for v in vessels
+                ]
 
                 await websocket.send_json({
                     "type": "detections",
@@ -157,5 +163,5 @@ async def handle_fusion_ws(websocket: WebSocket) -> None:
         print(f"Fusion WS Error: {e}")
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
-        except:
+        except Exception:
             pass

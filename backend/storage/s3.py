@@ -13,7 +13,12 @@ from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
-from common import settings
+from common.config import (
+    S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY,
+    S3_PREFIX, S3_ALLOWED_PREFIXES, S3_PUBLIC_BASE_URL, S3_PRESIGN_EXPIRES,
+    VIDEO_PATH, FUSION_VIDEO_PATH, COMPONENTS_BG_PATH, DETECTIONS_PATH,
+    VIDEO_S3_KEY, FUSION_VIDEO_S3_KEY, COMPONENTS_BG_S3_KEY, DETECTIONS_S3_KEY,
+)
 
 
 class PresignRequest(BaseModel):
@@ -25,10 +30,10 @@ class PresignRequest(BaseModel):
 
 def s3_enabled() -> bool:
     return bool(
-        settings.S3_ENDPOINT
-        and settings.S3_BUCKET
-        and settings.S3_ACCESS_KEY
-        and settings.S3_SECRET_KEY
+        S3_ENDPOINT
+        and S3_BUCKET
+        and S3_ACCESS_KEY
+        and S3_SECRET_KEY
     )
 
 
@@ -41,14 +46,14 @@ def _normalize_key(raw_key: str) -> tuple[str, str]:
     if ".." in parts:
         raise ValueError("S3 key must not contain '..'")
 
-    if settings.S3_PREFIX:
-        if key == settings.S3_PREFIX:
+    if S3_PREFIX:
+        if key == S3_PREFIX:
             raise ValueError("S3 key resolves to prefix root")
-        if key.startswith(f"{settings.S3_PREFIX}/"):
+        if key.startswith(f"{S3_PREFIX}/"):
             full_key = key
-            relative_key = key[len(settings.S3_PREFIX) + 1 :]
+            relative_key = key[len(S3_PREFIX) + 1 :]
         else:
-            full_key = f"{settings.S3_PREFIX}/{key}"
+            full_key = f"{S3_PREFIX}/{key}"
             relative_key = key
     else:
         full_key = key
@@ -63,10 +68,10 @@ def _client():
         raise RuntimeError("S3 is not configured")
     return boto3.client(
         "s3",
-        endpoint_url=settings.S3_ENDPOINT,
-        region_name=settings.S3_REGION,
-        aws_access_key_id=settings.S3_ACCESS_KEY,
-        aws_secret_access_key=settings.S3_SECRET_KEY,
+        endpoint_url=S3_ENDPOINT,
+        region_name=S3_REGION,
+        aws_access_key_id=S3_ACCESS_KEY,
+        aws_secret_access_key=S3_SECRET_KEY,
         config=Config(signature_version="s3v4"),
     )
 
@@ -74,7 +79,7 @@ def _client():
 def head_object(raw_key: str) -> dict | None:
     full_key, _ = _normalize_key(raw_key)
     try:
-        return _client().head_object(Bucket=settings.S3_BUCKET, Key=full_key)
+        return _client().head_object(Bucket=S3_BUCKET, Key=full_key)
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code")
         if code in {"404", "NoSuchKey", "NotFound"}:
@@ -83,11 +88,11 @@ def head_object(raw_key: str) -> dict | None:
 
 
 def public_url(raw_key: str) -> str | None:
-    if not settings.S3_PUBLIC_BASE_URL:
+    if not S3_PUBLIC_BASE_URL:
         return None
     full_key, relative_key = _normalize_key(raw_key)
-    base = settings.S3_PUBLIC_BASE_URL.rstrip("/")
-    if settings.S3_PREFIX and base.endswith(f"/{settings.S3_PREFIX}"):
+    base = S3_PUBLIC_BASE_URL.rstrip("/")
+    if S3_PREFIX and base.endswith(f"/{S3_PREFIX}"):
         suffix = relative_key
     else:
         suffix = full_key
@@ -98,7 +103,7 @@ def presign_get(raw_key: str, expires: int = 900) -> str:
     full_key, _ = _normalize_key(raw_key)
     return _client().generate_presigned_url(
         "get_object",
-        Params={"Bucket": settings.S3_BUCKET, "Key": full_key},
+        Params={"Bucket": S3_BUCKET, "Key": full_key},
         ExpiresIn=expires,
     )
 
@@ -109,7 +114,7 @@ def presign_put(
     expires: int = 900,
 ) -> tuple[str, dict]:
     full_key, _ = _normalize_key(raw_key)
-    params = {"Bucket": settings.S3_BUCKET, "Key": full_key}
+    params = {"Bucket": S3_BUCKET, "Key": full_key}
     headers: dict[str, str] = {}
     if content_type:
         params["ContentType"] = content_type
@@ -173,7 +178,7 @@ def _stream_s3_response(raw_key: str, request: Request, filename: str) -> Stream
 
     full_key, _ = _normalize_key(raw_key)
     try:
-        meta = _client().head_object(Bucket=settings.S3_BUCKET, Key=full_key)
+        meta = _client().head_object(Bucket=S3_BUCKET, Key=full_key)
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code")
         if code in {"404", "NoSuchKey", "NotFound"}:
@@ -188,7 +193,7 @@ def _stream_s3_response(raw_key: str, request: Request, filename: str) -> Stream
         start, end = _parse_range(range_header, total_size)
         byte_range = f"bytes={start}-{end}"
         response = _client().get_object(
-            Bucket=settings.S3_BUCKET,
+            Bucket=S3_BUCKET,
             Key=full_key,
             Range=byte_range,
         )
@@ -206,7 +211,7 @@ def _stream_s3_response(raw_key: str, request: Request, filename: str) -> Stream
             headers=headers,
         )
 
-    response = _client().get_object(Bucket=settings.S3_BUCKET, Key=full_key)
+    response = _client().get_object(Bucket=S3_BUCKET, Key=full_key)
     headers = {
         "Accept-Ranges": "bytes",
         "Content-Length": str(total_size),
@@ -221,51 +226,26 @@ def _stream_s3_response(raw_key: str, request: Request, filename: str) -> Stream
 
 def read_text(raw_key: str, encoding: str = "utf-8") -> str:
     full_key, _ = _normalize_key(raw_key)
-    response = _client().get_object(Bucket=settings.S3_BUCKET, Key=full_key)
+    response = _client().get_object(Bucket=S3_BUCKET, Key=full_key)
     body = response["Body"].read()
     return body.decode(encoding, errors="ignore")
 
 
 def read_text_from_sources(
-    label: str,
     s3_key: str | None,
     local_path,
 ) -> str | None:
-    print(f"[DEBUG] read_text_from_sources for {label}:")
-    print(f"  - s3_key: {s3_key}")
-    print(f"  - local_path: {local_path}")
-    print(f"  - S3 enabled: {s3_enabled()}")
-    
-    if s3_key:
-        if s3_enabled():
-            try:
-                print(f"[DEBUG] Attempting to check if S3 object exists: {s3_key}")
-                head_result = head_object(s3_key)
-                print(f"[DEBUG] head_object result: {head_result}")
-                if head_result is not None:
-                    print(f"[DEBUG] Reading text from S3: {s3_key}")
-                    text = read_text(s3_key)
-                    print(f"[DEBUG] Successfully read {len(text)} chars from S3")
-                    return text
-                else:
-                    print(f"[DEBUG] S3 object does not exist: {s3_key}")
-            except Exception as exc:
-                print(f"[ERROR] Failed to load {label} data from S3: {exc}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"[DEBUG] {label} S3 key is set but S3 is not configured; ignoring.")
+    """Try to read text from S3, falling back to local path."""
+    if s3_key and s3_enabled():
+        try:
+            if head_object(s3_key) is not None:
+                return read_text(s3_key)
+        except Exception:
+            pass  # Fall through to local path
 
-    if local_path:
-        print(f"[DEBUG] Checking local path: {local_path} (exists: {local_path.exists() if local_path else 'N/A'})")
-        if local_path.exists():
-            text = local_path.read_text(encoding="utf-8", errors="ignore")
-            print(f"[DEBUG] Successfully read {len(text)} chars from local path")
-            return text
-    else:
-        print(f"[DEBUG] No local path provided")
+    if local_path and local_path.exists():
+        return local_path.read_text(encoding="utf-8", errors="ignore")
 
-    print(f"[ERROR] No data found for {label} from either S3 or local path")
     return None
 
 
@@ -274,12 +254,12 @@ def list_objects(prefix: str | None = None) -> list[str]:
     if prefix:
         full_key, _ = _normalize_key(prefix)
         search_prefix = full_key
-    elif settings.S3_PREFIX:
-        search_prefix = f"{settings.S3_PREFIX}/"
+    elif S3_PREFIX:
+        search_prefix = f"{S3_PREFIX}/"
 
     results: list[str] = []
     paginator = _client().get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET, Prefix=search_prefix):
+    for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=search_prefix):
         for item in page.get("Contents", []):
             key = item.get("Key")
             if key:
@@ -291,7 +271,7 @@ def _maybe_redirect_to_s3(s3_key: str | None) -> RedirectResponse | None:
     if not s3_key:
         return None
     if not s3_enabled():
-        if settings.S3_PUBLIC_BASE_URL:
+        if S3_PUBLIC_BASE_URL:
             try:
                 url = public_url(s3_key)
             except ValueError as exc:
@@ -305,7 +285,7 @@ def _maybe_redirect_to_s3(s3_key: str | None) -> RedirectResponse | None:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     try:
-        url = get_download_url(s3_key, expires=settings.S3_PRESIGN_EXPIRES)
+        url = get_download_url(s3_key, expires=S3_PRESIGN_EXPIRES)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return RedirectResponse(url, status_code=307)
@@ -356,9 +336,9 @@ def asset_status(path: Path | None, s3_key: str | None) -> dict:
 
 
 def health_status() -> dict:
-    video_status = asset_status(settings.VIDEO_PATH, settings.VIDEO_S3_KEY)
+    video_status = asset_status(VIDEO_PATH, VIDEO_S3_KEY)
     fusion_video_status = asset_status(
-        settings.FUSION_VIDEO_PATH, settings.FUSION_VIDEO_S3_KEY
+        FUSION_VIDEO_PATH, FUSION_VIDEO_S3_KEY
     )
     return {
         "status": "healthy" if video_status["exists"] else "degraded",
@@ -369,43 +349,17 @@ def health_status() -> dict:
     }
 
 
-def video_response(request: Request):
-    # Try S3 first if configured
-    if s3_enabled():
-        return _stream_s3_response(
-            settings.VIDEO_S3_KEY,
-            request,
-            filename="boat-detection-video.mp4",
-        )
-    # Fall back to local file
-    path = settings.VIDEO_PATH
-    if path and path.exists():
-        return FileResponse(
-            path=path,
-            media_type="video/mp4",
-            filename="boat-detection-video.mp4",
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Disposition": "inline",
-            },
-        )
-    raise HTTPException(
-        status_code=404,
-        detail=f"Video file not found at {path}",
-    )
-
-
 def video_stream_response(request: Request):
     if s3_enabled():
         return _stream_s3_response(
-            settings.VIDEO_S3_KEY,
+            VIDEO_S3_KEY,
             request,
             filename="boat-detection-video.mp4",
         )
-    redirect = _maybe_redirect_to_s3(settings.VIDEO_S3_KEY)
+    redirect = _maybe_redirect_to_s3(VIDEO_S3_KEY)
     if redirect:
         return redirect
-    path = settings.VIDEO_PATH
+    path = VIDEO_PATH
     if not path or not path.exists():
         raise HTTPException(
             status_code=404,
@@ -425,14 +379,14 @@ def video_stream_response(request: Request):
 def fusion_video_response(request: Request):
     if s3_enabled():
         return _stream_s3_response(
-            settings.FUSION_VIDEO_S3_KEY,
+            FUSION_VIDEO_S3_KEY,
             request,
-            filename=settings.FUSION_VIDEO_S3_KEY.rsplit("/", 1)[-1],
+            filename=FUSION_VIDEO_S3_KEY.rsplit("/", 1)[-1],
         )
-    redirect = _maybe_redirect_to_s3(settings.FUSION_VIDEO_S3_KEY)
+    redirect = _maybe_redirect_to_s3(FUSION_VIDEO_S3_KEY)
     if redirect:
         return redirect
-    path = settings.FUSION_VIDEO_PATH
+    path = FUSION_VIDEO_PATH
     if not path or not path.exists():
         raise HTTPException(
             status_code=404,
@@ -450,10 +404,10 @@ def fusion_video_response(request: Request):
 
 
 def components_background_response():
-    redirect = _maybe_redirect_to_s3(settings.COMPONENTS_BG_S3_KEY)
+    redirect = _maybe_redirect_to_s3(COMPONENTS_BG_S3_KEY)
     if redirect:
         return redirect
-    path = settings.COMPONENTS_BG_PATH
+    path = COMPONENTS_BG_PATH
     if not path or not path.exists():
         raise HTTPException(
             status_code=404,
@@ -470,11 +424,11 @@ def components_background_response():
 def detections_response(request: Request):
     if s3_enabled():
         return _stream_s3_response(
-            settings.DETECTIONS_S3_KEY,
+            DETECTIONS_S3_KEY,
             request,
-            filename=settings.DETECTIONS_S3_KEY.rsplit("/", 1)[-1],
+            filename=DETECTIONS_S3_KEY.rsplit("/", 1)[-1],
         )
-    path = settings.DETECTIONS_PATH
+    path = DETECTIONS_PATH
     if not path or not path.exists():
         raise HTTPException(
             status_code=404,
@@ -497,13 +451,13 @@ def _validate_client_key(raw_key: str) -> str:
     if ".." in parts:
         raise HTTPException(status_code=400, detail="key must not contain '..'")
 
-    if settings.S3_ALLOWED_PREFIXES:
+    if S3_ALLOWED_PREFIXES:
         allowed = any(
             key == prefix or key.startswith(f"{prefix}/")
-            for prefix in settings.S3_ALLOWED_PREFIXES
+            for prefix in S3_ALLOWED_PREFIXES
         )
         if not allowed:
-            allowed_list = ", ".join(settings.S3_ALLOWED_PREFIXES)
+            allowed_list = ", ".join(S3_ALLOWED_PREFIXES)
             raise HTTPException(
                 status_code=403,
                 detail=f"key must start with one of: {allowed_list}",
@@ -518,7 +472,7 @@ def presign_storage(request: PresignRequest) -> dict:
 
     key = _validate_client_key(request.key)
     method = request.method.strip().upper()
-    expires_in = request.expires_in or settings.S3_PRESIGN_EXPIRES
+    expires_in = request.expires_in or S3_PRESIGN_EXPIRES
 
     if method == "GET":
         url = get_download_url(key, expires=expires_in)

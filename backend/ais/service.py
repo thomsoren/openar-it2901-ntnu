@@ -7,7 +7,7 @@ import csv
 from datetime import datetime, timezone
 from typing import Iterable
 
-from common import settings
+from common.config import AIS_S3_KEY, AIS_SAMPLE_PATH
 from common.types import Vessel
 from storage import s3
 from .fetch_ais import fetch_ais
@@ -62,11 +62,7 @@ def _load_ais_csv_from_lines(lines: Iterable[str]) -> tuple[list[dict], dict[str
 
 
 def _load_ais_data() -> tuple[list[dict], dict[str, dict]]:
-    text = s3.read_text_from_sources(
-        "AIS",
-        settings.AIS_S3_KEY,
-        settings.AIS_SAMPLE_PATH,
-    )
+    text = s3.read_text_from_sources(AIS_S3_KEY, AIS_SAMPLE_PATH)
     if not text:
         return [], {}
     return _load_ais_csv_from_lines(text.splitlines())
