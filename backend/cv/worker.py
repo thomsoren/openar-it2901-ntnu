@@ -49,7 +49,7 @@ def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool
 
             try:
                 frame_queue.put_nowait((frame, frame_idx, ts))
-            except:
+            except Exception:
                 pass
 
             frame_idx += 1

@@ -7,18 +7,20 @@ from typing import List
 import numpy as np
 from ultralytics import RTDETR
 
-from common import settings
+from common.config import MODELS_DIR
 from common.types import Detection
+from cv.config import CONFIDENCE, IOU_THRESHOLD, AGNOSTIC_NMS, BYTETRACK_YAML
 
 
 class RTDETRDetector:
-    DEFAULT_MODEL = "rtdetr-l.pt"
-    BOAT_CLASSES = {8}  # 8 = boat in COCO
+    DEFAULT_MODEL = "epoch50.pt"  # Custom trained on CombinedShips
+    # All classes are boats in our custom model, no filtering needed
+    BOAT_CLASSES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
     def __init__(
         self,
         model_path: str | None = None,
-        confidence: float = 0.25,
+        confidence: float = CONFIDENCE,
         filter_boats: bool = True,  # Only return boat detections
     ):
         self.confidence = confidence
@@ -26,19 +28,32 @@ class RTDETRDetector:
         self.model = self._load_model(model_path)
 
     def _load_model(self, model_path: str | None) -> RTDETR:
+        try:
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"[Detector] PyTorch device: {device}")
+            if device == "cuda":
+                print(f"[Detector] CUDA device: {torch.cuda.get_device_name(0)}")
+        except ImportError:
+            print("[Detector] PyTorch not available for device check")
+
         if model_path:
             path = Path(model_path)
             if path.exists():
+                print(f"[Detector] Loading model from: {path}")
                 return RTDETR(str(path))
 
-            models_path = settings.MODELS_DIR / model_path
+            models_path = MODELS_DIR / model_path
             if models_path.exists():
+                print(f"[Detector] Loading model from: {models_path}")
                 return RTDETR(str(models_path))
 
-        default_path = settings.MODELS_DIR / self.DEFAULT_MODEL
+        default_path = MODELS_DIR / self.DEFAULT_MODEL
         if default_path.exists():
+            print(f"[Detector] Loading model from: {default_path}")
             return RTDETR(str(default_path))
 
+        print(f"[Detector] Loading default model: {self.DEFAULT_MODEL}")
         return RTDETR(self.DEFAULT_MODEL)
 
     def detect(self, frame: np.ndarray, track: bool = False) -> List[Detection]:
@@ -46,13 +61,14 @@ class RTDETRDetector:
             results = self.model.track(
                 frame,
                 conf=self.confidence,
-                iou=0.4,
+                iou=IOU_THRESHOLD,
                 persist=True,
-                tracker="bytetrack.yaml",
+                tracker=str(BYTETRACK_YAML),
+                agnostic_nms=AGNOSTIC_NMS,
                 verbose=False
             )[0]
         else:
-            results = self.model(frame, conf=self.confidence, iou=0.4, verbose=False)[0]
+            results = self.model(frame, conf=self.confidence, iou=IOU_THRESHOLD, agnostic_nms=AGNOSTIC_NMS, verbose=False)[0]
 
         detections = []
 
@@ -92,5 +108,5 @@ class RTDETRDetector:
         return detections
 
 
-def get_detector(confidence: float = 0.25, model_path: str | None = None) -> RTDETRDetector:
+def get_detector(confidence: float = CONFIDENCE, model_path: str | None = None) -> RTDETRDetector:
     return RTDETRDetector(model_path=model_path, confidence=confidence)
