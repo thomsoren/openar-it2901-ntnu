@@ -4,11 +4,11 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 
 ## Features
 
-- **Real-time Boat Detection** - YOLOv8-based detection with WebSocket streaming
+- **Real-time Boat Detection** - RT-DETR detection with WebSocket streaming
+- **ByteTrack Tracking** - Multi-object tracking for stable detection IDs
 - **AIS Integration** - Automatic vessel identification with Barentswatch API
-- **Temporal Smoothing** - Advanced tracking to reduce detection flickering
 - **AR Overlay** - OpenBridge POI markers with vessel information
-- **Video Streaming** - Efficient range-request video serving
+- **Video Streaming** - MP4 with range requests + MJPEG live stream
 - **S3 Storage** - Cloud storage integration for assets and data
 - **Data Fusion** - Ground truth detection matching with AIS data
 
@@ -20,7 +20,7 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 - **pnpm:** Install with `npm install -g pnpm`
 - **Python:** 3.11+
 - **uv:** Fast Python package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
-- **Docker:** For Roboflow Inference (optional)
+- **CUDA:** For GPU-accelerated inference (optional but recommended)
 - Access to GitHub Packages for `@ocean-industries-concept-lab` components
 
 ### Quick Start
@@ -52,9 +52,6 @@ pnpm dev
 Create a `.env` file in the `backend/` directory:
 
 ```bash
-# Required for Roboflow cloud detection
-ROBOFLOW_API_KEY=your_key_here
-
 # Required for AIS vessel data
 AIS_CLIENT_ID=your_client_id
 AIS_CLIENT_SECRET=your_client_secret
@@ -67,8 +64,31 @@ S3_PRESIGN_EXPIRES=900
 ```
 
 **Getting API Keys:**
-- Roboflow: https://app.roboflow.com/settings/api
 - AIS API: https://www.barentswatch.no/minside/devaccess/ais
+
+### Video Setup
+
+Place a video file for inference at the default path, or configure via environment:
+
+```bash
+# Default path (relative to backend/)
+data/raw/video/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4
+
+# Or set VIDEO_S3_KEY to stream from S3
+```
+
+### Model Setup
+
+Place trained RT-DETR model weights in `backend/models/`:
+
+```bash
+backend/models/
+├── best.pt      # Best validation checkpoint (recommended)
+├── last.pt      # Latest checkpoint
+└── epoch50.pt   # Specific epoch checkpoint
+```
+
+The detector defaults to `best.pt`. Train your own model or use pretrained weights.
 
 ### Individual Commands
 
@@ -115,13 +135,21 @@ pnpm login --registry https://npm.pkg.github.com/ --scope=ocean-industries-conce
 openar/
 ├── backend/              # Python FastAPI backend
 │   ├── ais/             # AIS data integration
-│   ├── common/          # Shared utilities & config
+│   ├── common/
+│   │   ├── config/      # Modular configuration
+│   │   │   ├── paths.py    # File paths
+│   │   │   ├── s3.py       # S3 settings
+│   │   │   └── samples.py  # Sample configs
+│   │   └── types.py     # Shared types
 │   ├── cv/              # Computer vision pipeline
-│   │   ├── detectors.py # YOLO & Roboflow detectors
-│   │   ├── trackers.py  # ByteTrack object tracking
-│   │   ├── pipeline.py  # Detection streaming
-│   │   └── models/      # Trained model files
+│   │   ├── detectors.py    # RT-DETR detector
+│   │   ├── worker.py       # Inference worker process
+│   │   ├── config.py       # Detection/tracking params
+│   │   ├── bytetrack.yaml  # Tracker configuration
+│   │   └── training/       # Model training scripts
+│   ├── fusion/          # Ground truth data handling
 │   ├── storage/         # S3 integration
+│   ├── models/          # Trained model weights
 │   ├── api.py           # FastAPI routes
 │   └── main.py          # Entry point
 ├── frontend/            # React + TypeScript frontend
@@ -140,8 +168,6 @@ openar/
 │   │   └── config/      # Configuration
 │   └── public/          # Static assets
 ├── docs/                # Documentation
-│   ├── architecture.md         # Frontend architecture
-│   └── backend-architecture.md # Backend architecture
 └── landingpage/         # Next.js landing page
 ```
 
@@ -151,17 +177,18 @@ Python FastAPI backend with real-time detection streaming and AIS integration.
 
 **Key Features:**
 - WebSocket streaming for real-time detections
-- Temporal smoothing with object tracking
+- RT-DETR object detection with ByteTrack tracking
+- Multiprocess inference worker (GPU-accelerated)
+- MJPEG video streaming synced with detections
 - AIS vessel data integration
-- S3-compatible storage
-- Video streaming with range requests
+- S3-compatible storage with local fallback
 - RESTful API with automatic documentation
 
 **Tech Stack:**
 - FastAPI (async web framework)
+- Ultralytics (RT-DETR + ByteTrack)
 - OpenCV (video processing)
-- YOLO (object detection)
-- ByteTrack (object tracking)
+- PyTorch (deep learning)
 - Pydantic (data validation)
 
 See [docs/backend-architecture.md](./docs/backend-architecture.md) for detailed documentation.
@@ -173,8 +200,7 @@ React application with TypeScript, demonstrating AR overlays for maritime vessel
 **Key Features:**
 - OpenBridge web components for maritime UI
 - WebSocket streaming for live detections
-- Smooth marker interpolation
-- Video playback synchronization
+- Video playback with detection overlay
 - AIS vessel information display
 
 **Tech Stack:**
@@ -208,9 +234,10 @@ Next.js landing page showcasing the project.
 - `WebSocket /api/fusion/ws` - Stream fusion data with AIS
 
 ### Video Streaming
-- `GET /api/video` - Main video stream
+- `GET /api/video` - Main video file (MP4)
+- `GET /api/video/mjpeg` - MJPEG stream synced with detections
 - `GET /api/video/fusion` - Fusion video stream
-- Both support range requests for seeking
+- `GET /api/video/stream` - Video with range request support
 
 ### Configuration
 - `GET /api/samples` - List available sample configurations
@@ -260,35 +287,39 @@ The project uses:
 
 ### Backend
 
-**WebSocket Streaming:**
-- Separate endpoints for different data sources
-- `handle_detections_ws()` - Streams precomputed detections from S3
-- `handle_fusion_ws()` - Streams time-synced ground truth with AIS
+**Inference Pipeline:**
+- Multiprocess worker runs detection in separate process
+- Reader thread reads video at native FPS
+- Inference runs on latest frame (natural frame skipping)
+- WebSocket broadcasts detections to all connected clients
 
-**Temporal Smoothing:**
-- Centroid-based object tracking
-- 0.5s detection persistence
-- 45% confidence threshold
-- Stable track IDs across frames
+**Detection & Tracking:**
+- RT-DETR transformer-based detector
+- ByteTrack multi-object tracking
+- Configurable confidence threshold (default: 0.15)
+- Track buffer maintains IDs across detection gaps
+
+**Configuration:**
+- Modular config in `backend/common/config/`
+- CV settings in `backend/cv/config.py`
+- ByteTrack params in `backend/cv/bytetrack.yaml`
 
 **S3 Integration:**
 - Presigned URLs for secure access
-- Public CDN support
-- Health checking
-- Asset management
+- Local file fallback when S3 unavailable
+- Health checking at `/health`
 
 ### Frontend
 
 **Detection Display:**
 - WebSocket streaming for real-time updates
-- Smooth marker interpolation using requestAnimationFrame
-- Stale detection filtering
-- OpenBridge POI components
+- OpenBridge POI components for maritime UI
+- Video transform calculation for overlay positioning
 
-**Video Synchronization:**
-- Independent video playback at native FPS
-- Detection overlay at detection FPS
-- Smooth position transitions
+**Pages:**
+- **Datavision** - Live inference with MJPEG stream
+- **Fusion** - Ground truth data with AIS overlay
+- **AIS** - Live AIS vessel data display
 
 ## Troubleshooting
 
@@ -334,9 +365,14 @@ The project uses:
 - Check what's using ports: `lsof -i :8000`
 
 **Performance issues:**
-- Reduce detection FPS in backend config
-- Enable GPU acceleration for YOLO
-- Adjust temporal smoothing parameters
+- Ensure CUDA is available: check `[Detector] PyTorch device: cuda` in logs
+- Adjust confidence in `backend/cv/config.py`
+- Tune ByteTrack params in `backend/cv/bytetrack.yaml`
+
+**Detection quality:**
+- Lower `CONFIDENCE` in `cv/config.py` for more detections
+- Increase `track_buffer` in `bytetrack.yaml` to maintain tracks longer
+- Try different model checkpoints (`best.pt` vs `last.pt`)
 
 ## Contributing
 
@@ -360,5 +396,4 @@ This project is part of the IT2901 course at NTNU.
 
 - [OpenBridge Design System](https://openbridge.no/) - Maritime UI components
 - [Barentswatch](https://www.barentswatch.no/) - AIS data API
-- [Roboflow](https://roboflow.com/) - Computer vision platform
-- [Ultralytics YOLO](https://ultralytics.com/) - Object detection
+- [Ultralytics](https://ultralytics.com/) - RT-DETR & ByteTrack
