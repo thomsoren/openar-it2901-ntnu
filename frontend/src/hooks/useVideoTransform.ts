@@ -20,11 +20,12 @@ export interface VideoTransform {
  * - cover: Video fills container completely, may be cropped
  */
 export function useVideoTransform(
-  videoRef: RefObject<HTMLVideoElement | null>,
+  videoRef: RefObject<HTMLElement | null>,
   containerRef: RefObject<HTMLDivElement | null>,
   fitMode: VideoFitMode,
   nativeWidth: number,
-  nativeHeight: number
+  nativeHeight: number,
+  recalcTrigger?: unknown
 ): VideoTransform {
   const [transform, setTransform] = useState<VideoTransform>({
     videoWidth: nativeWidth,
@@ -114,7 +115,7 @@ export function useVideoTransform(
     return () => {
       resizeObserver.disconnect();
     };
-  }, [videoRef, containerRef, fitMode, nativeWidth, nativeHeight]);
+  }, [videoRef, containerRef, fitMode, nativeWidth, nativeHeight, recalcTrigger]);
 
   return transform;
 }

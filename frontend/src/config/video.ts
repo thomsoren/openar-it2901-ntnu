@@ -14,7 +14,7 @@ export const API_CONFIG = {
 export const VIDEO_CONFIG = {
   WIDTH: 1920,
   HEIGHT: 1080,
-  SOURCE: `${API_CONFIG.BASE_URL}/api/video`,
+  SOURCE: `${API_CONFIG.BASE_URL}/api/video/mjpeg`,
 } as const;
 
 export const FUSION_VIDEO_CONFIG = {

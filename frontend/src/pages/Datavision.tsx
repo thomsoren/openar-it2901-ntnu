@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
@@ -6,9 +6,10 @@ import { useSettings } from "../contexts/SettingsContext";
 import { VIDEO_CONFIG, DETECTION_CONFIG } from "../config/video";
 
 function Datavision() {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { videoFitMode, detectionVisible } = useSettings();
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   // Receive detection updates via WebSocket (runs at YOLO speed ~5 FPS)
   // Video plays independently at native 25 FPS
@@ -23,31 +24,29 @@ function Datavision() {
     containerRef,
     videoFitMode,
     VIDEO_CONFIG.WIDTH,
-    VIDEO_CONFIG.HEIGHT
+    VIDEO_CONFIG.HEIGHT,
+    imageLoaded
   );
 
   return (
     <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-      {/* Native video playback at 25 FPS */}
-      <video
+      {/* MJPEG stream from backend - synced with detections */}
+      <img
         ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
+        src={VIDEO_CONFIG.SOURCE}
+        alt="Video stream"
         className="background-video"
         style={{ objectFit: videoFitMode }}
-      >
-        <source src={VIDEO_CONFIG.SOURCE} type="video/mp4" />
-      </video>
+        onLoad={() => setImageLoaded(true)}
+      />
 
       {/* Status overlay */}
       {isLoading && <div className="status-overlay">Connecting to detection stream...</div>}
       {error && <div className="status-overlay status-error">Error: {error}</div>}
       {!isLoading && !error && (
         <div className="status-overlay status-info">
-          {isConnected ? "Connected" : "Disconnected"} | Detection: {fps.toFixed(1)} FPS | Vessels:{" "}
-          {vessels.length}
+          {isConnected ? "Connected" : "Disconnected"} | Detection: {(fps ?? 0).toFixed(1)} FPS |
+          Vessels: {vessels.length}
         </div>
       )}
 

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 class Detection(BaseModel):
     """
-    Bounding box from YOLO detection.
+    Bounding box from RT-DETR detection.
     Represents where a boat is on screen.
     """
     x: float           # Center X coordinate (pixels)
@@ -42,5 +42,5 @@ class DetectedVessel(BaseModel):
     A detected boat with optional AIS data.
     This is what the frontend receives and renders.
     """
-    detection: Detection           # Screen coordinates from YOLO
+    detection: Detection           # Screen coordinates from RT-DETR
     vessel: Vessel | None = None   # AIS data if matched, None otherwise
