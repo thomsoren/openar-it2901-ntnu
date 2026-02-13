@@ -11,6 +11,8 @@ from pathlib import Path
 
 import cv2
 
+from cv.correction_pipeline import CorrectionPipeline
+from cv.publisher import run_publisher_loop
 
 def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool = True):
     from cv.detectors import get_detector
@@ -20,13 +22,16 @@ def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    pipeline = CorrectionPipeline(frame_width=width)
 
     detection_queue.put({"type": "ready", "width": width, "height": height, "fps": fps})
 
     # Shared state between threads
     lock = threading.Lock()
+    state_lock = threading.Lock()
     latest = {"frame": None, "idx": 0, "ts": 0.0}
     stopped = threading.Event()
+    stats = {"inference_fps": 0.0}
 
     def reader():
         frame_idx = 0
@@ -61,35 +66,42 @@ def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool
         stopped.set()
 
     reader_thread = threading.Thread(target=reader, daemon=True)
+    publisher_thread = threading.Thread(
+        target=run_publisher_loop,
+        args=(detection_queue, lock, state_lock, latest, stopped, stats, pipeline, fps),
+        daemon=True,
+    )
     reader_thread.start()
+    publisher_thread.start()
 
     # Wait for first frame
     while latest["frame"] is None and not stopped.is_set():
         time.sleep(0.01)
 
     last_time = time.monotonic()
+    last_inferred_frame_idx = -1
 
     while not stopped.is_set():
         with lock:
             frame = latest["frame"].copy()
             frame_idx = latest["idx"]
-            ts = latest["ts"]
 
-        detections = detector.detect(frame, track=True)
+        if frame_idx == last_inferred_frame_idx:
+            time.sleep(0.001)
+            continue
 
         now = time.monotonic()
+        raw = detector.detect(frame, track=True)
+        with state_lock:
+            pipeline.ingest(raw, now=now)
+        last_inferred_frame_idx = frame_idx
+
         inf_fps = 1.0 / (now - last_time) if now > last_time else 0.0
         last_time = now
-
-        detection_queue.put({
-            "frame_index": frame_idx,
-            "timestamp_ms": ts,
-            "fps": fps,
-            "inference_fps": round(inf_fps, 1),
-            "vessels": [{"detection": d.model_dump(), "vessel": None} for d in detections],
-        })
+        stats["inference_fps"] = inf_fps
 
     reader_thread.join(timeout=1)
+    publisher_thread.join(timeout=1)
     cap.release()
     detection_queue.put(None)
     frame_queue.put(None)
