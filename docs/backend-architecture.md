@@ -291,6 +291,7 @@ ROBOFLOW_API_KEY=your_api_key_here
 AIS_CLIENT_ID=your_client_id_here
 AIS_CLIENT_SECRET=your_client_secret_here
 ```
+To create AIS variables, check out: [AIS API key creation](../backend/ais_api_key_creation.md)
 
 ### Optional (S3 Storage)
 
