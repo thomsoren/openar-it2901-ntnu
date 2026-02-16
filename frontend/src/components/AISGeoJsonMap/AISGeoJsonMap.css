@@ -1,0 +1,24 @@
+.geojson-map-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.geojson-map-header {
+  padding: 8px 14px;
+  background: #0d1526;
+  border-bottom: 1px solid #1e3a5f;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.geojson-map-text {
+  color: white;
+  font-size: 11px;
+  font-family: monospace;
+}

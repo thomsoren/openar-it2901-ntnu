@@ -7,6 +7,7 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
+import { AISGeoJsonMap } from "./AISGeoJsonMap/AISGeoJsonMap";
 
 export const AISGeographicalDataDisplay: React.FC = () => {
   const [shouldStream, setShouldStream] = useState(false);
@@ -30,6 +31,19 @@ export const AISGeographicalDataDisplay: React.FC = () => {
     offsetMeters,
     fovDegrees
   );
+
+  // Get browser GPS location to autofill ship position
+  const handleUseGPSLocation = () => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setShipLat(position.coords.latitude);
+        setShipLon(position.coords.longitude);
+      },
+      (error) => {
+        console.error("Location unavailable", error);
+      }
+    );
+  };
 
   return (
     <div className="ais-stream-container">
@@ -124,6 +138,24 @@ export const AISGeographicalDataDisplay: React.FC = () => {
           />
         </div>
       </div>
+
+      <AISGeoJsonMap
+        shipLat={shipLat}
+        shipLon={shipLon}
+        heading={heading}
+        offsetMeters={offsetMeters}
+        fovDegrees={fovDegrees}
+        onChange={(updates) => {
+          if (updates.shipLat !== undefined) setShipLat(updates.shipLat);
+          if (updates.shipLon !== undefined) setShipLon(updates.shipLon);
+          if (updates.heading !== undefined) setHeading(updates.heading);
+          if (updates.offsetMeters !== undefined) setOffsetMeters(updates.offsetMeters);
+        }}
+      />
+      {/* @ts-expect-error - OpenBridge component type mismatch */}
+      <ObcButton variant="normal" onClick={handleUseGPSLocation} disabled={isStreaming}>
+        Use GPS Location
+      </ObcButton>
 
       <div className="ais-stream-list">
         {features.length === 0 ? (
