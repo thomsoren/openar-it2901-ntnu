@@ -20,6 +20,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
+from ais_mapping_service.projection import project_ais_to_pixel
+from ais_mapping_service.camera_config import CameraConfig
 from common.config import VIDEO_PATH, load_samples
 from common.types import DetectedVessel
 from cv import worker
@@ -211,7 +213,7 @@ async def get_ais_data():
 async def stream_ais_geojson(
     ship_lat: float = 63.4365,
     ship_lon: float = 10.3835,
-    heading: float = 0,
+    heading: float = 90,
     offset_meters: float = 1000,
     fov_degrees: float = 60
 ):
@@ -230,6 +232,65 @@ async def stream_ais_geojson(
             error_msg = f"{type(e).__name__}: {str(e)}"
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
     
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@app.get("/api/ais/projections")
+async def stream_ais_projections(
+    ship_lat: float = 63.4365,
+    ship_lon: float = 10.3835,
+    heading: float = 90,
+    offset_meters: float = 3000,
+    fov_degrees: float = 120
+):
+    """
+    Stream live AIS data in ship's FOV + projected fake camera pixel positions.
+    Raw AIS remains available at /api/ais/stream.
+    """
+
+    cam_cfg = CameraConfig(h_fov_deg=fov_degrees)
+
+    async def event_generator():
+        try:
+            async for feature in fetch_ais_stream_geojson(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                heading=heading,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):                
+                # Extract coordinates from top-level latitude/longitude keys
+                lat = feature.get("latitude")
+                lon = feature.get("longitude")
+
+                projection = None
+                if lat is not None and lon is not None:
+                    projection = project_ais_to_pixel(
+                        ship_lat=ship_lat,
+                        ship_lon=ship_lon,
+                        ship_heading=heading,
+                        target_lat=lat,
+                        target_lon=lon,
+                        cam_cfg=cam_cfg
+                    )
+
+                # Enrich feature with projection (or null if outside FOV)
+                feature["projection"] = projection
+
+                yield f"data: {json.dumps(feature)}\n\n"
+
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
