@@ -1,9 +1,10 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import type { Map, Marker, Polygon, LeafletEvent } from "leaflet";
 import type * as LeafletType from "leaflet";
 import "./AISGeoJsonMap.css";
 import { useObcPalette } from "../../hooks/useOBCTheme";
 import getTilemapURL from "./AISGeoJSONMapTilemap";
+import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -49,13 +50,14 @@ function distanceTo(lat1: number, lon1: number, lat2: number, lon2: number): num
 }
 
 // Helper to build the geojson shape
+// param: steps controls how smooth the arc is - more steps means smoother but more processing
 function buildWedge(
   lat: number,
   lon: number,
   headingDeg: number,
   rangeMetre: number,
   fovDeg: number,
-  steps = 48
+  steps = 32
 ): [number, number][] {
   const half = fovDeg / 2;
   const arc: [number, number][] = [];
@@ -107,6 +109,15 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
   const theme = useObcPalette();
 
+  const centerMap = useCallback(() => {
+    if (!mapRef.current) return;
+    mapRef.current.panTo([shipLat, shipLon], {
+      animate: true,
+      // Travel time from current to new position (in seconds).
+      duration: 0.5,
+    });
+  }, [shipLat, shipLon]);
+
   // Initialize map on first render
   useEffect(() => {
     let alive = true;
@@ -120,7 +131,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       }).addTo(map);
       tileLayerRef.current = tileLayer;
 
-      // Wedge polygon
+      // Build wedge polygon
       wedgeRef.current = L.polygon(
         buildWedge(shipLat, shipLon, heading, offsetMeters, fovDegrees),
         {
@@ -134,7 +145,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       // Origin handle
       const originIcon = L.divIcon({
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:#00d4ff;border:2px solid #0a0e1a;cursor:grab;box-shadow:0 0 6px #00d4ff88"></div>`,
+        html: `<div class="geojson-map-origin-icon"></div>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7],
         className: "",
@@ -162,7 +173,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       // Range / heading handle
       const [newLat, newLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
       const rangeIcon = L.divIcon({
-        html: `<div style="width:12px;height:12px;background:#facc15;border:2px solid #0a0e1a;cursor:grab;transform:rotate(45deg);box-shadow:0 0 6px #facc1588"></div>`,
+        html: `<div class="geojson-map-range-icon"></div>`,
         iconSize: [12, 12],
         iconAnchor: [6, 6],
         className: "",
@@ -205,11 +216,14 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   // Sync layers when props change from the input fields
   useEffect(() => {
     if (!mapRef.current) return;
+
     wedgeRef.current?.setLatLngs(buildWedge(shipLat, shipLon, heading, offsetMeters, fovDegrees));
     originRef.current?.setLatLng([shipLat, shipLon]);
     const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
     rangeRef.current?.setLatLng([rLat, rLon]);
-  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees]);
+
+    centerMap();
+  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap]);
 
   // Refresh tile layer when theme changes
   useEffect(() => {
@@ -235,6 +249,10 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       </div>
       {/* Map container */}
       <div ref={containerRef} style={{ height: "420px", width: "100%" }} />
+      {/* @ts-expect-error - OpenBridge component type mismatch */}
+      <ObcButton variant="normal" onClick={centerMap} className="geojson-map-center-button">
+        Center Map
+      </ObcButton>
     </div>
   );
 };

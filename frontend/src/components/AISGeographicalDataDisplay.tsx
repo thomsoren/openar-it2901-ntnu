@@ -16,6 +16,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
   const [heading, setHeading] = useState(0);
   const [offsetMeters, setOffsetMeters] = useState(1000);
   const [fovDegrees, setFovDegrees] = useState(60);
+  const [isLoadingGPS, setIsLoadingGPS] = useState(false);
 
   const parseNumberInput = (event: Event, fallback: number) => {
     const rawValue = (event.target as { value?: string }).value ?? "";
@@ -34,13 +35,16 @@ export const AISGeographicalDataDisplay: React.FC = () => {
 
   // Get browser GPS location to autofill ship position
   const handleUseGPSLocation = () => {
+    setIsLoadingGPS(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setShipLat(position.coords.latitude);
         setShipLon(position.coords.longitude);
+        setIsLoadingGPS(false);
       },
       (error) => {
         console.error("Location unavailable", error);
+        setIsLoadingGPS(false);
       }
     );
   };
@@ -137,6 +141,17 @@ export const AISGeographicalDataDisplay: React.FC = () => {
             onInput={(e) => setFovDegrees(parseNumberInput(e, fovDegrees))}
           />
         </div>
+        <div className="param-group">
+          <span className="param-label">Autofill GPS coordinates</span>
+          {/* @ts-expect-error - OpenBridge component type mismatch */}
+          <ObcButton
+            variant="normal"
+            onClick={handleUseGPSLocation}
+            disabled={isStreaming || isLoadingGPS}
+          >
+            {isLoadingGPS ? "Fetching..." : "Current position"}
+          </ObcButton>
+        </div>
       </div>
 
       <AISGeoJsonMap
@@ -152,10 +167,6 @@ export const AISGeographicalDataDisplay: React.FC = () => {
           if (updates.offsetMeters !== undefined) setOffsetMeters(updates.offsetMeters);
         }}
       />
-      {/* @ts-expect-error - OpenBridge component type mismatch */}
-      <ObcButton variant="normal" onClick={handleUseGPSLocation} disabled={isStreaming}>
-        Use GPS Location
-      </ObcButton>
 
       <div className="ais-stream-list">
         {features.length === 0 ? (
