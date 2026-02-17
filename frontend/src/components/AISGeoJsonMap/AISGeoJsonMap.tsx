@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from "react";
 import type { Map, Marker, Polygon, LeafletEvent } from "leaflet";
 import type * as LeafletType from "leaflet";
 import "./AISGeoJsonMap.css";
+import { useObcPalette } from "../../hooks/useOBCTheme";
+import getTilemapURL from "./AISGeoJSONMapTilemap";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -102,6 +104,8 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const wedgeRef = useRef<Polygon | null>(null);
   const originRef = useRef<Marker | null>(null);
   const rangeRef = useRef<Marker | null>(null);
+  const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
+  const theme = useObcPalette();
 
   // Initialize map on first render
   useEffect(() => {
@@ -111,9 +115,10 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       const map = L.map(containerRef.current, { center: [shipLat, shipLon], zoom: 14 });
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      const tileLayer = L.tileLayer(getTilemapURL(theme), {
         maxZoom: 19,
       }).addTo(map);
+      tileLayerRef.current = tileLayer;
 
       // Wedge polygon
       wedgeRef.current = L.polygon(
@@ -206,15 +211,19 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     rangeRef.current?.setLatLng([rLat, rLon]);
   }, [shipLat, shipLon, heading, offsetMeters, fovDegrees]);
 
-  // Cleanup
+  // Refresh tile layer when theme changes
   useEffect(() => {
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
+    loadLeaflet().then((L) => {
+      if (!mapRef.current) return;
+      const newUrl = getTilemapURL(theme);
+      if (tileLayerRef.current) {
+        tileLayerRef.current.setUrl(newUrl);
+        return;
       }
-    };
-  }, []);
+
+      tileLayerRef.current = L.tileLayer(newUrl, { maxZoom: 19 }).addTo(mapRef.current);
+    });
+  }, [theme]);
 
   return (
     <div className="geojson-map-container">
