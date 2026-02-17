@@ -17,15 +17,10 @@ def project_ais_to_pixel(
     x_norm = (rel_bearing / cam_cfg.h_fov_deg) + 0.5
     x_px = int(x_norm * cam_cfg.image_width)
     
-    # Clamp x to valid canvas bounds
-    x_px = max(0, min(cam_cfg.image_width - 1, x_px))
 
     # Fake vertical placement: closer boats appear lower
     horizon_y = cam_cfg.image_height * 0.4
     y_px = int(horizon_y + min(300, 10000 / max(dist_m, 1)))
-    
-    # Clamp y to valid canvas bounds
-    y_px = max(0, min(cam_cfg.image_height - 1, y_px))
 
     return {
         "x_px": x_px,

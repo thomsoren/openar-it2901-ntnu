@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useFetchAISProjections } from "../hooks/useFetchAISProjections";
 import "./AISProjectedCoordinates.css";
-import { ProjectedCoordinate } from "../types/projection";
 import { ObcInput } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/input/input";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
@@ -174,15 +173,39 @@ export const AISProjectedCoordinates: React.FC = () => {
             })}
 
             {/* Center crosshair */}
-            <line x1={CANVAS_WIDTH / 2} y1={0} x2={CANVAS_WIDTH / 2} y2={CANVAS_HEIGHT} stroke="#0f0" strokeWidth="2" opacity="0.3" />
-            <line x1={0} y1={CANVAS_HEIGHT / 2} x2={CANVAS_WIDTH} y2={CANVAS_HEIGHT / 2} stroke="#0f0" strokeWidth="2" opacity="0.3" />
+            <line
+              x1={CANVAS_WIDTH / 2}
+              y1={0}
+              x2={CANVAS_WIDTH / 2}
+              y2={CANVAS_HEIGHT}
+              stroke="#0f0"
+              strokeWidth="2"
+              opacity="0.3"
+            />
+            <line
+              x1={0}
+              y1={CANVAS_HEIGHT / 2}
+              x2={CANVAS_WIDTH}
+              y2={CANVAS_HEIGHT / 2}
+              stroke="#0f0"
+              strokeWidth="2"
+              opacity="0.3"
+            />
 
             {/* Projected points */}
             {visibleProjections.map((proj) => (
-              <g key={`${proj.mmsi}-${proj.timestamp}`}>
+              <g key={`${proj.mmsi}`}>
                 {/* Points */}
                 <circle cx={proj.pixel_x} cy={proj.pixel_y} r="8" fill="#00ff00" opacity="0.8" />
-                <circle cx={proj.pixel_x} cy={proj.pixel_y} r="12" fill="none" stroke="#00ff00" strokeWidth="2" opacity="0.5" />
+                <circle
+                  cx={proj.pixel_x}
+                  cy={proj.pixel_y}
+                  r="12"
+                  fill="none"
+                  stroke="#00ff00"
+                  strokeWidth="2"
+                  opacity="0.5"
+                />
 
                 {/* Label */}
                 <text
@@ -209,7 +232,7 @@ export const AISProjectedCoordinates: React.FC = () => {
             <div className="data-grid">
               {visibleProjections.map((proj) => (
                 <ObcElevatedCard
-                  key={`${proj.mmsi}-${proj.timestamp}`}
+                  key={`${proj.mmsi}`}
                   className="data-card"
                   /* @ts-expect-error - OpenBridge component type mismatch */
                   size="multi-line"
@@ -240,7 +263,9 @@ export const AISProjectedCoordinates: React.FC = () => {
                     </div>
                     <div className="data-detail">
                       <span className="data-detail-label">Rel. Bearing</span>
-                      <span className="data-detail-value">{proj.relative_bearing_deg.toFixed(1)}°</span>
+                      <span className="data-detail-value">
+                        {proj.relative_bearing_deg.toFixed(1)}°
+                      </span>
                     </div>
                   </div>
                 </ObcElevatedCard>

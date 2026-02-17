@@ -7,12 +7,13 @@ export const useFetchAISProjections = (
   shipLon: number = 10.3835,
   heading: number = 90,
   offsetMeters: number = 3000,
-  fovDegrees: number = 120,
+  fovDegrees: number = 120
 ) => {
   const [projections, setProjections] = useState<ProjectedCoordinate[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const projectionsMapRef = useRef<Map<number, ProjectedCoordinate>>(new Map());
 
   useEffect(() => {
     if (!shouldStream) {
@@ -25,6 +26,7 @@ export const useFetchAISProjections = (
     }
 
     setTimeout(() => setError(null), 0);
+    projectionsMapRef.current.clear();
 
     const url = `http://localhost:8000/api/ais/projections?ship_lat=${shipLat}&ship_lon=${shipLon}&heading=${heading}&offset_meters=${offsetMeters}&fov_degrees=${fovDegrees}`;
     const eventSource = new EventSource(url);
@@ -36,12 +38,18 @@ export const useFetchAISProjections = (
       const feature = JSON.parse(event.data);
       const projection = feature.projection;
       console.log("Received projection:", projection);
-      const props = feature.properties || {};
-
+      console.log("Feature MMSI field:", feature.mmsi, "Properties MMSI:", feature.properties?.mmsi);
+      
       if (projection && projection.x_px !== undefined && projection.y_px !== undefined) {
+        // Extract MMSI from different possible locations in the feature object
+        const mmsi = feature.mmsi || feature.properties?.mmsi || 0;
+        const name = feature.name || feature.properties?.name || feature.properties?.shipname || `MMSI ${mmsi}`;
+        
+        console.log("Using MMSI:", mmsi, "Name:", name);
+        
         const projected: ProjectedCoordinate = {
-          mmsi: props.mmsi || 0,
-          name: props.name || props.shipname,
+          mmsi: mmsi,
+          name: name,
           pixel_x: projection.x_px,
           pixel_y: projection.y_px,
           distance_m: projection.distance_m,
@@ -50,7 +58,13 @@ export const useFetchAISProjections = (
           in_fov: true,
           timestamp: new Date().toISOString(),
         };
-        setProjections((prev) => [projected, ...prev].slice(0, 50));
+        
+        // Update or add vessel in the map
+        projectionsMapRef.current.set(mmsi, projected);
+        
+        // Convert map to array for state, keeping only latest 50
+        const updatedProjections = Array.from(projectionsMapRef.current.values()).slice(0, 50);
+        setProjections(updatedProjections);
       }
     };
 

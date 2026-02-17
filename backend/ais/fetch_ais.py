@@ -4,6 +4,8 @@ import asyncio
 import json
 import math
 from dotenv import load_dotenv
+from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
+from ais_mapping_service.pixel_projection.camera_config import CameraConfig
 
 load_dotenv()
 
@@ -54,6 +56,62 @@ async def fetch_ais():
       
       return await response.json()
 
+
+async def fetch_vessel_position_by_mmsi(mmsi: str) -> dict | None:
+    """
+    Fetch a specific vessel's latest position and heading from Barentswatch API.
+    
+    Args:
+        mmsi: Maritime Mobile Service Identity (vessel ID)
+    
+    Returns:
+        Dictionary with keys: latitude, longitude, trueHeading
+        Returns None if vessel not found
+    """
+    if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
+        raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            token = await _fetch_token(session)
+            async with session.get(
+                f"https://historic.ais.barentswatch.no/v1/historic/trackslast24hours/{mmsi}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json"
+                }
+            ) as response:
+                if response.status == 404:
+                    return None
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise ValueError(f"HTTP {response.status}: {error_text}")
+                
+                data = await response.json()
+                if not data or "features" not in data:
+                    return None
+                
+                # Get the last (most recent) position from the track
+                features = data.get("features", [])
+                if not features:
+                    return None
+                
+                latest = features[-1]
+                props = latest.get("properties", {})
+                geometry = latest.get("geometry", {})
+                coords = geometry.get("coordinates", [])
+                
+                if not coords or len(coords) < 2:
+                    return None
+                
+                return {
+                    "longitude": coords[0],
+                    "latitude": coords[1],
+                    "trueHeading": props.get("trueHeading", 0)
+                }
+    except Exception as e:
+        raise ValueError(f"Error fetching vessel {mmsi} from Barentswatch: {type(e).__name__}: {str(e)}")
+
 async def fetch_ais_stream_geojson(
     timeout: int = 120,
     ship_lat: float = None,
@@ -74,7 +132,23 @@ async def fetch_ais_stream_geojson(
         fov_degrees: Field of view angle in degrees
     
     Yields:
-        AIS data objects from the stream
+        AIS data objects from the stream.
+        
+        Example:
+            {
+                'courseOverGround': 223.4,
+                'latitude': 63.439218,
+                'longitude': 10.398735,
+                'name': 'OCEAN SPACE DRONE1',
+                'rateOfTurn': -6,
+                'shipType': 99,
+                'speedOverGround': 0.1,
+                'trueHeading': 138,
+                'navigationalStatus': 0,
+                'mmsi': 257030830,
+                'msgtime': '2026-02-17T14:13:04+00:00',
+                'stream': 'terra'
+            }
     """
     if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
         raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
@@ -148,6 +222,118 @@ async def fetch_ais_stream_geojson(
                     return
     except Exception as e:
         raise ValueError(f"Stream error in fetch_ais_stream_geojson: {type(e).__name__}: {str(e)}")
+
+async def fetch_ais_stream_projections(
+    ship_lat: float,
+    ship_lon: float,
+    heading: float,
+    offset_meters: float,
+    fov_degrees: float
+):
+    """
+    Fetch AIS data stream and project vessel positions to camera pixel coordinates.
+    Offset and FOV define the area around the ship to fetch AIS data from.
+    
+    Args:
+        ship_lat: Observer latitude
+        ship_lon: Observer longitude
+        heading: Observer heading in degrees
+        offset_meters: How far from the observer to fetch AIS data (in meters)
+        fov_degrees: Field of view angle in degrees
+    
+    Yields:
+        AIS features enriched with projection field containing pixel coordinates
+    """
+    
+    cam_cfg = CameraConfig(h_fov_deg=fov_degrees)
+    
+    async for feature in fetch_ais_stream_geojson(
+        ship_lat=ship_lat,
+        ship_lon=ship_lon,
+        heading=heading,
+        offset_meters=offset_meters,
+        fov_degrees=fov_degrees
+    ):
+        # Extract coordinates from top-level latitude/longitude keys
+        lat = feature.get("latitude")
+        lon = feature.get("longitude")
+
+        projection = None
+        if lat is not None and lon is not None:
+            projection = project_ais_to_pixel(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                ship_heading=heading,
+                target_lat=lat,
+                target_lon=lon,
+                cam_cfg=cam_cfg
+            )
+
+        # Enrich feature with projection (or null if outside FOV)
+        feature["projection"] = projection
+        yield feature
+
+
+
+async def fetch_ais_stream_projections_by_mmsi(
+    mmsi: str,
+    offset_meters: float = 3000,
+    fov_degrees: float = 120
+):
+    """
+    Fetch a specific vessel by MMSI, then stream AIS data of nearby vessels
+    within that vessel's field of view, enriched with camera pixel projections.
+    
+    Args:
+        mmsi: Maritime Mobile Service Identity (vessel ID)
+        offset_meters: Distance to triangle base in meters
+        fov_degrees: Field of view angle in degrees
+    
+    Yields:
+        AIS features enriched with projection field containing pixel coordinates
+        
+    Raises:
+        ValueError: If vessel with MMSI not found
+    """
+    from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
+    from ais_mapping_service.pixel_projection.camera_config import CameraConfig
+    
+    # Fetch vessel position and heading by MMSI
+    vessel_info = await fetch_vessel_position_by_mmsi(mmsi)
+    if not vessel_info:
+        raise ValueError(f"Vessel with MMSI {mmsi} not found in Barentswatch AIS data")
+    
+    ship_lat = vessel_info["latitude"]
+    ship_lon = vessel_info["longitude"]
+    heading = vessel_info["trueHeading"]
+    
+    cam_cfg = CameraConfig(h_fov_deg=fov_degrees)
+    
+    async for feature in fetch_ais_stream_geojson(
+        ship_lat=ship_lat,
+        ship_lon=ship_lon,
+        heading=heading,
+        offset_meters=offset_meters,
+        fov_degrees=fov_degrees
+    ):
+        # Extract coordinates from top-level latitude/longitude keys
+        lat = feature.get("latitude")
+        lon = feature.get("longitude")
+
+        projection = None
+        if lat is not None and lon is not None:
+            projection = project_ais_to_pixel(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                ship_heading=heading,
+                target_lat=lat,
+                target_lon=lon,
+                cam_cfg=cam_cfg
+            )
+
+        # Enrich feature with projection (or null if outside FOV)
+        feature["projection"] = projection
+        yield feature
 
 
 def main():
