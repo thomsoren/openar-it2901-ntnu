@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
+import { DETECTION_CONFIG } from "../config/video";
 import { DetectedVessel } from "../types/detection";
 
 interface WebSocketConfig {
@@ -12,7 +13,9 @@ interface WebSocketConfig {
 
 interface UseDetectionsWebSocketOptions {
   /** WebSocket endpoint URL (ws:// or wss://) */
-  url: string;
+  url?: string;
+  /** Detection stream identifier used with the default detections WS endpoint */
+  streamId?: string;
   /** Configuration to send on connection */
   config?: WebSocketConfig;
   /** Whether to connect automatically (default: true) */
@@ -204,7 +207,7 @@ function createWebSocketStore(
  * @example
  * ```tsx
  * const { vessels, fps, isConnected } = useDetectionsWebSocket({
- *   url: "ws://localhost:8000/api/detections/ws",
+ *   streamId: "default",
  *   config: { track: true, loop: true },
  * });
  *
@@ -213,16 +216,22 @@ function createWebSocketStore(
  */
 export const useDetectionsWebSocket = ({
   url,
+  streamId = "default",
   config,
   enabled = true,
   autoReconnect = true,
   reconnectDelay = 3000,
 }: UseDetectionsWebSocketOptions): UseDetectionsWebSocketResult => {
-  // Create store once using useMemo - intentionally ignoring deps to create once
+  const resolvedUrl = useMemo(
+    () => url ?? DETECTION_CONFIG.WS_URL(streamId),
+    [streamId, url]
+  );
+
+  // Create store once per target URL.
   const store = useMemo(
-    () => createWebSocketStore(url, config, autoReconnect, reconnectDelay),
+    () => createWebSocketStore(resolvedUrl, config, autoReconnect, reconnectDelay),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [autoReconnect, reconnectDelay, resolvedUrl]
   );
 
   const state = useSyncExternalStore(store.subscribe, store.getState);
