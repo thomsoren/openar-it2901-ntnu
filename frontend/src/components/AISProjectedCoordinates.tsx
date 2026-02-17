@@ -6,17 +6,24 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
+import { useFetchAISProjectionsByMMSI } from "../hooks/useFetchAISProjectionsByMMSI";
 
 const CANVAS_WIDTH = 1920;
 const CANVAS_HEIGHT = 1080;
 
 export const AISProjectedCoordinates: React.FC = () => {
+  const [mode, setMode] = useState<"manual" | "mmsi">("manual");
   const [shouldStream, setShouldStream] = useState(false);
+
+  // Manual mode parameters
   const [shipLat, setShipLat] = useState(63.4365);
   const [shipLon, setShipLon] = useState(10.3835);
   const [heading, setHeading] = useState(90);
   const [offsetMeters, setOffsetMeters] = useState(3000);
   const [fovDegrees, setFovDegrees] = useState(120);
+
+  // MMSI mode parameters
+  const [mmsi, setMMSI] = useState("257347700"); // LISE example
 
   const parseNumberInput = (event: Event, fallback: number) => {
     const rawValue = (event.target as { value?: string }).value ?? "";
@@ -24,14 +31,24 @@ export const AISProjectedCoordinates: React.FC = () => {
     return Number.isNaN(parsedValue) ? fallback : parsedValue;
   };
 
-  const { projections, isStreaming, error } = useFetchAISProjections(
-    shouldStream,
+  // Fetch data based on mode
+  const manualResult = useFetchAISProjections(
+    shouldStream && mode === "manual",
     shipLat,
     shipLon,
     heading,
     offsetMeters,
     fovDegrees
   );
+
+  const mmsiResult = useFetchAISProjectionsByMMSI(
+    shouldStream && mode === "mmsi",
+    mmsi,
+    offsetMeters,
+    fovDegrees
+  );
+
+  const { projections, isStreaming, error } = mode === "manual" ? manualResult : mmsiResult;
 
   const visibleProjections = projections.filter((p) => p.in_fov);
 
@@ -68,41 +85,87 @@ export const AISProjectedCoordinates: React.FC = () => {
 
       <div className="projection-params">
         <div className="param-group">
-          <span className="param-label">Ship Latitude</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
-            value={String(shipLat)}
-            placeholder="63.4365"
-            disabled={isStreaming}
-            aria-label="Ship latitude"
-            onInput={(e) => setShipLat(parseNumberInput(e, shipLat))}
-          />
+          <span className="param-label">Mode</span>
+          <div className="mode-buttons">
+            <ObcButton
+              // @ts-expect-error - OpenBridge component type mismatch
+              variant={mode === "manual" ? "raised" : "flat"}
+              onClick={() => {
+                setMode("manual");
+                setShouldStream(false);
+              }}
+              disabled={isStreaming}
+            >
+              Manual Position
+            </ObcButton>
+            <ObcButton
+              // @ts-expect-error - OpenBridge component type mismatch
+              variant={mode === "mmsi" ? "raised" : "flat"}
+              onClick={() => {
+                setMode("mmsi");
+                setShouldStream(false);
+              }}
+              disabled={isStreaming}
+            >
+              MMSI Lookup
+            </ObcButton>
+          </div>
         </div>
-        <div className="param-group">
-          <span className="param-label">Ship Longitude</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
-            value={String(shipLon)}
-            placeholder="10.3835"
-            disabled={isStreaming}
-            aria-label="Ship longitude"
-            onInput={(e) => setShipLon(parseNumberInput(e, shipLon))}
-          />
-        </div>
-        <div className="param-group">
-          <span className="param-label">Heading (°)</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
-            value={String(heading)}
-            placeholder="0"
-            disabled={isStreaming}
-            aria-label="Heading in degrees"
-            onInput={(e) => setHeading(parseNumberInput(e, heading))}
-          />
-        </div>
+
+        {mode === "manual" ? (
+          <>
+            <div className="param-group">
+              <span className="param-label">Ship Latitude</span>
+              <ObcInput
+                /* @ts-expect-error - OpenBridge component type mismatch */
+                type="number"
+                value={String(shipLat)}
+                placeholder="63.4365"
+                disabled={isStreaming}
+                aria-label="Ship latitude"
+                onInput={(e) => setShipLat(parseNumberInput(e, shipLat))}
+              />
+            </div>
+            <div className="param-group">
+              <span className="param-label">Ship Longitude</span>
+              <ObcInput
+                /* @ts-expect-error - OpenBridge component type mismatch */
+                type="number"
+                value={String(shipLon)}
+                placeholder="10.3835"
+                disabled={isStreaming}
+                aria-label="Ship longitude"
+                onInput={(e) => setShipLon(parseNumberInput(e, shipLon))}
+              />
+            </div>
+            <div className="param-group">
+              <span className="param-label">Heading (°)</span>
+              <ObcInput
+                /* @ts-expect-error - OpenBridge component type mismatch */
+                type="number"
+                value={String(heading)}
+                placeholder="0"
+                disabled={isStreaming}
+                aria-label="Heading in degrees"
+                onInput={(e) => setHeading(parseNumberInput(e, heading))}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="param-group">
+            <span className="param-label">MMSI</span>
+            <ObcInput
+              /* @ts-expect-error - OpenBridge component type mismatch */
+              type="text"
+              value={mmsi}
+              placeholder="257347700"
+              disabled={isStreaming}
+              aria-label="Maritime Mobile Service Identity"
+              onInput={(e) => setMMSI((e.target as { value?: string }).value ?? "")}
+            />
+          </div>
+        )}
+
         <div className="param-group">
           <span className="param-label">Range (m)</span>
           <ObcInput

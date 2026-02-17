@@ -59,7 +59,8 @@ async def fetch_ais():
 
 async def fetch_vessel_position_by_mmsi(mmsi: str) -> dict | None:
     """
-    Fetch a specific vessel's latest position and heading from Barentswatch API.
+    Fetch a specific vessel's current live position and heading from Barentswatch live AIS API.
+    Uses MMSI filter to query only the specific vessel, no geographic constraint needed.
     
     Args:
         mmsi: Maritime Mobile Service Identity (vessel ID)
@@ -72,45 +73,93 @@ async def fetch_vessel_position_by_mmsi(mmsi: str) -> dict | None:
         raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
     
     try:
+        mmsi_int = int(mmsi.strip())
+    except ValueError:
+        raise ValueError(f"Invalid MMSI: {mmsi} (must be numeric)")
+    
+    try:
         async with aiohttp.ClientSession() as session:
             token = await _fetch_token(session)
-            async with session.get(
-                f"https://historic.ais.barentswatch.no/v1/historic/trackslast24hours/{mmsi}",
+            
+            # Query using MMSI filter with a valid polygon geometry
+            # API requires geometry even when filtering by MMSI
+            # Using a large bounding box covering Atlantic/Arctic area where ships commonly transmit
+            request_body = {
+                "modelType": "Simple",
+                "modelFormat": "Json",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-180, -90],   # SW
+                        [180, -90],    # SE
+                        [180, 90],     # NE
+                        [-180, 90],    # NW
+                        [-180, -90]    # close
+                    ]]
+                },
+                "mmsi": [mmsi_int],
+                "downsample": True
+            }
+            
+            async with session.post(
+                "https://live.ais.barentswatch.no/live/v1/combined",
                 headers={
                     "Authorization": f"Bearer {token}",
-                    "Accept": "application/json"
-                }
+                    "Content-Type": "application/json"
+                },
+                json=request_body,
+                timeout=aiohttp.ClientTimeout(total=60, sock_read=30)
             ) as response:
-                if response.status == 404:
-                    return None
                 if response.status != 200:
                     error_text = await response.text()
+                    print(f"[fetch_vessel_position_by_mmsi] HTTP error {response.status}: {error_text}")
                     raise ValueError(f"HTTP {response.status}: {error_text}")
                 
-                data = await response.json()
-                if not data or "features" not in data:
-                    return None
+                print(f"[fetch_vessel_position_by_mmsi] Connected to stream, looking for MMSI {mmsi}")
                 
-                # Get the last (most recent) position from the track
-                features = data.get("features", [])
-                if not features:
-                    return None
+                # Stream the response and get the first matching vessel
+                async for line in response.content:
+                    line = line.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    
+                    print(f"[fetch_vessel_position_by_mmsi] Received line: {line[:100]}")
+                    
+                    try:
+                        data = json.loads(line)
+                        vessel_mmsi = data.get("mmsi")
+                        print(f"[fetch_vessel_position_by_mmsi] Parsed vessel MMSI {vessel_mmsi}")
+                        print(f"[fetch_vessel_position_by_mmsi] Raw data: {data}")
+                        
+                        # Validate required fields for projection
+                        latitude = data.get("latitude")
+                        longitude = data.get("longitude")
+                        heading = data.get("trueHeading")
+                        
+                        if latitude is None or longitude is None:
+                            print(f"[fetch_vessel_position_by_mmsi] Missing lat/lon in data")
+                            continue
+                        
+                        # Return the vessel position (heading can default to 0 if missing)
+                        result = {
+                            "longitude": longitude,
+                            "latitude": latitude,
+                            "trueHeading": heading if heading is not None else 0
+                        }
+                        print(f"[fetch_vessel_position_by_mmsi] Returning vessel position: {result}")
+                        return result
+                    except json.JSONDecodeError as e:
+                        print(f"[fetch_vessel_position_by_mmsi] JSON decode error: {e}")
+                        continue
                 
-                latest = features[-1]
-                props = latest.get("properties", {})
-                geometry = latest.get("geometry", {})
-                coords = geometry.get("coordinates", [])
+                # Vessel not found in live data
+                print(f"[fetch_vessel_position_by_mmsi] No data returned for MMSI {mmsi}")
+                return None
                 
-                if not coords or len(coords) < 2:
-                    return None
-                
-                return {
-                    "longitude": coords[0],
-                    "latitude": coords[1],
-                    "trueHeading": props.get("trueHeading", 0)
-                }
+    except asyncio.TimeoutError:
+        raise ValueError(f"Timeout while searching for vessel {mmsi}")
     except Exception as e:
-        raise ValueError(f"Error fetching vessel {mmsi} from Barentswatch: {type(e).__name__}: {str(e)}")
+        raise ValueError(f"Error fetching vessel {mmsi} from live AIS: {type(e).__name__}: {str(e)}")
 
 async def fetch_ais_stream_geojson(
     timeout: int = 120,

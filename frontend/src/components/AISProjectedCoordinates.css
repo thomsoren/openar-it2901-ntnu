@@ -51,6 +51,11 @@
   gap: 0.5rem;
 }
 
+.mode-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .param-label {
   font-size: 0.875rem;
   font-weight: 500;
