@@ -8,6 +8,7 @@ import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-web
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
 import { AISGeoJsonMap } from "./AISGeoJsonMap/AISGeoJsonMap";
+import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 
 export const AISGeographicalDataDisplay: React.FC = () => {
   const [shouldStream, setShouldStream] = useState(false);
@@ -143,9 +144,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Autofill GPS coordinates</span>
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
           <ObcButton
-            variant="normal"
+            variant={ButtonVariant.normal}
             onClick={handleUseGPSLocation}
             disabled={isStreaming || isLoadingGPS}
           >
