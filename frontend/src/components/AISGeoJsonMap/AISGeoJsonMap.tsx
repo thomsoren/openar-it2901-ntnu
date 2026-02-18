@@ -6,6 +6,7 @@ import { useObcPalette } from "../../hooks/useOBCTheme";
 import getTilemapURL from "./AISGeoJsonMapTilemap";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
+import { AISData } from "../../types/aisData";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -13,6 +14,7 @@ interface AISGeoJsonMapProps {
   heading: number;
   offsetMeters: number;
   fovDegrees: number;
+  vessels?: AISData[];
   // Called when the user drags adjust-anchor on the map
   onChange?: (
     updates: Partial<{ shipLat: number; shipLon: number; heading: number; offsetMeters: number }>
@@ -99,6 +101,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   heading,
   offsetMeters,
   fovDegrees,
+  vessels,
   onChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -106,6 +109,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const wedgeRef = useRef<Polygon | null>(null);
   const originRef = useRef<Marker | null>(null);
   const rangeRef = useRef<Marker | null>(null);
+  const vesselMarkersRef = useRef<Marker[]>([]);
   const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
   const theme = useObcPalette();
   const [followMode, setFollowMode] = useState(true);
@@ -249,6 +253,40 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
     if (followMode) centerMap();
   }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap]);
+
+  // Sync vessel markers when vessels data changes
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Remove all existing vessel markers
+    vesselMarkersRef.current.forEach((marker) => marker.remove());
+    vesselMarkersRef.current = [];
+
+    // Add new vessel markers
+    loadLeaflet().then((L) => {
+      if (!mapRef.current || !vessels) return;
+
+      vessels.forEach((vessel) => {
+        if (!vessel.latitude || !vessel.longitude) return;
+
+        const vesselMarker = L.marker([vessel.latitude, vessel.longitude], {
+          icon: L.divIcon({
+            html: `<div class="geojson-map-vessel-icon"></div>`,
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
+            className: "",
+          }),
+          interactive: false,
+        })
+          .addTo(mapRef.current!)
+          .bindTooltip(`MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`, {
+            direction: "top",
+            offset: [0, -10],
+          });
+        vesselMarkersRef.current.push(vesselMarker);
+      });
+    });
+  }, [vessels]);
 
   // Refresh tile layer when theme changes
   useEffect(() => {

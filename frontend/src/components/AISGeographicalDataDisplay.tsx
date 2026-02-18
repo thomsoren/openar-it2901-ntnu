@@ -160,6 +160,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         heading={heading}
         offsetMeters={offsetMeters}
         fovDegrees={fovDegrees}
+        vessels={features}
         onChange={(updates) => {
           if (updates.shipLat !== undefined) setShipLat(updates.shipLat);
           if (updates.shipLon !== undefined) setShipLon(updates.shipLon);
