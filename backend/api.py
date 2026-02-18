@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
+from ais.logger import AISSessionLogger
 from common.config import VIDEO_PATH, load_samples
 from common.types import DetectedVessel
 from cv import worker
@@ -216,6 +217,8 @@ async def stream_ais_geojson(
     fov_degrees: float = 60
 ):
     """Stream live AIS data in ship's triangular field of view"""
+    logger = AISSessionLogger()
+    
     async def event_generator():
         try:
             async for feature in fetch_ais_stream_geojson(
@@ -225,10 +228,13 @@ async def stream_ais_geojson(
                 offset_meters=offset_meters,
                 fov_degrees=fov_degrees
             ):
+                logger.log(feature, 0)
                 yield f"data: {json.dumps(feature)}\n\n"
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e)}"
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
+        finally:
+            logger.end_session()
     
     return StreamingResponse(
         event_generator(),
