@@ -4,24 +4,34 @@ Two threads:
 - Reader: reads frames at video FPS, sends to MJPEG queue, keeps latest for inference
 - Inference: runs on latest frame (skips naturally when slower than video)
 """
+import logging
 import threading
 import time
 from multiprocessing import Process, Queue
-from pathlib import Path
 
 import cv2
 
+logger = logging.getLogger(__name__)
 
-def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool = True):
+
+def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Queue, loop: bool = True):
     from cv.detectors import get_detector
     detector = get_detector()
 
-    cap = cv2.VideoCapture(str(video_path))
+    cap = cv2.VideoCapture(source_url)
+    if not cap.isOpened():
+        logger.error("[%s] Failed to open source: %s", stream_id, source_url)
+        detection_queue.put(None)
+        frame_queue.put(None)
+        return
+
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    detection_queue.put({"type": "ready", "width": width, "height": height, "fps": fps})
+    detection_queue.put(
+        {"type": "ready", "stream_id": stream_id, "width": width, "height": height, "fps": fps}
+    )
 
     # Shared state between threads
     lock = threading.Lock()
@@ -82,6 +92,7 @@ def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool
         last_time = now
 
         detection_queue.put({
+            "stream_id": stream_id,
             "frame_index": frame_idx,
             "timestamp_ms": ts,
             "fps": fps,
@@ -95,9 +106,9 @@ def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool
     frame_queue.put(None)
 
 
-def start(video_path: Path) -> tuple[Process, Queue, Queue]:
+def start(source_url: str, stream_id: str, loop: bool = True) -> tuple[Process, Queue, Queue]:
     detection_queue: Queue = Queue()
     frame_queue: Queue = Queue(maxsize=30)
-    p = Process(target=run, args=(video_path, detection_queue, frame_queue))
+    p = Process(target=run, args=(source_url, stream_id, detection_queue, frame_queue, loop))
     p.start()
     return p, detection_queue, frame_queue
