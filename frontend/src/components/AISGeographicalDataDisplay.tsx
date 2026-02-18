@@ -7,6 +7,8 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
+import { AISGeoJsonMap } from "./AISGeoJsonMap/AISGeoJsonMap";
+import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 
 export const AISGeographicalDataDisplay: React.FC = () => {
   const [shouldStream, setShouldStream] = useState(false);
@@ -15,6 +17,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
   const [heading, setHeading] = useState(0);
   const [offsetMeters, setOffsetMeters] = useState(1000);
   const [fovDegrees, setFovDegrees] = useState(60);
+  const [isLoadingGPS, setIsLoadingGPS] = useState(false);
 
   const parseNumberInput = (event: Event, fallback: number) => {
     const rawValue = (event.target as { value?: string }).value ?? "";
@@ -30,6 +33,22 @@ export const AISGeographicalDataDisplay: React.FC = () => {
     offsetMeters,
     fovDegrees
   );
+
+  // Get browser GPS location to autofill ship position
+  const handleUseGPSLocation = () => {
+    setIsLoadingGPS(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setShipLat(position.coords.latitude);
+        setShipLon(position.coords.longitude);
+        setIsLoadingGPS(false);
+      },
+      (error) => {
+        console.error("Location unavailable", error);
+        setIsLoadingGPS(false);
+      }
+    );
+  };
 
   return (
     <div className="ais-stream-container">
@@ -123,7 +142,31 @@ export const AISGeographicalDataDisplay: React.FC = () => {
             onInput={(e) => setFovDegrees(parseNumberInput(e, fovDegrees))}
           />
         </div>
+        <div className="param-group">
+          <span className="param-label">Autofill GPS coordinates</span>
+          <ObcButton
+            variant={ButtonVariant.normal}
+            onClick={handleUseGPSLocation}
+            disabled={isStreaming || isLoadingGPS}
+          >
+            {isLoadingGPS ? "Fetching..." : "Current position"}
+          </ObcButton>
+        </div>
       </div>
+
+      <AISGeoJsonMap
+        shipLat={shipLat}
+        shipLon={shipLon}
+        heading={heading}
+        offsetMeters={offsetMeters}
+        fovDegrees={fovDegrees}
+        onChange={(updates) => {
+          if (updates.shipLat !== undefined) setShipLat(updates.shipLat);
+          if (updates.shipLon !== undefined) setShipLon(updates.shipLon);
+          if (updates.heading !== undefined) setHeading(updates.heading);
+          if (updates.offsetMeters !== undefined) setOffsetMeters(updates.offsetMeters);
+        }}
+      />
 
       <div className="ais-stream-list">
         {features.length === 0 ? (
