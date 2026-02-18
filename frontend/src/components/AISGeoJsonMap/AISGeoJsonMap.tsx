@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { Map, Marker, Polygon, LeafletEvent } from "leaflet";
 import type * as LeafletType from "leaflet";
 import "./AISGeoJsonMap.css";
 import { useObcPalette } from "../../hooks/useOBCTheme";
-import getTilemapURL from "./AISGeoJSONMapTilemap";
+import getTilemapURL from "./AISGeoJsonMapTilemap";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
+import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -70,7 +71,6 @@ function buildWedge(
 /**  Leaflet CDN loader  **/
 
 type LeafletLib = typeof LeafletType;
-
 let leafletPromise: Promise<LeafletLib> | null = null;
 
 async function loadLeaflet(): Promise<LeafletLib> {
@@ -108,6 +108,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const rangeRef = useRef<Marker | null>(null);
   const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
   const theme = useObcPalette();
+  const [followMode, setFollowMode] = useState(true);
 
   const centerMap = useCallback(() => {
     if (!mapRef.current) return;
@@ -117,6 +118,14 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       duration: 0.5,
     });
   }, [shipLat, shipLon]);
+
+  const toggleFollowMode = () => {
+    if (!followMode) {
+      // Snap back to the vessel before enabling follow mode
+      centerMap();
+    }
+    setFollowMode((prev) => !prev);
+  };
 
   // Initialize map on first render
   useEffect(() => {
@@ -188,27 +197,43 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       rangeMarker.on("drag", (e: LeafletEvent) => {
         const { lat, lng } = (e.target as Marker).getLatLng();
-        const o = originRef.current?.getLatLng();
-        if (!o) return;
-        const h = headingTo(o.lat, o.lng, lat, lng);
-        const d = distanceTo(o.lat, o.lng, lat, lng);
-        wedgeRef.current?.setLatLngs(buildWedge(o.lat, o.lng, h, d, fovDegrees));
+        const origin = originRef.current?.getLatLng();
+        if (!origin) return;
+        wedgeRef.current?.setLatLngs(
+          buildWedge(
+            origin.lat,
+            origin.lng,
+            headingTo(origin.lat, origin.lng, lat, lng),
+            distanceTo(origin.lat, origin.lng, lat, lng),
+            fovDegrees
+          )
+        );
       });
       rangeMarker.on("dragend", (e: LeafletEvent) => {
         const { lat, lng } = (e.target as Marker).getLatLng();
-        const o = originRef.current?.getLatLng();
-        if (!o) return;
+        const origin = originRef.current?.getLatLng();
+        if (!origin) return;
         onChange?.({
-          heading: Math.round(headingTo(o.lat, o.lng, lat, lng)),
-          offsetMeters: Math.round(distanceTo(o.lat, o.lng, lat, lng)),
+          heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)),
+          offsetMeters: Math.round(distanceTo(origin.lat, origin.lng, lat, lng)),
         });
       });
       rangeRef.current = rangeMarker;
 
+      // Detect panning and disable follow mode
+      map.on("drag", () => {
+        setFollowMode(false);
+      });
       mapRef.current = map;
     });
+
+    // Cleanup on unmount
     return () => {
       alive = false;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -222,7 +247,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
     rangeRef.current?.setLatLng([rLat, rLon]);
 
-    centerMap();
+    if (followMode) centerMap();
   }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap]);
 
   // Refresh tile layer when theme changes
@@ -243,15 +268,18 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     <div className="geojson-map-container">
       <div className="geojson-map-header">
         <span className="geojson-map-text">
-          {shipLat.toFixed(4)}N . {shipLon.toFixed(4)}E . {heading} . {offsetMeters}m . FOV{" "}
-          {fovDegrees}
+          {Math.abs(shipLat).toFixed(4)}
+          {shipLat >= 0 ? "N" : "S"} . {Math.abs(shipLon).toFixed(4)}
+          {shipLon >= 0 ? "E" : "W"} . {heading}° . {offsetMeters}m . FOV {fovDegrees}°
         </span>
       </div>
-      {/* Map container */}
       <div ref={containerRef} style={{ height: "420px", width: "100%" }} />
-      {/* @ts-expect-error - OpenBridge component type mismatch */}
-      <ObcButton variant="normal" onClick={centerMap} className="geojson-map-center-button">
-        Center Map
+      <ObcButton
+        variant={followMode ? ButtonVariant.flat : ButtonVariant.normal}
+        onClick={toggleFollowMode}
+        className="geojson-map-center-button"
+      >
+        {followMode ? "Following" : "Follow"}
       </ObcButton>
     </div>
   );
