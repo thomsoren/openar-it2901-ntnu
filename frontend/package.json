@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
-    "@ocean-industries-concept-lab/openbridge-webcomponents": "*",
+    "@ocean-industries-concept-lab/openbridge-webcomponents": "^0.0.20260218140123",
     "@ocean-industries-concept-lab/openbridge-webcomponents-react": "*",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.1.0",
