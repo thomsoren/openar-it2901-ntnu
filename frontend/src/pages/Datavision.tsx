@@ -19,6 +19,7 @@ function Datavision() {
   const containerRef = useRef<HTMLDivElement>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const firstFrameWatchdogRef = useRef<number | null>(null);
+  const firstFrameRetryDoneRef = useRef(false);
   const reconnectCountRef = useRef(0);
   const imageLoadedRef = useRef(false);
   const { videoFitMode, detectionVisible, multiStreamTestingEnabled } = useSettings();
@@ -218,7 +219,6 @@ function Datavision() {
     setActiveStreamId(streamId);
     setWsEnabled(true);
     setImageLoaded(false);
-    setVideoSession((prev) => prev + 1);
   };
 
   const handleCreateAndStart = async () => {
@@ -240,6 +240,7 @@ function Datavision() {
 
   useEffect(() => {
     reconnectCountRef.current = 0;
+    firstFrameRetryDoneRef.current = false;
   }, [activeStreamId]);
 
   useEffect(() => {
@@ -249,13 +250,17 @@ function Datavision() {
       if (imageLoadedRef.current) {
         return;
       }
+      if (firstFrameRetryDoneRef.current) {
+        return;
+      }
+      firstFrameRetryDoneRef.current = true;
       scheduleReconnect("Waiting for first video frame from");
-    }, 1800);
+    }, 6000);
 
     return () => {
       clearReconnectTimers();
     };
-  }, [activeStreamId, clearReconnectTimers, scheduleReconnect, videoSession]);
+  }, [activeStreamId, clearReconnectTimers, scheduleReconnect]);
 
   useEffect(() => {
     return () => {

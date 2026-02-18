@@ -5,9 +5,11 @@ Two threads:
 - Inference: runs on latest frame (skips naturally when slower than video)
 """
 import logging
+import os
 import threading
 import time
 from multiprocessing import Process, Queue
+from queue import Empty, Full
 
 import cv2
 
@@ -25,7 +27,13 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
         frame_queue.put(None)
         return
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    source_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    max_read_fps = float(os.getenv("STREAM_READ_FPS_CAP", "0"))
+    max_inference_fps = float(os.getenv("STREAM_INFERENCE_FPS_CAP", "6"))
+    if max_read_fps > 0:
+        fps = min(source_fps, max_read_fps)
+    else:
+        fps = source_fps
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
@@ -59,8 +67,13 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
 
             try:
                 frame_queue.put_nowait((frame, frame_idx, ts))
-            except Exception:
-                pass
+            except Full:
+                # Keep latency low by dropping stale frames when consumers lag.
+                try:
+                    frame_queue.get_nowait()
+                    frame_queue.put_nowait((frame, frame_idx, ts))
+                except (Empty, Full):
+                    pass
 
             frame_idx += 1
             next_time += interval
@@ -78,18 +91,37 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
         time.sleep(0.01)
 
     last_time = time.monotonic()
+    last_processed_idx = -1
+    min_inference_interval = (1.0 / max_inference_fps) if max_inference_fps > 0 else 0.0
+    next_infer_time = time.monotonic()
 
     while not stopped.is_set():
         with lock:
-            frame = latest["frame"].copy()
+            latest_frame = latest["frame"]
             frame_idx = latest["idx"]
             ts = latest["ts"]
 
+        if latest_frame is None:
+            time.sleep(0.005)
+            continue
+        if frame_idx == last_processed_idx:
+            time.sleep(0.005)
+            continue
+
+        now = time.monotonic()
+        if now < next_infer_time:
+            time.sleep(min(next_infer_time - now, 0.01))
+            continue
+
+        frame = latest_frame.copy()
         detections = detector.detect(frame, track=True)
+        last_processed_idx = frame_idx
 
         now = time.monotonic()
         inf_fps = 1.0 / (now - last_time) if now > last_time else 0.0
         last_time = now
+        if min_inference_interval > 0:
+            next_infer_time = now + min_inference_interval
 
         detection_queue.put({
             "stream_id": stream_id,
@@ -107,8 +139,9 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
 
 
 def start(source_url: str, stream_id: str, loop: bool = True) -> tuple[Process, Queue, Queue]:
+    frame_queue_size = int(os.getenv("STREAM_FRAME_QUEUE_SIZE", "4"))
     detection_queue: Queue = Queue()
-    frame_queue: Queue = Queue(maxsize=30)
+    frame_queue: Queue = Queue(maxsize=max(1, frame_queue_size))
     p = Process(target=run, args=(source_url, stream_id, detection_queue, frame_queue, loop))
     p.start()
     return p, detection_queue, frame_queue
