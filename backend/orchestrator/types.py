@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from multiprocessing import Process, Queue
+from queue import Empty, Full
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +36,19 @@ class WorkerHandle:
         return self.process.is_alive()
 
     def terminate(self):
+        # Unblock API consumers waiting on queue.get() before terminating process.
+        for q in (self.inference_queue, self.frame_queue):
+            try:
+                q.put_nowait(None)
+            except Full:
+                try:
+                    q.get_nowait()
+                    q.put_nowait(None)
+                except (Empty, Full):
+                    pass
+            except Exception:
+                pass
+
         if self.process.is_alive():
             self.process.terminate()
             self.process.join(timeout=5)

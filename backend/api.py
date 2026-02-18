@@ -12,18 +12,21 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from queue import Empty
 from typing import List
+from urllib.parse import urlparse
 
 import cv2
 from fastapi import FastAPI, HTTPException, Request, WebSocket
+from starlette.websockets import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
-from common.config import VIDEO_PATH, load_samples
+from common.config import BASE_DIR, VIDEO_PATH, load_samples
 from common.types import DetectedVessel
 from fusion import fusion
 from orchestrator import (
@@ -41,17 +44,25 @@ app = FastAPI(
     version="0.2.0"
 )
 
-# Configure CORS to allow frontend requests
+# Configure CORS to allow frontend requests.
+# Includes localhost and common LAN/private-network ranges for device testing.
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vite default dev server
+    "http://localhost:3000",  # Alternative React dev server
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "https://demo.bridgable.ai",  # Production frontend
+    "http://demo.bridgable.ai",   # Production frontend (HTTP)
+]
+ENV_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite default dev server
-        "http://localhost:3000",  # Alternative React dev server
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "https://demo.bridgable.ai",  # Production frontend
-        "http://demo.bridgable.ai",   # Production frontend (HTTP)
-    ],
+    allow_origins=[*DEFAULT_ALLOWED_ORIGINS, *ENV_ALLOWED_ORIGINS],
+    allow_origin_regex=r"^https?://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -162,14 +173,35 @@ async def stream_mjpeg_for_stream(stream_id: str):
         raise HTTPException(status_code=503, detail="Orchestrator unavailable")
 
     try:
-        handle = orchestrator.get_stream(stream_id)
+        initial_handle = orchestrator.get_stream(stream_id)
     except StreamNotFoundError:
         raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' is not running")
 
     async def generate():
+        current_handle = initial_handle
+
         while True:
-            data = await asyncio.to_thread(handle.frame_queue.get)
+            try:
+                data = await asyncio.to_thread(current_handle.frame_queue.get, True, 1.0)
+            except Empty:
+                # On timeout, verify stream still exists and track restarts.
+                try:
+                    latest_handle = orchestrator.get_stream(stream_id)
+                except StreamNotFoundError:
+                    break
+                if latest_handle is not current_handle:
+                    current_handle = latest_handle
+                continue
+
             if data is None:
+                # Sentinel means stopped/restarted; switch handle if stream still exists.
+                try:
+                    latest_handle = orchestrator.get_stream(stream_id)
+                except StreamNotFoundError:
+                    break
+                if latest_handle is not current_handle:
+                    current_handle = latest_handle
+                    continue
                 break
             frame, _, _ = data
             _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -320,6 +352,35 @@ def resolve_default_source() -> str | None:
         return str(VIDEO_PATH)
     return None
 
+
+def _is_remote_stream(source_url: str) -> bool:
+    scheme = urlparse(source_url).scheme.lower()
+    return scheme in {"rtsp", "http", "https", "rtmp", "udp", "tcp"}
+
+
+def resolve_stream_source(source_url: str | None) -> str | None:
+    """Resolve local paths robustly while preserving remote stream URLs."""
+    if not source_url or not source_url.strip():
+        return resolve_default_source()
+
+    raw = source_url.strip()
+    if _is_remote_stream(raw):
+        return raw
+
+    candidate = Path(raw)
+    # Try a few intuitive local path roots for developer convenience.
+    local_candidates = [
+        candidate,
+        BASE_DIR / candidate,
+        BASE_DIR / "data" / "raw" / "video" / candidate.name,
+    ]
+    for path in local_candidates:
+        if path.exists():
+            return str(path)
+
+    # Return original value so worker logs include what the caller provided.
+    return raw
+
 @asynccontextmanager
 async def lifespan(_):
     global orchestrator
@@ -356,7 +417,7 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
     if not orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 
-    source_url = request.source_url or resolve_default_source()
+    source_url = resolve_stream_source(request.source_url)
     if not source_url:
         raise HTTPException(status_code=400, detail="source_url is required for this stream")
 
@@ -412,12 +473,19 @@ async def websocket_detections_stream(websocket: WebSocket, stream_id: str):
     ensure_broadcast_task(stream_id)
 
     if stream_id in video_info:
-        await websocket.send_json(video_info[stream_id])
+        try:
+            await websocket.send_json(video_info[stream_id])
+        except WebSocketDisconnect:
+            return
+        except Exception:
+            return
 
     connected_clients.setdefault(stream_id, set()).add(websocket)
     try:
         while True:
             await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
     except Exception:
         pass
     finally:

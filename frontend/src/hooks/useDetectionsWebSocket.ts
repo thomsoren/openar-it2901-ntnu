@@ -218,11 +218,10 @@ export const useDetectionsWebSocket = ({
   autoReconnect = true,
   reconnectDelay = 3000,
 }: UseDetectionsWebSocketOptions): UseDetectionsWebSocketResult => {
-  // Create store once using useMemo - intentionally ignoring deps to create once
+  // Recreate the store when endpoint or connection policy changes.
   const store = useMemo(
     () => createWebSocketStore(url, config, autoReconnect, reconnectDelay),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [url, config, autoReconnect, reconnectDelay]
   );
 
   const state = useSyncExternalStore(store.subscribe, store.getState);

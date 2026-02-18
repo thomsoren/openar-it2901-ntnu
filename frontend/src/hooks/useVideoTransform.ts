@@ -1,5 +1,5 @@
 import { useEffect, useState, RefObject } from "react";
-import { VideoFitMode } from "../contexts/SettingsContext";
+import { VideoFitMode } from "../contexts/settings-context";
 
 export interface VideoTransform {
   videoWidth: number;
