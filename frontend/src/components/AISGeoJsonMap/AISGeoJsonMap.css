@@ -1,0 +1,64 @@
+.geojson-map-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Trap z-index layers within leaflet-container to avoid clipping */
+.geojson-map-container .leaflet-container {
+  isolation: isolate;
+}
+
+.geojson-map-container .leaflet-interactive {
+  cursor: grab !important;
+}
+
+.geojson-map-container .leaflet-interactive:active {
+  cursor: grabbing !important;
+}
+
+.geojson-map-header {
+  padding: 8px 14px;
+  background: #0d1526;
+  border-bottom: 1px solid #1e3a5f;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.geojson-map-text {
+  color: white;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.geojson-map-center-button {
+  position: absolute;
+  right: 0.5rem;
+  top: 2rem;
+}
+
+.geojson-map-range-icon {
+  width: 12px;
+  height: 12px;
+  background: #facc15;
+  border: 2px solid #0a0e1a;
+  cursor: pointer;
+  transform: rotate(45deg);
+  box-shadow: 0 0 6px #facc1588;
+}
+
+.geojson-map-origin-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00d4ff;
+  border: 2px solid #0a0e1a;
+  cursor: pointer;
+  box-shadow: 0 0 6px #00d4ff88;
+}
