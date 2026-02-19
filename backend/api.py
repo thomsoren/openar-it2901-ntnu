@@ -161,14 +161,15 @@ def get_video():
 
 
 @app.get("/api/video/mjpeg")
-async def stream_mjpeg():
+async def stream_mjpeg(request: Request):
     """MJPEG stream from inference worker - synced with detections."""
-    if not frame_queue:
+    queue = request.app.state.frame_queue
+    if not queue:
         raise HTTPException(status_code=503, detail="Video stream not available")
 
     async def generate():
         while True:
-            data = await asyncio.to_thread(frame_queue.get)
+            data = await asyncio.to_thread(queue.get)
             if data is None:
                 break
             frame, _, _ = data
@@ -261,17 +262,16 @@ async def stream_ais_geojson(
     )
 
 
-frame_queue = None
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global frame_queue
     process = None
     init_db()
     app.state.redis_client = create_async_redis_client()
+    app.state.frame_queue = None
     if VIDEO_PATH and VIDEO_PATH.exists():
-        process, frame_queue = worker.start(VIDEO_PATH, stream_id=DEFAULT_DETECTIONS_STREAM_ID)
+        process, app.state.frame_queue = worker.start(VIDEO_PATH, stream_id=DEFAULT_DETECTIONS_STREAM_ID)
     yield
     await app.state.redis_client.aclose()
     if process:
