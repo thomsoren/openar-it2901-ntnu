@@ -7,6 +7,7 @@ import getTilemapURL from "./AISGeoJsonMapTilemap";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { AISData } from "../../types/aisData";
+import { destinationPoint, headingTo, distanceTo } from "../../utils/geometryMath";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -19,37 +20,6 @@ interface AISGeoJsonMapProps {
   onChange?: (
     updates: Partial<{ shipLat: number; shipLon: number; heading: number; offsetMeters: number }>
   ) => void;
-}
-
-// Geo helpers
-const METERS_PER_LAT_DEGREE = 111_320;
-const metersPerLonDegree = (lat: number) => METERS_PER_LAT_DEGREE * Math.cos(lat * (Math.PI / 180));
-
-// Return the destination point from current origin, based on heading (degrees) and distance (metres)
-function destinationPoint(
-  lat: number,
-  lon: number,
-  headingDeg: number,
-  distanceM: number
-): [number, number] {
-  const headingRad = headingDeg * (Math.PI / 180);
-  const destLat = lat + (distanceM * Math.cos(headingRad)) / METERS_PER_LAT_DEGREE;
-  const destLon = lon + (distanceM * Math.sin(headingRad)) / metersPerLonDegree(lat);
-  return [destLat, destLon];
-}
-
-// Return the compass heading (0-360 degrees) from point A to point B
-function headingTo(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const deltaY = (lat2 - lat1) * METERS_PER_LAT_DEGREE;
-  const deltaX = (lon2 - lon1) * metersPerLonDegree(lat1);
-  return (Math.atan2(deltaX, deltaY) * (180 / Math.PI) + 360) % 360;
-}
-
-// Return the straight-line distance in metres between two points
-function distanceTo(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const deltaY = (lat2 - lat1) * METERS_PER_LAT_DEGREE;
-  const deltaX = (lon2 - lon1) * metersPerLonDegree(lat1);
-  return Math.sqrt(deltaX ** 2 + deltaY ** 2);
 }
 
 // Helper to build the geojson shape

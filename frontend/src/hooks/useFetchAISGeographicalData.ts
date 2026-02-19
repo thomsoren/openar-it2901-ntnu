@@ -1,6 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { AISData } from "../types/aisData";
-// React hook
+import { isPointInPolygon, buildFovPolygon } from "../utils/geometryMath";
+
+const isVesselInFov = (vessel: AISData, polygon: [number, number][]): boolean => {
+  if (!vessel.latitude || !vessel.longitude) return false;
+  return isPointInPolygon(vessel.longitude, vessel.latitude, polygon);
+};
+
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,
   shipLat: number = 63.4365,
@@ -9,10 +15,22 @@ export const useFetchAISGeographicalData = (
   offsetMeters: number = 1000,
   fovDegrees: number = 60
 ) => {
+  // All received vessels, unfiltered (source of truth for re-filtering)
+  const vesselCacheRef = useRef<Map<number, AISData>>(new Map());
+
   const [features, setFeatures] = useState<AISData[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Re-filter cached vessels whenever FOV parameters change
+  useEffect(() => {
+    const polygon = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+    const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
+      isVesselInFov(vessel, polygon)
+    );
+    setFeatures(inFov.slice(0, 50));
+  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees]);
 
   useEffect(() => {
     if (!shouldStream) {
@@ -36,8 +54,18 @@ export const useFetchAISGeographicalData = (
     setTimeout(() => setIsStreaming(true), 0);
 
     eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setFeatures((prev) => [data, ...prev].slice(0, 50));
+      const data: AISData = JSON.parse(event.data);
+      if (!data.latitude || !data.longitude || !data.mmsi) return;
+
+      // Update the cache with the latest position for this vessel
+      vesselCacheRef.current.set(data.mmsi, data);
+
+      // Re-filter the full cache against current FOV
+      const polygon = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+      const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
+        isVesselInFov(vessel, polygon)
+      );
+      setFeatures(inFov.slice(0, 50));
     };
 
     eventSource.onerror = () => {
