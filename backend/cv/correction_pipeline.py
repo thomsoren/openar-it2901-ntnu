@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from common.types import Detection
+from cv import config
 from cv.long_persistence import LongLivedPersistence
 from cv.persistence import DetectionPersistence
 from cv.prediction import DetectionPrediction
@@ -18,10 +19,11 @@ class CorrectionPipeline:
         self._predictor = DetectionPrediction()
         self._long_persistence = LongLivedPersistence(
             frame_width=frame_width,
-            min_alive_seconds=5.0,
-            persist_seconds=10.0,
+            min_alive_seconds=config.LONG_PERSIST_MIN_ALIVE_SECONDS,
+            persist_seconds=config.LONG_PERSIST_SECONDS,
+            edge_margin_px=config.LONG_PERSIST_EDGE_MARGIN_PX,
         )
-        self._short_persistence = DetectionPersistence(hold_seconds=0.5)
+        self._short_persistence = DetectionPersistence(hold_seconds=config.SHORT_PERSISTENCE_HOLD_SECONDS)
 
     def ingest(self, detections: List[Detection], now: float) -> None:
         """Ingest one detector batch and update correction state."""

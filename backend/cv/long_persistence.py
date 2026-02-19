@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from common.types import Detection
+from cv import config
 
 
 @dataclass
@@ -26,9 +27,9 @@ class LongLivedPersistence:
     def __init__(
         self,
         frame_width: int,
-        min_alive_seconds: float = 5.0,
-        persist_seconds: float = 10.0,
-        edge_margin_px: int = 80,
+        min_alive_seconds: float = config.LONG_PERSIST_MIN_ALIVE_SECONDS,
+        persist_seconds: float = config.LONG_PERSIST_SECONDS,
+        edge_margin_px: int = config.LONG_PERSIST_EDGE_MARGIN_PX,
     ):
         self.frame_width = frame_width
         self.min_alive_seconds = min_alive_seconds

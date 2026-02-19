@@ -4,12 +4,13 @@ from __future__ import annotations
 from typing import List
 
 from common.types import Detection
+from cv import config
 
 
 class DetectionPersistenceFilter:
     """Hold last known detections for a short window when updates go empty."""
 
-    def __init__(self, hold_seconds: float = 0.5):
+    def __init__(self, hold_seconds: float = config.SHORT_PERSISTENCE_HOLD_SECONDS):
         self.hold_seconds = hold_seconds
         self._last_non_empty: List[Detection] = []
         self._last_non_empty_ts: float | None = None

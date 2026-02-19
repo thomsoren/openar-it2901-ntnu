@@ -4,12 +4,7 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 
 from common.types import Detection
-
-
-DEDUP_TRACK_MAX_AGE_SEC = 1.5
-DEDUP_DUPLICATE_IOU = 0.60
-DEDUP_DUPLICATE_CENTER_FACTOR = 0.45
-DEDUP_DUPLICATE_MIN_CENTER_PX = 40.0
+from cv import config
 
 
 class DetectionSmoother:
@@ -59,9 +54,9 @@ class DetectionSmoother:
     def _is_same_boat(self, a: Detection, b: Detection) -> bool:
         iou = self._iou(a, b)
         center_dist = self._center_distance(a, b)
-        scaled_center = min(a.width, a.height, b.width, b.height) * DEDUP_DUPLICATE_CENTER_FACTOR
-        center_gate = max(DEDUP_DUPLICATE_MIN_CENTER_PX, scaled_center)
-        return iou >= DEDUP_DUPLICATE_IOU or center_dist <= center_gate
+        scaled_center = min(a.width, a.height, b.width, b.height) * config.DEDUP_DUPLICATE_CENTER_FACTOR
+        center_gate = max(config.DEDUP_DUPLICATE_MIN_CENTER_PX, scaled_center)
+        return iou >= config.DEDUP_DUPLICATE_IOU or center_dist <= center_gate
 
     def _remap_id(self, det: Detection, track_id: int) -> Detection:
         return Detection(
@@ -76,7 +71,11 @@ class DetectionSmoother:
         )
 
     def _expire_recent(self, now: float) -> None:
-        stale = [tid for tid, (_, _, _, _, seen) in self._recent.items() if (now - seen) > DEDUP_TRACK_MAX_AGE_SEC]
+        stale = [
+            tid
+            for tid, (_, _, _, _, seen) in self._recent.items()
+            if (now - seen) > config.DEDUP_TRACK_MAX_AGE_SEC
+        ]
         for tid in stale:
             self._recent.pop(tid, None)
             self._aliases.pop(tid, None)
@@ -101,7 +100,7 @@ class DetectionSmoother:
                 dx = det.x - x
                 dy = det.y - y
                 dist = (dx * dx + dy * dy) ** 0.5
-                gate = max(20.0, min(det.width, det.height, w, h) * 0.8)
+                gate = max(config.DEDUP_MATCH_GATE_MIN_PX, min(det.width, det.height, w, h) * config.DEDUP_MATCH_GATE_FACTOR)
                 if dist <= gate and dist < best_dist:
                     best_dist = dist
                     best_id = tid

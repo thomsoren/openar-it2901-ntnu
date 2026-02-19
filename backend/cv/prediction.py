@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from common.types import Detection
+from cv import config
 
 
 @dataclass
@@ -25,22 +26,13 @@ class _TrackState:
 class DetectionPrediction:
     """Predict short-term positions with soft measurement correction per track id."""
 
-    MAX_AGE_SEC = 12.0
-    MAX_DT_SEC = 0.20
-    MAX_SPEED_PX_PER_SEC = 700.0
-    MIN_VEL_DT_SEC = 0.05
-    POS_ALPHA = 0.35
-    SIZE_ALPHA = 0.25
-    VEL_ALPHA = 0.30
-    VELOCITY_DECAY_PER_SEC = 0.85
-
     def __init__(self):
         self._tracks: Dict[int, _TrackState] = {}
 
     @staticmethod
     def _clamp_speed(vx: float, vy: float) -> tuple[float, float]:
         speed_sq = (vx * vx) + (vy * vy)
-        max_sq = DetectionPrediction.MAX_SPEED_PX_PER_SEC ** 2
+        max_sq = config.PREDICTION_MAX_SPEED_PX_PER_SEC ** 2
         if speed_sq <= max_sq:
             return vx, vy
         scale = (max_sq / speed_sq) ** 0.5
@@ -52,18 +44,18 @@ class DetectionPrediction:
             if dt <= 0:
                 continue
 
-            dt_clamped = min(dt, self.MAX_DT_SEC)
+            dt_clamped = min(dt, config.PREDICTION_MAX_DT_SEC)
             state.x += state.vx * dt_clamped
             state.y += state.vy * dt_clamped
 
-            decay = self.VELOCITY_DECAY_PER_SEC ** dt_clamped
+            decay = config.PREDICTION_VELOCITY_DECAY_PER_SEC ** dt_clamped
             state.vx *= decay
             state.vy *= decay
             state.vx, state.vy = self._clamp_speed(state.vx, state.vy)
             state.last_update = now
 
     def _expire(self, now: float) -> None:
-        stale = [tid for tid, state in self._tracks.items() if (now - state.last_seen) > self.MAX_AGE_SEC]
+        stale = [tid for tid, state in self._tracks.items() if (now - state.last_seen) > config.PREDICTION_MAX_AGE_SEC]
         for tid in stale:
             self._tracks.pop(tid, None)
 
@@ -99,22 +91,22 @@ class DetectionPrediction:
             prev_x = state.x
             prev_y = state.y
             prev_seen = state.last_seen
-            state.x = (self.POS_ALPHA * det.x) + ((1.0 - self.POS_ALPHA) * state.x)
-            state.y = (self.POS_ALPHA * det.y) + ((1.0 - self.POS_ALPHA) * state.y)
-            state.width = (self.SIZE_ALPHA * det.width) + ((1.0 - self.SIZE_ALPHA) * state.width)
-            state.height = (self.SIZE_ALPHA * det.height) + ((1.0 - self.SIZE_ALPHA) * state.height)
-            state.confidence = max(det.confidence, state.confidence * 0.9)
+            state.x = (config.PREDICTION_POS_ALPHA * det.x) + ((1.0 - config.PREDICTION_POS_ALPHA) * state.x)
+            state.y = (config.PREDICTION_POS_ALPHA * det.y) + ((1.0 - config.PREDICTION_POS_ALPHA) * state.y)
+            state.width = (config.PREDICTION_SIZE_ALPHA * det.width) + ((1.0 - config.PREDICTION_SIZE_ALPHA) * state.width)
+            state.height = (config.PREDICTION_SIZE_ALPHA * det.height) + ((1.0 - config.PREDICTION_SIZE_ALPHA) * state.height)
+            state.confidence = max(det.confidence, state.confidence * config.PREDICTION_CONFIDENCE_DECAY)
             state.class_id = det.class_id
             state.class_name = det.class_name
             state.last_seen = now
             state.last_update = now
 
             dt = max(1e-3, now - prev_seen)
-            if dt >= self.MIN_VEL_DT_SEC:
+            if dt >= config.PREDICTION_MIN_VEL_DT_SEC:
                 measured_vx = (state.x - prev_x) / dt
                 measured_vy = (state.y - prev_y) / dt
-                state.vx = (self.VEL_ALPHA * measured_vx) + ((1.0 - self.VEL_ALPHA) * state.vx)
-                state.vy = (self.VEL_ALPHA * measured_vy) + ((1.0 - self.VEL_ALPHA) * state.vy)
+                state.vx = (config.PREDICTION_VEL_ALPHA * measured_vx) + ((1.0 - config.PREDICTION_VEL_ALPHA) * state.vx)
+                state.vy = (config.PREDICTION_VEL_ALPHA * measured_vy) + ((1.0 - config.PREDICTION_VEL_ALPHA) * state.vy)
                 state.vx, state.vy = self._clamp_speed(state.vx, state.vy)
 
     def apply(self, detections: List[Detection], now: float) -> List[Detection]:
