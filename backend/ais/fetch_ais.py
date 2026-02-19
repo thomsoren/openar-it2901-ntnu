@@ -115,40 +115,45 @@ async def fetch_ais_stream_geojson(
         "modelType": "Simple",
         "modelFormat": "Json",
         "geometry": {"type": "Polygon", "coordinates": [coordinates]},
-        "downsample": True
+        "downsample": False
     }
 
     timeout_cfg = aiohttp.ClientTimeout(total=None, sock_read=timeout)
 
-    try:
-        async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
-            token = await _fetch_token(session)
-            
-            for attempt in range(2):
-                async with session.post(
-                    "https://live.ais.barentswatch.no/live/v1/combined",
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    json=request_body
-                ) as response:
-                    if response.status == 401 and attempt == 0:
-                        token = await _fetch_token(session)
-                        continue
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise ValueError(f"HTTP {response.status}: {error_text}")
 
-                    async for line in response.content:
-                        line = line.decode("utf-8").strip()
-                        if line:
-                            try:
-                                data = json.loads(line)
-                                yield data
-                            except json.JSONDecodeError:
-                                continue
-                    return
-    except Exception as e:
-        raise ValueError(f"Stream error in fetch_ais_stream_geojson: {type(e).__name__}: {str(e)}")
+    # Loop to handle token refresh and connection retries
+    while True:
+        try:
+            async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
+                token = await _fetch_token(session)
+                
+                for attempt in range(2):
+                    async with session.post(
+                        "https://live.ais.barentswatch.no/live/v1/combined",
+                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                        json=request_body
+                    ) as response:
+                        if response.status == 401 and attempt == 0:
+                            token = await _fetch_token(session)
+                            continue
+                        if response.status != 200:
+                            error_text = await response.text()
+                            raise ValueError(f"HTTP {response.status}: {error_text}")
 
+                        async for line in response.content:
+                            line = line.decode("utf-8").strip()
+                            if line:
+                                try:
+                                    data = json.loads(line)
+                                    yield data
+                                except json.JSONDecodeError:
+                                    continue
+                        return
+        except (aiohttp.ClientPayloadError, aiohttp.ServerDisconnectedError):
+            await asyncio.sleep(2)
+            continue
+        except Exception as e:
+            raise ValueError(f"Stream error: {type(e).__name__}: {str(e)}")
 
 def main():
     if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
