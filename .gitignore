@@ -13,3 +13,4 @@ processed/
 node_modules/
 backend/data/SeaShips/
 backend/data/CombinedShips/
+backend/data/ais_logs/
