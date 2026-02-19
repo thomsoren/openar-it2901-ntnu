@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ProjectedCoordinate } from "../types/projection";
+import { API_CONFIG } from "../config/video";
 
 interface UseFetchAISProjectionsByMMSIResult {
   /** Array of vessels projected to camera coordinates */
@@ -66,7 +67,7 @@ export function useFetchAISProjectionsByMMSI(
       fov_degrees: fovDegrees.toString(),
     });
 
-    const url = `http://localhost:8000/api/ais/projections/mmsi?${params.toString()}`;
+    const url = `${API_CONFIG.BASE_URL}/api/ais/projections/mmsi?${params.toString()}`;
 
     try {
       const eventSource = new EventSource(url);

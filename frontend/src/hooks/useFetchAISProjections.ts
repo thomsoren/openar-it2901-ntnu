@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { ProjectedCoordinate } from "../types/projection";
+import { API_CONFIG } from "../config/video";
 
 interface UseFetchAISProjectionsResult {
   /** Array of vessels projected to camera coordinates */
@@ -61,7 +62,7 @@ export const useFetchAISProjections = (
     setTimeout(() => setError(null), 0);
     projectionsMapRef.current.clear();
 
-    const url = `http://localhost:8000/api/ais/projections?ship_lat=${shipLat}&ship_lon=${shipLon}&heading=${heading}&offset_meters=${offsetMeters}&fov_degrees=${fovDegrees}`;
+    const url = `${API_CONFIG.BASE_URL}/api/ais/projections?ship_lat=${shipLat}&ship_lon=${shipLon}&heading=${heading}&offset_meters=${offsetMeters}&fov_degrees=${fovDegrees}`;
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
