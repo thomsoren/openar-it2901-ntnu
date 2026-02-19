@@ -99,6 +99,7 @@ function App() {
   const [profilePassword, setProfilePassword] = useState("");
   const [profileUsernameError, setProfileUsernameError] = useState("");
   const [profilePasswordError, setProfilePasswordError] = useState("");
+  const [clockDate, setClockDate] = useState(() => new Date().toISOString());
   const profileMenuRef = useRef<HTMLElement | null>(null);
 
   const {
@@ -133,6 +134,16 @@ function App() {
       // Ignore storage failures.
     }
   }, [currentPage]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClockDate(new Date().toISOString());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -441,6 +452,7 @@ function App() {
           showDimmingButton
           showAppsButton
           showUserButton
+          showClock
           menuButtonActivated={showNavigationMenu}
           userButtonActivated={showUserPanel}
           onMenuButtonClicked={() => setShowNavigationMenu((previous) => !previous)}
@@ -451,8 +463,9 @@ function App() {
           }}
         >
           <ObcClock
-            date={new Date().toISOString()}
-            timeZoneOffsetHours={new Date().getTimezoneOffset() / -60}
+            slot="clock"
+            date={clockDate}
+            timeZoneOffsetHours={new Date(clockDate).getTimezoneOffset() / -60}
             showTimezone
             blinkOnlyBreakpointPx={600}
           />
