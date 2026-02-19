@@ -17,6 +17,7 @@ import cv2
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
@@ -207,23 +208,18 @@ async def get_ais_data():
         )
 
 
-@app.get("/api/ais/stream")
-async def stream_ais_geojson(
-    ship_lat: float = 63.4365,
-    ship_lon: float = 10.3835,
-    heading: float = 0,
-    offset_meters: float = 1000,
-    fov_degrees: float = 60
-):
-    """Stream live AIS data in ship's triangular field of view"""
+class AISStreamRequest(BaseModel):
+    # GeoJSON polygon: [[lon, lat], ...] computed by the frontend
+    coordinates: List[List[float]]
+
+
+@app.post("/api/ais/stream")
+async def stream_ais_geojson(body: AISStreamRequest):
+    """Stream live AIS data inside the polygon pre-computed by the frontend."""
     async def event_generator():
         try:
             async for feature in fetch_ais_stream_geojson(
-                ship_lat=ship_lat,
-                ship_lon=ship_lon,
-                heading=heading,
-                offset_meters=offset_meters,
-                fov_degrees=fov_degrees
+                coordinates=body.coordinates
             ):
                 yield f"data: {json.dumps(feature)}\n\n"
         except Exception as e:

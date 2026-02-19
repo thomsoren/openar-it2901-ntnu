@@ -7,7 +7,7 @@ import getTilemapURL from "./AISGeoJsonMapTilemap";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { AISData } from "../../types/aisData";
-import { destinationPoint, headingTo, distanceTo } from "../../utils/geometryMath";
+import { destinationPoint, headingTo, distanceTo, buildFovPolygon } from "../../utils/geometryMath";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -22,22 +22,9 @@ interface AISGeoJsonMapProps {
   ) => void;
 }
 
-// Helper to build the geojson shape
-// param: steps controls how smooth the arc is - more steps means smoother but more processing
-function buildWedge(
-  lat: number,
-  lon: number,
-  headingDeg: number,
-  rangeMetre: number,
-  fovDeg: number,
-  steps = 32
-): [number, number][] {
-  const half = fovDeg / 2;
-  const arc: [number, number][] = [];
-  for (let i = 0; i <= steps; i++) {
-    arc.push(destinationPoint(lat, lon, headingDeg - half + (fovDeg * i) / steps, rangeMetre));
-  }
-  return [[lat, lon], ...arc, [lat, lon]];
+// Convert GeoJSON [lon, lat] polygon to Leaflet [lat, lon] format for rendering.
+function toLeafletLatLngs(geoJsonCoords: [number, number][]): [number, number][] {
+  return geoJsonCoords.map(([lon, lat]) => [lat, lon]);
 }
 
 /**  Leaflet CDN loader  **/
@@ -116,7 +103,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       // Build wedge polygon
       wedgeRef.current = L.polygon(
-        buildWedge(shipLat, shipLon, heading, offsetMeters, fovDegrees),
+        toLeafletLatLngs(buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees)),
         {
           color: "#00d4ff",
           fillColor: "#00d4ff",
@@ -143,7 +130,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       originMarker.on("drag", (e: LeafletEvent) => {
         const { lat, lng } = (e.target as Marker).getLatLng();
-        wedgeRef.current?.setLatLngs(buildWedge(lat, lng, heading, offsetMeters, fovDegrees));
+        wedgeRef.current?.setLatLngs(
+          toLeafletLatLngs(buildFovPolygon(lat, lng, heading, offsetMeters, fovDegrees))
+        );
         const [rLat, rLon] = destinationPoint(lat, lng, heading, offsetMeters);
         rangeRef.current?.setLatLng([rLat, rLon]);
       });
@@ -174,12 +163,14 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         const origin = originRef.current?.getLatLng();
         if (!origin) return;
         wedgeRef.current?.setLatLngs(
-          buildWedge(
-            origin.lat,
-            origin.lng,
-            headingTo(origin.lat, origin.lng, lat, lng),
-            distanceTo(origin.lat, origin.lng, lat, lng),
-            fovDegrees
+          toLeafletLatLngs(
+            buildFovPolygon(
+              origin.lat,
+              origin.lng,
+              headingTo(origin.lat, origin.lng, lat, lng),
+              distanceTo(origin.lat, origin.lng, lat, lng),
+              fovDegrees
+            )
           )
         );
       });
@@ -216,7 +207,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   useEffect(() => {
     if (!mapRef.current) return;
 
-    wedgeRef.current?.setLatLngs(buildWedge(shipLat, shipLon, heading, offsetMeters, fovDegrees));
+    wedgeRef.current?.setLatLngs(
+      toLeafletLatLngs(buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees))
+    );
     originRef.current?.setLatLng([shipLat, shipLon]);
     const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
     rangeRef.current?.setLatLng([rLat, rLon]);

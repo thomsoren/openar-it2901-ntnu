@@ -31,32 +31,27 @@ function distanceTo(lat1: number, lon1: number, lat2: number, lon2: number): num
   return Math.sqrt(deltaX ** 2 + deltaY ** 2);
 }
 
-// Build a polygon representing the FOV wedge based on ship position, heading, range, and FOV angle
+// Build a polygon representing the FOV wedge, returns [lon, lat] pairs in GeoJSON format
 const buildFovPolygon = (
   shipLat: number,
   shipLon: number,
   heading: number,
   offsetMeters: number,
-  fovDegrees: number
+  fovDegrees: number,
+  steps = 32
 ): [number, number][] => {
-  const [leftLat, leftLon] = destinationPoint(
-    shipLat,
-    shipLon,
-    heading - fovDegrees / 2,
-    offsetMeters
-  );
-  const [rightLat, rightLon] = destinationPoint(
-    shipLat,
-    shipLon,
-    heading + fovDegrees / 2,
-    offsetMeters
-  );
-  return [
-    [shipLon, shipLat],
-    [leftLon, leftLat],
-    [rightLon, rightLat],
-    [shipLon, shipLat],
-  ];
+  const half = fovDegrees / 2;
+  const arc: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const [lat, lon] = destinationPoint(
+      shipLat,
+      shipLon,
+      heading - half + (fovDegrees * i) / steps,
+      offsetMeters
+    );
+    arc.push([lon, lat]); // GeoJSON uses [lon, lat]
+  }
+  return [[shipLon, shipLat], ...arc, [shipLon, shipLat]];
 };
 
 // Check if a point (lon, lat) is inside a polygon using ray casting algorithm.
