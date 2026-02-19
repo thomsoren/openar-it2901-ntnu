@@ -1,7 +1,6 @@
 import React from "react";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
 import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
-import { ObcPoiType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/building-blocks/poi/poi";
 import { DetectedVessel } from "../../types/detection";
 import { POI_CONFIG } from "../../config/video";
 import { VideoTransform } from "../../hooks/useVideoTransform";
@@ -47,7 +46,6 @@ function PoiOverlay({ vessels = [], videoTransform }: PoiOverlayProps) {
           <obc-poi-data
             key={trackId}
             style={{ position: "absolute" }}
-            type={ObcPoiType.Line}
             x={screenX}
             y={lineHeight}
             buttonY={buttonY}
