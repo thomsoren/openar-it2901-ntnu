@@ -214,10 +214,16 @@ async def stream_ais_geojson(
     ship_lon: float = 10.3835,
     heading: float = 0,
     offset_meters: float = 1000,
-    fov_degrees: float = 60
+    fov_degrees: float = 60,
+    log: bool = False
 ):
-    """Stream live AIS data in ship's triangular field of view"""
-    logger = AISSessionLogger()
+    """
+    Stream live AIS data in ship's triangular field of view.
+    
+    Parameters:
+    - log: Optional boolean to enable logging of AIS data (default: False)
+    """
+    logger = AISSessionLogger() if log else None
     
     async def event_generator():
         try:
@@ -228,13 +234,15 @@ async def stream_ais_geojson(
                 offset_meters=offset_meters,
                 fov_degrees=fov_degrees
             ):
-                logger.log(feature, 0)
+                if logger:
+                    logger.log(feature, 0)
                 yield f"data: {json.dumps(feature)}\n\n"
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e)}"
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
         finally:
-            logger.end_session()
+            if logger:
+                logger.end_session()
     
     return StreamingResponse(
         event_generator(),
