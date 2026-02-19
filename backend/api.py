@@ -72,6 +72,8 @@ def read_root():
             "video": "/api/video",
             "ais": "/api/ais",
             "ais_stream": "/api/ais/stream",
+            "ais_projections": "/api/ais/projections",
+            "ais_projections_mmsi": "/api/ais/projections/mmsi",
             "samples": "/api/samples",
             "storage_presign": "/api/storage/presign",
             "health": "/health"
@@ -222,11 +224,39 @@ async def get_ais_data():
 async def stream_ais_geojson(
     ship_lat: float = 63.4365,
     ship_lon: float = 10.3835,
-    heading: float = 0,
+    heading: float = 90,
     offset_meters: float = 1000,
     fov_degrees: float = 60
 ):
-    """Stream live AIS data in ship's triangular field of view"""
+    """
+    Stream live AIS data in ship's triangular field of view.
+    
+    Server-Sent Events (SSE) endpoint that streams AIS vessel data for vessels 
+    within a triangular field of view from the observer's position.
+    
+    Args:
+        ship_lat: Observer latitude
+        ship_lon: Observer longitude
+        heading: Observer heading in degrees
+        offset_meters: Distance from observer to triangle base in meters
+        fov_degrees: Field of view angle in degrees
+    
+    Example response:
+        {
+            "courseOverGround": 91.6,
+            "latitude": 63.439217,
+            "longitude": 10.398745,
+            "name": "OCEAN SPACE DRONE1",
+            "rateOfTurn": -9,
+            "shipType": 99,
+            "speedOverGround": 0,
+            "trueHeading": 140,
+            "navigationalStatus": 0,
+            "mmsi": 257030830,
+            "msgtime": "2026-02-17T14:40:14+00:00",
+            "stream": "terra"
+        }
+    """
     async def event_generator():
         try:
             async for feature in fetch_ais_stream_geojson(
@@ -241,6 +271,284 @@ async def stream_ais_geojson(
             error_msg = f"{type(e).__name__}: {str(e)}"
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
     
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@app.get("/api/ais/projections")
+async def stream_ais_projections(
+    ship_lat: float = 63.4365,
+    ship_lon: float = 10.3835,
+    heading: float = 90,
+    offset_meters: float = 3000,
+    fov_degrees: float = 120
+):
+    """
+    Stream live AIS data of vessels within ships FOV and enrich with 
+    GPS position being projected as pixel coordinates. These can be 
+    used to visualize the AIS vessels in the camera view of the frontend.
+    
+    Args:
+        ship_lat: Observer latitude
+        ship_lon: Observer longitude
+        heading: Observer heading in degrees
+        offset_meters: Distance from observer to triangle base in meters
+        fov_degrees: Field of view angle in degrees
+    
+    Example response:
+        {
+            "courseOverGround": 91.6,
+            "latitude": 63.439217,
+            "longitude": 10.398745,
+            "name": "OCEAN SPACE DRONE1",
+            "rateOfTurn": -9,
+            "shipType": 99,
+            "speedOverGround": 0,
+            "trueHeading": 140,
+            "navigationalStatus": 0,
+            "mmsi": 257030830,
+            "msgtime": "2026-02-17T14:40:14+00:00",
+            "stream": "terra",
+            "projection": {
+                "x_px": 612,
+                "y_px": 444,
+                "distance_m": 816.0120734200536,
+                "bearing_deg": 68.26304202314327,
+                "rel_bearing_deg": -21.73695797685673
+            }
+        }
+    """
+
+    async def event_generator():
+        try:
+            async for feature in fetch_ais_stream_projections(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                heading=heading,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):
+                yield f"data: {json.dumps(feature)}\n\n"
+
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@app.get("/api/ais/projections/mmsi")
+async def stream_ais_projections_by_mmsi(
+    mmsi: str,
+    offset_meters: float = 3000,
+    fov_degrees: float = 120
+):
+    """
+    Stream live AIS data in vessel's FOV + projected camera pixel positions.
+    Fetches vessel position and heading by MMSI from Barentswatch API,
+    then projects nearby vessels to camera pixel coordinates.
+    This is a single API call combining vessel lookup + projection.
+    
+    Args:
+        mmsi: Maritime Mobile Service Identity (vessel ID)
+        offset_meters: Distance from vessel to triangle base in meters
+        fov_degrees: Field of view angle in degrees
+    
+    Example response:
+        {
+            "courseOverGround": 316.4,
+            "latitude": 63.43917,
+            "longitude": 10.398723,
+            "name": "LISE",
+            "rateOfTurn": null,
+            "shipType": 50,
+            "speedOverGround": 0,
+            "trueHeading": null,
+            "navigationalStatus": 0,
+            "mmsi": 257347700,
+            "msgtime": "2026-02-17T14:40:15+00:00",
+            "stream": "terra",
+            "projection": {
+                "x_px": 617,
+                "y_px": 444,
+                "distance_m": 813.0737502642806,
+                "bearing_deg": 68.57663714470652,
+                "rel_bearing_deg": -21.423362855293476
+            }
+        }
+    """
+    
+    async def event_generator():
+        try:
+            from ais.fetch_ais import fetch_ais_stream_projections_by_mmsi
+            async for feature in fetch_ais_stream_projections_by_mmsi(
+                mmsi=mmsi,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):
+                yield f"data: {json.dumps(feature)}\n\n"
+
+        except ValueError as e:
+            error_msg = str(e)
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@app.get("/api/ais/projections")
+async def stream_ais_projections(
+    ship_lat: float = 63.4365,
+    ship_lon: float = 10.3835,
+    heading: float = 90,
+    offset_meters: float = 3000,
+    fov_degrees: float = 120
+):
+    """
+    Stream live AIS data of vessels within ships FOV and enrich with 
+    GPS position being projected as pixel coordinates. These can be 
+    used to visualize the AIS vessels in the camera view of the frontend.
+    
+    Args:
+        ship_lat: Observer latitude
+        ship_lon: Observer longitude
+        heading: Observer heading in degrees
+        offset_meters: Distance from observer to triangle base in meters
+        fov_degrees: Field of view angle in degrees
+    
+    Example response:
+        {
+            "courseOverGround": 91.6,
+            "latitude": 63.439217,
+            "longitude": 10.398745,
+            "name": "OCEAN SPACE DRONE1",
+            "rateOfTurn": -9,
+            "shipType": 99,
+            "speedOverGround": 0,
+            "trueHeading": 140,
+            "navigationalStatus": 0,
+            "mmsi": 257030830,
+            "msgtime": "2026-02-17T14:40:14+00:00",
+            "stream": "terra",
+            "projection": {
+                "x_px": 612,
+                "y_px": 444,
+                "distance_m": 816.0120734200536,
+                "bearing_deg": 68.26304202314327,
+                "rel_bearing_deg": -21.73695797685673
+            }
+        }
+    """
+
+    async def event_generator():
+        try:
+            async for feature in fetch_ais_stream_projections(
+                ship_lat=ship_lat,
+                ship_lon=ship_lon,
+                heading=heading,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):
+                yield f"data: {json.dumps(feature)}\n\n"
+
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@app.get("/api/ais/projections/mmsi")
+async def stream_ais_projections_by_mmsi(
+    mmsi: str,
+    offset_meters: float = 3000,
+    fov_degrees: float = 120
+):
+    """
+    Stream live AIS data in vessel's FOV + projected camera pixel positions.
+    Fetches vessel position and heading by MMSI from Barentswatch API,
+    then projects nearby vessels to camera pixel coordinates.
+    This is a single API call combining vessel lookup + projection.
+    
+    Args:
+        mmsi: Maritime Mobile Service Identity (vessel ID)
+        offset_meters: Distance from vessel to triangle base in meters
+        fov_degrees: Field of view angle in degrees
+    
+    Example response:
+        {
+            "courseOverGround": 316.4,
+            "latitude": 63.43917,
+            "longitude": 10.398723,
+            "name": "LISE",
+            "rateOfTurn": null,
+            "shipType": 50,
+            "speedOverGround": 0,
+            "trueHeading": null,
+            "navigationalStatus": 0,
+            "mmsi": 257347700,
+            "msgtime": "2026-02-17T14:40:15+00:00",
+            "stream": "terra",
+            "projection": {
+                "x_px": 617,
+                "y_px": 444,
+                "distance_m": 813.0737502642806,
+                "bearing_deg": 68.57663714470652,
+                "rel_bearing_deg": -21.423362855293476
+            }
+        }
+    """
+    
+    async def event_generator():
+        try:
+            from ais.fetch_ais import fetch_ais_stream_projections_by_mmsi
+            async for feature in fetch_ais_stream_projections_by_mmsi(
+                mmsi=mmsi,
+                offset_meters=offset_meters,
+                fov_degrees=fov_degrees
+            ):
+                yield f"data: {json.dumps(feature)}\n\n"
+
+        except ValueError as e:
+            error_msg = str(e)
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
