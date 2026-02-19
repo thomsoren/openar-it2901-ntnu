@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: openar-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: openar
+      POSTGRES_PASSWORD: openar_dev
+      POSTGRES_DB: openar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

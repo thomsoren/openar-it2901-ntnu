@@ -1,0 +1,128 @@
+.upload-page {
+  width: 100%;
+  min-height: 100%;
+  padding: 1rem;
+  box-sizing: border-box;
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  overflow: auto;
+  background: var(--obc-color-black-100, #c8c8c8);
+}
+
+.upload-page__card {
+  width: min(920px, 100%);
+  margin: 0 auto;
+}
+
+.upload-page__content-card {
+  width: min(920px, 100%);
+  margin: 0 auto;
+}
+
+.upload-page__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.upload-page__description {
+  opacity: 0.88;
+}
+
+.upload-page__body {
+  display: grid;
+  gap: 1rem;
+  padding: 0.75rem 0.5rem 0.25rem;
+}
+
+.upload-page__dropzone {
+  border: 2px dashed var(--obc-color-black-400, #7f7f7f);
+  border-radius: 0.6rem;
+  padding: 1.25rem;
+  background: var(--obc-color-white-1000, #fff);
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  text-align: center;
+  width: min(680px, 100%);
+  margin: 0 auto;
+}
+
+.upload-page__dropzone--active {
+  border-color: var(--obc-color-cyan-600, #1f8fc2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--obc-color-cyan-600, #1f8fc2) 22%, transparent);
+}
+
+.upload-page__dropzone-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.upload-page__dropzone-subtitle {
+  opacity: 0.85;
+  font-size: 0.92rem;
+}
+
+.upload-page__dropzone-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.upload-page__native-file-input {
+  display: none;
+}
+
+.upload-page__file-info {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--obc-color-black-300, #9c9c9c);
+  border-radius: 0.35rem;
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.upload-page__file-name {
+  font-weight: 600;
+}
+
+.upload-page__preview {
+  border: 1px solid var(--obc-color-black-300, #9c9c9c);
+  border-radius: 0.35rem;
+  padding: 0.5rem;
+  background: var(--obc-color-black-50, #d4d4d4);
+}
+
+.upload-page__preview-video {
+  width: 100%;
+  max-height: min(52vh, 420px);
+  border-radius: 0.25rem;
+  background: var(--obc-color-black-900, #101010);
+}
+
+.upload-page__preview-empty {
+  border: 1px dashed var(--obc-color-black-300, #9c9c9c);
+  border-radius: 0.35rem;
+  padding: 1rem;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.upload-page__alert {
+  padding: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .upload-page {
+    padding: 0.75rem;
+  }
+
+  .upload-page__dropzone-actions > * {
+    width: 100%;
+  }
+}

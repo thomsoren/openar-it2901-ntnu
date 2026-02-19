@@ -2,13 +2,15 @@
   "name": "openar",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"pnpm run dev:redis\" \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
+    "dev": "concurrently \"pnpm run dev:redis\" \"pnpm run dev:backend\" \"pnpm run dev:frontend\" \"pnpm run dev:auth\"",
     "dev:redis": "sh ./scripts/dev-redis.sh",
     "dev:frontend": "cd frontend && pnpm dev",
     "dev:backend": "cd backend && uv run main.py",
+    "dev:auth": "cd auth-service && pnpm dev",
     "install:frontend": "cd frontend && pnpm install",
     "install:backend": "cd backend && uv sync",
-    "install": "pnpm run install:backend && pnpm run install:frontend",
+    "install:auth": "cd auth-service && pnpm install",
+    "install": "pnpm run install:backend && pnpm run install:frontend && pnpm run install:auth",
     "prepare": "husky",
     "lint": "cd frontend && pnpm lint",
     "format": "cd frontend && pnpm exec prettier --write ."

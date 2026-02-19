@@ -6,6 +6,19 @@ header {
   z-index: 100;
 }
 
+.user-panel {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  width: min(300px, calc(100vw - 24px));
+  z-index: 120;
+}
+
+.user-panel obc-user-menu {
+  display: flex;
+  margin-left: auto;
+}
+
 .navigation-menu {
   position: absolute;
   top: 48px;
@@ -38,6 +51,19 @@ header {
 
 .main--no-padding {
   padding: 0;
+}
+
+.app-auth-feedback {
+  width: min(560px, 100%);
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.app-auth-feedback__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .background-video {

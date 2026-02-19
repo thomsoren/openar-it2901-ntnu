@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { DetectedVessel } from "../types/detection";
+import { apiFetchPublic } from "../lib/api-client";
 
 const DEFAULT_POLL_INTERVAL = 100; // ms (10 FPS)
 
@@ -46,7 +47,7 @@ export const useDetections = ({
 
   const fetchDetections = useCallback(async () => {
     try {
-      const response = await fetch(url);
+      const response = await apiFetchPublic(url);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch detections: ${response.status}`);

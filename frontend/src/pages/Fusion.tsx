@@ -4,6 +4,7 @@ import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useSettings } from "../contexts/SettingsContext";
 import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
+import { apiFetchPublic } from "../lib/api-client";
 
 function Fusion() {
   const [detectionsEnabled, setDetectionsEnabled] = useState(false);
@@ -32,7 +33,7 @@ function Fusion() {
 
     const resetFusionTimer = async () => {
       try {
-        await fetch(`${API_CONFIG.BASE_URL}/api/fusion/reset`, { method: "POST" });
+        await apiFetchPublic(`${API_CONFIG.BASE_URL}/api/fusion/reset`, { method: "POST" });
       } catch (err) {
         console.warn("Failed to reset fusion timer", err);
       } finally {

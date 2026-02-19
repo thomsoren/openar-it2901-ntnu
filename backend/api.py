@@ -16,13 +16,15 @@ from contextlib import asynccontextmanager
 from typing import List
 
 import cv2
-from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from redis.exceptions import RedisError
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
+from auth.deps import require_admin
+from auth.routes import router as auth_router
 from common.config import (
     DEFAULT_DETECTIONS_STREAM_ID,
     VIDEO_PATH,
@@ -32,6 +34,8 @@ from common.config import (
 )
 from common.types import DetectedVessel
 from cv import worker
+from db.init_db import init_db
+from db.models import AppUser
 from fusion import fusion
 from storage import s3
 
@@ -58,6 +62,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
 
 @app.get("/")
 def read_root():
@@ -108,7 +114,10 @@ def reset_fusion_timer():
 
 
 @app.post("/api/storage/presign")
-def presign_storage(request: s3.PresignRequest):
+def presign_storage(
+    request: s3.PresignRequest,
+    _: AppUser = Depends(require_admin),
+):
     """Generate a presigned URL for GET/PUT against S3 storage."""
     try:
         return s3.presign_storage(request)
@@ -224,7 +233,7 @@ async def stream_ais_geojson(
     ship_lon: float = 10.3835,
     heading: float = 0,
     offset_meters: float = 1000,
-    fov_degrees: float = 60
+    fov_degrees: float = 60,
 ):
     """Stream live AIS data in ship's triangular field of view"""
     async def event_generator():
@@ -259,6 +268,7 @@ STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 async def lifespan(app: FastAPI):
     global frame_queue
     process = None
+    init_db()
     app.state.redis_client = create_async_redis_client()
     if VIDEO_PATH and VIDEO_PATH.exists():
         process, frame_queue = worker.start(VIDEO_PATH, stream_id=DEFAULT_DETECTIONS_STREAM_ID)

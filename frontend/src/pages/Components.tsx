@@ -99,12 +99,7 @@ function Components() {
           >
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
               <div style={{ position: "relative", width: "100px", height: "100px" }}>
-                <obc-poi-data
-                  x={50}
-                  y={50}
-                  buttonY={50}
-                  value={PoiDataValue.Unchecked}
-                />
+                <obc-poi-data x={50} y={50} buttonY={50} value={PoiDataValue.Unchecked} />
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -151,22 +146,12 @@ function Components() {
             >
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ position: "relative", width: "100px", height: "150px" }}>
-                  <obc-poi-data
-                    x={50}
-                    y={75}
-                    buttonY={150}
-                    value={PoiDataValue.Unchecked}
-                  />
+                  <obc-poi-data x={50} y={75} buttonY={150} value={PoiDataValue.Unchecked} />
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ position: "relative", width: "100px", height: "150px" }}>
-                  <obc-poi-data
-                    x={50}
-                    y={75}
-                    buttonY={150}
-                    value={PoiDataValue.Checked}
-                  />
+                  <obc-poi-data x={50} y={75} buttonY={150} value={PoiDataValue.Checked} />
                 </div>
               </div>
             </div>

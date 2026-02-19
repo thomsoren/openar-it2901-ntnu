@@ -1,15 +1,45 @@
-.env
 .DS_Store
-.venv
-/.npmrc
-venv
-node_modules/
-raw/
-processed/
+.idea/
+.vscode/
 .claude/
 
-# PyTorch model weights
-*.pt
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Package manager local config
+/.npmrc
+
+# Dependency folders
 node_modules/
-backend/data/SeaShips/
-backend/data/CombinedShips/
+**/node_modules/
+
+# Build artifacts
+dist/
+**/dist/
+coverage/
+*.tsbuildinfo
+
+# Python
+.venv/
+**/.venv/
+venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+
+# Local data / generated outputs
+runs/
+raw/
+processed/
+backend/data/
+backend/models/
+backend/cv/.output/
+backend/cv/output/
+
+# Model weights
+*.pt

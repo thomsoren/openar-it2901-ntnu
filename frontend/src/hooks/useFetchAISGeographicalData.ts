@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { AISData } from "../types/aisData";
+import { API_CONFIG } from "../config/video";
 // React hook
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,
@@ -28,7 +29,7 @@ export const useFetchAISGeographicalData = (
     // Clear error state when starting a new stream (deferred to avoid cascading renders)
     setTimeout(() => setError(null), 0);
 
-    const url = `http://localhost:8000/api/ais/stream?ship_lat=${shipLat}&ship_lon=${shipLon}&heading=${heading}&offset_meters=${offsetMeters}&fov_degrees=${fovDegrees}`;
+    const url = `${API_CONFIG.BASE_URL}/api/ais/stream?ship_lat=${shipLat}&ship_lon=${shipLon}&heading=${heading}&offset_meters=${offsetMeters}&fov_degrees=${fovDegrees}`;
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
