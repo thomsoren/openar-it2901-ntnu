@@ -11,17 +11,27 @@ from pathlib import Path
 
 import cv2
 
+from common.config import DEFAULT_DETECTIONS_STREAM_ID
 
-def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool = True):
+
+def run(
+    video_path: Path,
+    frame_queue: Queue,
+    stream_id: str = DEFAULT_DETECTIONS_STREAM_ID,
+    loop: bool = True
+):
     from cv.detectors import get_detector
+    from cv.publisher import DetectionPublisher
+
     detector = get_detector()
+    publisher = DetectionPublisher()
 
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    detection_queue.put({"type": "ready", "width": width, "height": height, "fps": fps})
+    publisher.publish(stream_id, {"type": "ready", "width": width, "height": height, "fps": fps})
 
     # Shared state between threads
     lock = threading.Lock()
@@ -81,23 +91,26 @@ def run(video_path: Path, detection_queue: Queue, frame_queue: Queue, loop: bool
         inf_fps = 1.0 / (now - last_time) if now > last_time else 0.0
         last_time = now
 
-        detection_queue.put({
-            "frame_index": frame_idx,
-            "timestamp_ms": ts,
-            "fps": fps,
-            "inference_fps": round(inf_fps, 1),
-            "vessels": [{"detection": d.model_dump(), "vessel": None} for d in detections],
-        })
+        publisher.publish(
+            stream_id,
+            {
+                "type": "detections",
+                "frame_index": frame_idx,
+                "timestamp_ms": ts,
+                "fps": fps,
+                "inference_fps": round(inf_fps, 1),
+                "vessels": [{"detection": d.model_dump(), "vessel": None} for d in detections],
+            }
+        )
 
     reader_thread.join(timeout=1)
     cap.release()
-    detection_queue.put(None)
+    publisher.close()
     frame_queue.put(None)
 
 
-def start(video_path: Path) -> tuple[Process, Queue, Queue]:
-    detection_queue: Queue = Queue()
+def start(video_path: Path, stream_id: str = DEFAULT_DETECTIONS_STREAM_ID) -> tuple[Process, Queue]:
     frame_queue: Queue = Queue(maxsize=30)
-    p = Process(target=run, args=(video_path, detection_queue, frame_queue))
+    p = Process(target=run, args=(video_path, frame_queue, stream_id))
     p.start()
-    return p, detection_queue, frame_queue
+    return p, frame_queue

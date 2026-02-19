@@ -20,6 +20,7 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 - **pnpm:** Install with `npm install -g pnpm`
 - **Python:** 3.11+
 - **uv:** Fast Python package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
+- **Redis:** Required for detection pub/sub
 - **CUDA:** For GPU-accelerated inference (optional but recommended)
 - Access to GitHub Packages for `@ocean-industries-concept-lab` components
 
@@ -40,6 +41,28 @@ cp backend/.env.example backend/.env
 
 # Run both backend and frontend concurrently
 pnpm dev
+```
+
+Start Redis in a separate terminal before `pnpm dev`:
+
+**macOS (Homebrew)**
+
+```bash
+brew install redis
+brew services start redis
+```
+
+**Ubuntu/Debian**
+
+```bash
+sudo apt-get install redis-server
+sudo systemctl enable --now redis-server
+```
+
+**Optional (Docker)**
+
+```bash
+docker run --name openar-redis -p 6379:6379 -d redis:7
 ```
 
 **Access:**

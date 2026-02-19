@@ -3,9 +3,10 @@ import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useSettings } from "../contexts/SettingsContext";
-import { VIDEO_CONFIG, DETECTION_CONFIG } from "../config/video";
+import { VIDEO_CONFIG } from "../config/video";
 
 function Datavision() {
+  const streamId = "default";
   const videoRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { videoFitMode, detectionVisible } = useSettings();
@@ -14,7 +15,7 @@ function Datavision() {
   // Receive detection updates via WebSocket (runs at YOLO speed ~5 FPS)
   // Video plays independently at native 25 FPS
   const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
-    url: DETECTION_CONFIG.WS_URL,
+    streamId,
     config: { track: true, loop: true },
   });
 
