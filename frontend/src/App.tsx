@@ -30,7 +30,7 @@ const handleBrillianceChange = (event: CustomEvent) => {
 function App() {
   const { clockDate } = useClock();
   const nav = useNavigation();
-  const auth = useAuth(nav.currentPage);
+  const auth = useAuth();
   const { profileMenuRef } = useUserMenu({
     showUserPanel: nav.showUserPanel,
     userMenuState: auth.userMenuState,
@@ -126,6 +126,8 @@ function App() {
     return <Upload currentUser={auth.backendUser} />;
   };
 
+  const isOnLoginPage = nav.currentPage === "upload" && !auth.session;
+
   return (
     <>
       <header>
@@ -133,7 +135,7 @@ function App() {
           appTitle="OpenAR"
           pageName={nav.pageLabels[nav.currentPage]}
           showDimmingButton
-          showUserButton={!(nav.currentPage === "upload" && !auth.session)}
+          showUserButton
           showClock
           menuButtonActivated={nav.showNavigationMenu}
           userButtonActivated={nav.showUserPanel}
@@ -143,6 +145,7 @@ function App() {
             nav.setShowBrillianceMenu((previous) => !previous);
           }}
           onUserButtonClicked={() => {
+            if (isOnLoginPage) return;
             nav.setShowBrillianceMenu(false);
             nav.setShowUserPanel((previous) => !previous);
           }}

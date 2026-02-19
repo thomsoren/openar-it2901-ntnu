@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authClient } from "../lib/auth-client";
 import {
   apiFetch,
@@ -6,7 +6,10 @@ import {
   clearApiAccessToken,
   setApiAccessToken,
 } from "../lib/api-client";
-import type { BackendUser } from "../pages/Upload";
+import type { BackendUser } from "../types/auth";
+
+// Refresh the backend JWT this many seconds before it expires.
+const REFRESH_BUFFER_SEC = 60;
 
 type AuthBridgeStatus = "idle" | "loading" | "ready" | "error";
 
@@ -48,12 +51,13 @@ const getInitials = (value?: string | null) => {
   return initials.toUpperCase();
 };
 
-export function useAuth(currentPage: string) {
+export function useAuth() {
   const [backendUser, setBackendUser] = useState<BackendUser | null>(null);
   const [authBridgeStatus, setAuthBridgeStatus] = useState<AuthBridgeStatus>("idle");
   const [authBridgeError, setAuthBridgeError] = useState("");
   const [authBootstrapNonce, setAuthBootstrapNonce] = useState(0);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isProfileSigningIn, setIsProfileSigningIn] = useState(false);
   const [profileUsername, setProfileUsername] = useState("");
   const [profilePassword, setProfilePassword] = useState("");
@@ -78,6 +82,11 @@ export function useAuth(currentPage: string) {
         : "sign-in";
 
   useEffect(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+
     if (!session?.user?.id) {
       clearApiAccessToken();
       setBackendUser(null);
@@ -86,30 +95,57 @@ export function useAuth(currentPage: string) {
       return;
     }
 
-    if (currentPage !== "upload") {
-      return;
-    }
-
     let cancelled = false;
+
+    const exchangeToken = async (): Promise<number | null> => {
+      const exchangeResponse = await apiFetchPublic("/auth/token/exchange", {
+        method: "POST",
+      });
+
+      if (!exchangeResponse.ok) {
+        throw new Error(await readApiError(exchangeResponse, "Failed to exchange token"));
+      }
+
+      const exchangePayload = (await exchangeResponse.json()) as {
+        access_token: string;
+        expires_in: number;
+      };
+
+      setApiAccessToken(exchangePayload.access_token);
+      return exchangePayload.expires_in;
+    };
+
+    const scheduleRefresh = (expiresIn: number) => {
+      const refreshInSec = Math.max(expiresIn - REFRESH_BUFFER_SEC, 10);
+      refreshTimerRef.current = setTimeout(() => {
+        void silentRefresh();
+      }, refreshInSec * 1000);
+    };
+
+    const silentRefresh = async () => {
+      try {
+        const expiresIn = await exchangeToken();
+        if (!cancelled && expiresIn) {
+          scheduleRefresh(expiresIn);
+        }
+      } catch {
+        // Silent refresh failed; the session cookie may have expired.
+        // The user will get a 401 on the next API call and can re-login.
+        if (!cancelled) {
+          clearApiAccessToken();
+          setBackendUser(null);
+          setAuthBridgeStatus("error");
+          setAuthBridgeError("Session expired. Please sign in again.");
+        }
+      }
+    };
 
     const bootstrapBackendAuth = async () => {
       setAuthBridgeStatus("loading");
       setAuthBridgeError("");
 
       try {
-        const exchangeResponse = await apiFetchPublic("/auth/token/exchange", {
-          method: "POST",
-        });
-
-        if (!exchangeResponse.ok) {
-          throw new Error(await readApiError(exchangeResponse, "Failed to exchange token"));
-        }
-
-        const exchangePayload = (await exchangeResponse.json()) as {
-          access_token: string;
-        };
-
-        setApiAccessToken(exchangePayload.access_token);
+        const expiresIn = await exchangeToken();
 
         const meResponse = await apiFetch("/auth/me");
         if (!meResponse.ok) {
@@ -124,6 +160,10 @@ export function useAuth(currentPage: string) {
 
         setBackendUser(mePayload.user);
         setAuthBridgeStatus("ready");
+
+        if (expiresIn) {
+          scheduleRefresh(expiresIn);
+        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -140,8 +180,12 @@ export function useAuth(currentPage: string) {
 
     return () => {
       cancelled = true;
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
     };
-  }, [session?.user?.id, currentPage, authBootstrapNonce]);
+  }, [session?.user?.id, authBootstrapNonce]);
 
   const handleAuthenticated = async () => {
     await refetchSession();

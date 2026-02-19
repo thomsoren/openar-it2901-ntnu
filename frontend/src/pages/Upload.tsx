@@ -22,16 +22,10 @@ import {
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-button/progress-button";
 import AccessDenied from "../components/auth/AccessDenied";
 import { apiFetch } from "../lib/api-client";
+import type { BackendUser } from "../types/auth";
 import "./Upload.css";
 
 type UploadStatus = "idle" | "uploading" | "success" | "error";
-
-export type BackendUser = {
-  id: string;
-  email: string | null;
-  username: string;
-  is_admin: boolean;
-};
 
 type UploadProps = {
   currentUser: BackendUser;
