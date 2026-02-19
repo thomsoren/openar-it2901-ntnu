@@ -109,8 +109,7 @@ async def exchange_token(
 
     email = user_payload.get("email")
     normalized_email = str(email).strip().lower() if isinstance(email, str) else None
-    if normalized_email == "":
-        normalized_email = None
+    normalized_email = normalized_email or None
 
     user = db.get(AppUser, user_id)
     if user is None:
