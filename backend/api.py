@@ -10,6 +10,8 @@ Architecture:
 """
 import asyncio
 import json
+import logging
+import re
 from contextlib import asynccontextmanager
 from typing import List
 
@@ -32,6 +34,8 @@ from common.types import DetectedVessel
 from cv import worker
 from fusion import fusion
 from storage import s3
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="OpenAR Backend API",
@@ -249,14 +253,17 @@ async def stream_ais_geojson(
 
 
 frame_queue = None
+STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
 @asynccontextmanager
-async def lifespan(_):
+async def lifespan(app: FastAPI):
     global frame_queue
     process = None
+    app.state.redis_client = create_async_redis_client()
     if VIDEO_PATH and VIDEO_PATH.exists():
         process, frame_queue = worker.start(VIDEO_PATH, stream_id=DEFAULT_DETECTIONS_STREAM_ID)
     yield
+    await app.state.redis_client.aclose()
     if process:
         process.terminate()
         process.join(timeout=2)
@@ -267,25 +274,29 @@ app.router.lifespan_context = lifespan
 
 @app.websocket("/api/detections/ws/{stream_id}")
 async def websocket_detections(websocket: WebSocket, stream_id: str):
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        await websocket.close(code=1008, reason="invalid_stream_id")
+        return
+
     await websocket.accept()
     channel = detections_channel(stream_id)
-    redis_client = create_async_redis_client()
+    redis_client = websocket.app.state.redis_client
     pubsub = redis_client.pubsub()
 
     try:
         await pubsub.subscribe(channel)
     except RedisError as exc:
-        print(f"[WARN] Redis subscribe failed for channel '{channel}': {exc}")
+        logger.warning("Redis subscribe failed for channel '%s': %s", channel, exc)
         try:
             await websocket.send_json(
                 {"type": "error", "message": f"Detection stream unavailable: {type(exc).__name__}"}
             )
         except Exception:
-            pass
+            logger.exception("Failed to send Redis unavailable message on channel '%s'", channel)
         try:
             await websocket.close(code=1011)
         except Exception:
-            pass
+            logger.exception("Failed to close websocket after Redis subscribe failure")
         return
 
     try:
@@ -297,14 +308,13 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
                 payload = payload.decode("utf-8")
             await websocket.send_text(payload)
     except Exception:
-        pass
+        logger.exception("Detections websocket stream failed for channel '%s'", channel)
     finally:
         try:
             await pubsub.unsubscribe(channel)
             await pubsub.aclose()
         except Exception:
-            pass
-        await redis_client.aclose()
+            logger.exception("Failed to clean up pubsub for channel '%s'", channel)
 
 
 @app.websocket("/api/fusion/ws")

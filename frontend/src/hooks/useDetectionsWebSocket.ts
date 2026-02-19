@@ -222,10 +222,7 @@ export const useDetectionsWebSocket = ({
   autoReconnect = true,
   reconnectDelay = 3000,
 }: UseDetectionsWebSocketOptions): UseDetectionsWebSocketResult => {
-  const resolvedUrl = useMemo(
-    () => url ?? DETECTION_CONFIG.WS_URL(streamId),
-    [streamId, url]
-  );
+  const resolvedUrl = useMemo(() => url ?? DETECTION_CONFIG.WS_URL(streamId), [streamId, url]);
 
   // Create store once per target URL.
   const store = useMemo(
