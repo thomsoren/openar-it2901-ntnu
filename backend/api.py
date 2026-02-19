@@ -3,29 +3,40 @@ FastAPI backend for boat detection and AIS data.
 
 Architecture:
 - /api/detections: Returns current detected vessels (YOLO + AIS)
-- /api/detections/ws: WebSocket for real-time YOLO streaming detections
+- /api/detections/ws/{stream_id}: WebSocket for real-time YOLO streaming detections
 - /api/video: Streams video for the frontend
 - /api/ais: Fetches AIS data from external API
 - /api/ais/stream: Streams live AIS data in geographical field of view
 """
 import asyncio
 import json
+import logging
+import re
 from contextlib import asynccontextmanager
-from typing import List, Set
+from typing import List
 
 import cv2
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from redis.exceptions import RedisError
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
 from ais.logger import AISSessionLogger
-from common.config import VIDEO_PATH, load_samples
+from common.config import (
+    DEFAULT_DETECTIONS_STREAM_ID,
+    VIDEO_PATH,
+    create_async_redis_client,
+    detections_channel,
+    load_samples,
+)
 from common.types import DetectedVessel
 from cv import worker
 from fusion import fusion
 from storage import s3
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="OpenAR Backend API",
@@ -58,7 +69,7 @@ def read_root():
         "endpoints": {
             "detections": "/api/detections",
             "detections_file": "/api/detections/file",
-            "detections_ws": "/api/detections/ws",
+            "detections_ws": "/api/detections/ws/{stream_id}",
             "video": "/api/video",
             "ais": "/api/ais",
             "ais_stream": "/api/ais/stream",
@@ -255,41 +266,18 @@ async def stream_ais_geojson(
     )
 
 
-inference_queue = None
 frame_queue = None
-connected_clients: Set[WebSocket] = set()
-broadcast_task = None
-
-video_info = None
-
-async def broadcast_detections():
-    global video_info
-    while True:
-        data = await asyncio.to_thread(inference_queue.get)
-        if data is None:
-            break
-        if data.get("type") == "ready":
-            video_info = data
-            continue
-        dead = []
-        for ws in connected_clients:
-            try:
-                await ws.send_json({"type": "detections", **data})
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            connected_clients.discard(ws)
+STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
 @asynccontextmanager
-async def lifespan(_):
-    global inference_queue, frame_queue, broadcast_task
+async def lifespan(app: FastAPI):
+    global frame_queue
     process = None
+    app.state.redis_client = create_async_redis_client()
     if VIDEO_PATH and VIDEO_PATH.exists():
-        process, inference_queue, frame_queue = worker.start(VIDEO_PATH)
-        broadcast_task = asyncio.create_task(broadcast_detections())
+        process, frame_queue = worker.start(VIDEO_PATH, stream_id=DEFAULT_DETECTIONS_STREAM_ID)
     yield
-    if broadcast_task:
-        broadcast_task.cancel()
+    await app.state.redis_client.aclose()
     if process:
         process.terminate()
         process.join(timeout=2)
@@ -298,23 +286,49 @@ async def lifespan(_):
 
 app.router.lifespan_context = lifespan
 
-@app.websocket("/api/detections/ws")
-async def websocket_detections(websocket: WebSocket):
-    await websocket.accept()
-    if not inference_queue:
-        await websocket.send_json({"type": "error", "message": "No video configured"})
+@app.websocket("/api/detections/ws/{stream_id}")
+async def websocket_detections(websocket: WebSocket, stream_id: str):
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        await websocket.close(code=1008, reason="invalid_stream_id")
         return
 
-    if video_info:
-        await websocket.send_json(video_info)
-    connected_clients.add(websocket)
+    await websocket.accept()
+    channel = detections_channel(stream_id)
+    redis_client = websocket.app.state.redis_client
+    pubsub = redis_client.pubsub()
+
     try:
-        while True:
-            await websocket.receive_text()
+        await pubsub.subscribe(channel)
+    except RedisError as exc:
+        logger.warning("Redis subscribe failed for channel '%s': %s", channel, exc)
+        try:
+            await websocket.send_json(
+                {"type": "error", "message": f"Detection stream unavailable: {type(exc).__name__}"}
+            )
+        except Exception:
+            logger.exception("Failed to send Redis unavailable message on channel '%s'", channel)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            logger.exception("Failed to close websocket after Redis subscribe failure")
+        return
+
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            payload = message.get("data")
+            if isinstance(payload, bytes):
+                payload = payload.decode("utf-8")
+            await websocket.send_text(payload)
     except Exception:
-        pass
+        logger.exception("Detections websocket stream failed for channel '%s'", channel)
     finally:
-        connected_clients.discard(websocket)
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+        except Exception:
+            logger.exception("Failed to clean up pubsub for channel '%s'", channel)
 
 
 @app.websocket("/api/fusion/ws")
