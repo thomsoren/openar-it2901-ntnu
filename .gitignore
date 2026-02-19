@@ -13,3 +13,5 @@ processed/
 node_modules/
 backend/data/SeaShips/
 backend/data/CombinedShips/
+tekstskriving/text.md
+CLAUDE.md
