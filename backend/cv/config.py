@@ -27,7 +27,7 @@ WORKER_WATCHDOG_INTERVAL_SEC = 1.0
 # Correction pipeline settings
 SHORT_PERSISTENCE_HOLD_SECONDS = 0.5
 
-# Long-lived persistence settings
+# Long-lived persistence settings (legacy but might bring back)
 LONG_PERSIST_MIN_ALIVE_SECONDS = 5.0
 LONG_PERSIST_SECONDS = 10.0
 LONG_PERSIST_EDGE_MARGIN_PX = 80
