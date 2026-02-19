@@ -228,7 +228,7 @@ async def stream_ais_geojson(
     heading: float = 90,
     offset_meters: float = 1000,
     fov_degrees: float = 60,
-    log: bool = True
+    log: bool = False
 ):
     """
     Stream live AIS data in ship's triangular field of view.
