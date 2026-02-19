@@ -65,13 +65,7 @@ function App() {
 
   const renderUploadPage = () => {
     if (!auth.session) {
-      return (
-        <AuthGate
-          initialMode={nav.authGateMode}
-          appError={undefined}
-          onAuthenticated={auth.handleAuthenticated}
-        />
-      );
+      return <AuthGate initialMode={nav.authGateMode} onAuthenticated={auth.handleAuthenticated} />;
     }
 
     if (auth.isSessionPending) {
@@ -139,15 +133,17 @@ function App() {
           appTitle="OpenAR"
           pageName={nav.pageLabels[nav.currentPage]}
           showDimmingButton
-          showAppsButton
           showUserButton
           showClock
           menuButtonActivated={nav.showNavigationMenu}
           userButtonActivated={nav.showUserPanel}
           onMenuButtonClicked={() => nav.setShowNavigationMenu((previous) => !previous)}
-          onDimmingButtonClicked={() => nav.setShowBrillianceMenu((previous) => !previous)}
+          onDimmingButtonClicked={() => {
+            nav.setShowUserPanel(false);
+            nav.setShowBrillianceMenu((previous) => !previous);
+          }}
           onUserButtonClicked={() => {
-            nav.setShowNavigationMenu(false);
+            nav.setShowBrillianceMenu(false);
             nav.setShowUserPanel((previous) => !previous);
           }}
         >
@@ -167,13 +163,8 @@ function App() {
             ref={profileMenuRef}
             type={auth.userMenuState}
             size="small"
-            hasRecentlySignedIn={false}
             username={auth.profileUsername}
             password={auth.profilePassword}
-            usernameError={auth.profileUsernameError}
-            passwordError={auth.profilePasswordError}
-            userInitials={auth.userInitials}
-            userLabel={auth.userLabel}
           />
         </div>
       )}

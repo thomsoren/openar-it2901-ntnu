@@ -3,17 +3,24 @@ import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcompon
 
 declare module "react" {
   namespace JSX {
-    type ObcUserMenuUser = {
-      initials: string;
-      label: string;
-    };
-
-    type ObcUserMenuSignedInAction = {
-      id: string;
-      label: string;
-    };
-
     interface IntrinsicElements {
+      // Only lowercase attributes are declared here — they work reliably
+      // as JSX attributes in React 18. CamelCase properties (helperText,
+      // errorText, hasLeadingIcon, etc.) must be set imperatively via refs.
+      "obc-text-input-field": React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & {
+          value?: string;
+          placeholder?: string;
+          type?: string;
+          label?: string;
+          disabled?: boolean;
+          error?: boolean;
+          name?: string;
+          required?: boolean;
+          size?: "regular" | "large";
+        },
+        HTMLElement
+      >;
       "obc-poi-data": React.DetailedHTMLProps<
         React.HTMLAttributes<HTMLElement> & {
           x?: number;
@@ -31,19 +38,15 @@ declare module "react" {
         },
         HTMLElement
       >;
+      // CamelCase properties (userInitials, userLabel, usernameError,
+      // passwordError, hasRecentlySignedIn, recentUsers, signedInActions)
+      // are set imperatively via refs in useUserMenu.ts.
       "obc-user-menu": React.DetailedHTMLProps<
         React.HTMLAttributes<HTMLElement> & {
           type?: "sign-in" | "user-sign-in" | "loading-sign-in" | "signed-in";
           size?: "regular" | "small";
-          hasRecentlySignedIn?: boolean;
           username?: string;
           password?: string;
-          usernameError?: string;
-          passwordError?: string;
-          userInitials?: string;
-          userLabel?: string;
-          recentUsers?: ObcUserMenuUser[];
-          signedInActions?: ObcUserMenuSignedInAction[];
         },
         HTMLElement
       >;
