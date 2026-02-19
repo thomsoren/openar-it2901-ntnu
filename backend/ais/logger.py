@@ -8,60 +8,31 @@ from typing import Any, Dict, List, Optional
 from pathlib import Path
 from uuid import uuid4
 
+from pydantic import BaseModel, Field
 
-class AISLogEntry:
-    """Represents a single AIS data point in the log"""
+
+class AISLogEntry(BaseModel):
+    """Pydantic model for a single AIS data point in the log."""
     
-    def __init__(
-        self,
-        timestamp: str,
-        mmsi: str,
-        latitude: float,
-        longitude: float,
-        speed: float,
-        heading: float,
-        course_over_ground: float,
-        name: Optional[str] = None,
-        ship_type: Optional[str] = None,
-        navigational_status: Optional[int] = None,
-        frame_idx: Optional[int] = None,
-        rate_of_turn: Optional[float] = None
-    ):
-        self.timestamp = timestamp
-        self.mmsi = mmsi
-        self.latitude = latitude
-        self.longitude = longitude
-        self.speed = speed
-        self.heading = heading
-        self.course_over_ground = course_over_ground
-        self.name = name
-        self.ship_type = ship_type
-        self.navigational_status = navigational_status
-        self.frame_idx = frame_idx
-        self.rate_of_turn = rate_of_turn
-        self.log_received_at = datetime.now(timezone.utc).isoformat()
+    timestamp: str
+    mmsi: str
+    latitude: float
+    longitude: float
+    speed: float
+    heading: float
+    course_over_ground: float = Field(..., alias="courseOverGround")
+    name: str | None = None
+    ship_type: int | None = Field(None, alias="shipType")
+    navigational_status: int | None = Field(None, alias="navigationalStatus")
+    rate_of_turn: float | None = Field(None, alias="rateOfTurn")
+    log_received_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), alias="logReceivedAt")
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization"""
-        return {
-            "timestamp": self.timestamp,
-            "mmsi": self.mmsi,
-            "latitude": self.latitude,
-            "longitude": self.longitude,
-            "speed": self.speed,
-            "heading": self.heading,
-            "courseOverGround": self.course_over_ground,
-            "name": self.name,
-            "shipType": self.ship_type,
-            "navigationalStatus": self.navigational_status,
-            "frameIdx": self.frame_idx,
-            "rateOfTurn": self.rate_of_turn,
-            "logReceivedAt": self.log_received_at
-        }
+    class Config:
+        populate_by_name = True  # Allow both camelCase (alias) and snake_case
     
     @classmethod
-    def from_ais_data(cls, ais_data: Dict[str, Any], frame_idx: Optional[int] = None) -> "AISLogEntry":
-        """Create from raw AIS API response"""
+    def from_ais_data(cls, ais_data: Dict[str, Any]) -> "AISLogEntry":
+        """Create from raw AIS API response."""
         return cls(
             timestamp=ais_data.get("timestamp", ""),
             mmsi=str(ais_data.get("mmsi", "")),
@@ -73,7 +44,6 @@ class AISLogEntry:
             name=ais_data.get("name"),
             ship_type=ais_data.get("shipType"),
             navigational_status=ais_data.get("navigationalStatus"),
-            frame_idx=frame_idx,
             rate_of_turn=ais_data.get("rateOfTurn")
         )
 
@@ -82,94 +52,170 @@ class AISSessionLogger:
     """
     Manages AIS data logging with buffering and NDJSON output.
     Buffers messages and flushes to file automatically.
+    If buffer exceeds capacity, completes current log and starts a new one with same base ID.
     """
     
     def __init__(
         self,
-        buffer_size: int = 1000,
+        buffer_size: int = 10,  # Reduced for faster flushing during testing
         log_dir: Path = Path("data/ais_logs")
     ):
-        self.session_id = f"ais_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid4())[:8]}"
+        # Base session ID (same for all splits)
+        self.base_session_id = f"ais_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid4())[:8]}"
+        self.split_count = 0
+        
         self.buffer_size = buffer_size
+        self.buffer_max = buffer_size * 2  # Cap to trigger new log file
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
-        # File paths
-        self.log_file = self.log_dir / f"{self.session_id}.ndjson"
-        self.meta_file = self.log_dir / f"{self.session_id}.meta.json"
-        
         # Buffering
         self.buffer: List[AISLogEntry] = []
-        self.total_logged = 0
+        self.total_logged = 0  # Cumulative across all splits
         self.mmsi_set = set()
+        self.flush_error: Optional[str] = None  # Track persistent flush failures
         
         # Session metadata
         self.start_time = datetime.now(timezone.utc).isoformat()
         self.end_time: Optional[str] = None
         
+        # Initialize first log file
+        self._init_new_log_file()
     
-    def log(self, ais_data: Dict[str, Any], frame_idx: Optional[int] = None) -> None:
+    def _init_new_log_file(self) -> None:
+        """Initialize a new log file with incremented split counter."""
+        self.split_count += 1
+        session_id = f"{self.base_session_id}_{self.split_count}"
+        self.log_file = self.log_dir / f"{session_id}.ndjson"
+        self.meta_file = self.log_dir / f"{session_id}.meta.json"
+        
+        # Write session start metadata as first line
+        try:
+            session_start_meta = {
+                "type": "session_start",
+                "base_session_id": self.base_session_id,
+                "split_number": self.split_count,
+                "start_time": datetime.now(timezone.utc).isoformat()
+            }
+            with open(self.log_file, "w") as f:
+                json_line = json.dumps(session_start_meta)
+                f.write(json_line + "\n")
+            print(f"[AISLogger] Started new log file: {session_id}")
+        except Exception as e:
+            print(f"[AISLogger ERROR] Failed to initialize log file: {e}")
+    
+    def _finish_current_log(self) -> bool:
+        """Finish current log file and start a new one."""
+        success = self.flush()
+        if success:
+            self._init_new_log_file()
+        return success
+        
+    
+    def log(self, ais_data: Dict[str, Any]) -> None:
         """
         Log an AIS data point.
         Automatically flushes buffer if size reached.
+        Creates a new log file if buffer exceeds capacity.
         """
-        entry = AISLogEntry.from_ais_data(ais_data, frame_idx)
-        self.buffer.append(entry)
-        self.mmsi_set.add(entry.mmsi)
-        self.total_logged += 1
+        try:
+            entry = AISLogEntry.from_ais_data(ais_data)
+            self.buffer.append(entry)
+            self.mmsi_set.add(entry.mmsi)
+            self.total_logged += 1
+            print(f"[AISLogger] Buffered entry #{self.total_logged}: MMSI {entry.mmsi}. Buffer size: {len(self.buffer)}/{self.buffer_size}")
+        except Exception as e:
+            print(f"[AISLogger ERROR] Failed to log entry: {e}")
+            self.flush_error = f"Failed to log entry: {e}"
+            return
         
+        # Check if buffer needs flushing
         if len(self.buffer) >= self.buffer_size:
-            self.flush()
+            if not self.flush():
+                # If flush fails and buffer is at cap, start new log file
+                if len(self.buffer) > self.buffer_max:
+                    print(f"[AISLogger WARN] Buffer full and flush failed. Starting new log file.")
+                    self._finish_current_log()
     
-    def flush(self) -> None:
+    def flush(self) -> bool:
         """
         Write buffered messages to NDJSON file and clear buffer.
+        
+        Returns:
+            bool: True if flush succeeded, False if it failed.
         """
         if not self.buffer:
-            return
+            return True  # Nothing to flush is success
         
         try:
             # Append to file in NDJSON format
             with open(self.log_file, "a") as f:
                 for entry in self.buffer:
-                    json_line = json.dumps(entry.to_dict())
+                    json_line = json.dumps(entry.model_dump(by_alias=True))
                     f.write(json_line + "\n")
             
             print(f"[AISLogger] Flushed {len(self.buffer)} entries to {self.log_file}")
             self.buffer = []
+            self.flush_error = None  # Clear error on successful flush
+            return True
         except Exception as e:
-            print(f"[AISLogger ERROR] Failed to flush: {e}")
+            error_msg = f"Failed to flush: {e}"
+            print(f"[AISLogger ERROR] {error_msg}")
+            self.flush_error = error_msg  # Store error for metadata
+            return False
     
     def end_session(self) -> Dict[str, Any]:
         """
         End the session: flush remaining data and write metadata.
-        Returns metadata summary.
+        Returns metadata summary including flush status and all log files created.
         """
+        print(f"[AISLogger] Ending session. Remaining buffered entries: {len(self.buffer)}")
+        
         # Flush remaining buffer
-        self.flush()
+        flush_success = self.flush()
         
         # Set end time
         self.end_time = datetime.now(timezone.utc).isoformat()
         
+        # Find all log files for this session (all splits)
+        log_files = sorted([
+            str(f) for f in self.log_dir.glob(f"{self.base_session_id}_*.ndjson")
+        ])
+        
+        print(f"[AISLogger] Found {len(log_files)} log files: {log_files}")
+        
+        # Calculate total file size across all splits
+        total_file_size = sum(
+            Path(f).stat().st_size if Path(f).exists() else 0
+            for f in log_files
+        )
+        
         # Generate metadata
         metadata = {
-            "session_id": self.session_id,
+            "type": "session_end",
+            "base_session_id": self.base_session_id,
+            "total_splits": self.split_count,
             "start_time": self.start_time,
             "end_time": self.end_time,
             "total_records": self.total_logged,
             "unique_mmsi_count": len(self.mmsi_set),
             "mmsi_list": sorted(list(self.mmsi_set)),
-            "log_file": str(self.log_file),
-            "file_size_bytes": self.log_file.stat().st_size if self.log_file.exists() else 0
+            "log_files": log_files,
+            "total_file_size_bytes": total_file_size,
+            "flush_success": flush_success,
+            "flush_error": self.flush_error
         }
         
-        # Write metadata
+        # Append metadata as final line in the NDJSON file
         try:
-            with open(self.meta_file, "w") as f:
-                json.dump(metadata, f, indent=2)
-            print(f"[AISLogger] Session ended. Metadata written to {self.meta_file}")
+            with open(self.log_file, "a") as f:
+                json_line = json.dumps(metadata)
+                f.write(json_line + "\n")
+            print(f"[AISLogger] Session ended. Created {self.split_count} log file(s). Total size: {total_file_size} bytes. Metadata appended to {self.log_file}")
         except Exception as e:
-            print(f"[AISLogger ERROR] Failed to write metadata: {e}")
+            print(f"[AISLogger ERROR] Failed to write session metadata: {e}")
+            metadata["flush_error"] = f"Failed to write metadata: {e}"
+            metadata["flush_success"] = False
         
         return metadata
     

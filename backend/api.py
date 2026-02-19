@@ -228,7 +228,7 @@ async def stream_ais_geojson(
     heading: float = 90,
     offset_meters: float = 1000,
     fov_degrees: float = 60,
-    log: bool = False
+    log: bool = True
 ):
     """
     Stream live AIS data in ship's triangular field of view.
@@ -271,14 +271,37 @@ async def stream_ais_geojson(
                 fov_degrees=fov_degrees
             ):
                 if logger:
-                    logger.log(feature, 0)
+                    logger.log(feature)
                 yield f"data: {json.dumps(feature)}\n\n"
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e)}"
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
         finally:
             if logger:
-                logger.end_session()
+                print(f"[API] Stream closed. Calling logger.end_session()")
+                metadata = logger.end_session()
+                print(f"[API] Logging session ended. Total logged: {metadata.get('total_records', 0)}, Files: {metadata.get('total_splits', 0)}")
+                # Notify frontend if logging failed
+                if not metadata.get("flush_success", False):
+                    warning = {
+                        "type": "error",
+                        "message": "AIS logging failed",
+                        "detail": metadata.get("flush_error"),
+                        "total_logged": metadata.get("total_records", 0),
+                        "records_written": metadata.get("total_file_size_bytes", 0)
+                    }
+                    yield f"data: {json.dumps(warning)}\n\n"
+                # Notify frontend if logging was split into multiple files
+                elif metadata.get("total_splits", 1) > 1:
+                    info = {
+                        "type": "info",
+                        "message": "AIS logging completed with multiple files",
+                        "detail": f"Session was split into {metadata.get('total_splits')} files due to buffer size",
+                        "total_logged": metadata.get("total_records", 0),
+                        "total_file_size_bytes": metadata.get("total_file_size_bytes", 0),
+                        "log_files": metadata.get("log_files", [])
+                    }
+                    yield f"data: {json.dumps(info)}\n\n"
     
     return StreamingResponse(
         event_generator(),
