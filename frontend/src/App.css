@@ -19,6 +19,20 @@ header {
   margin-left: auto;
 }
 
+.user-panel--auth {
+  width: min(420px, calc(100vw - 24px));
+}
+
+.user-panel .auth-gate {
+  min-height: auto;
+  padding: 0;
+  background: none;
+}
+
+.user-panel .auth-gate__card {
+  width: 100%;
+}
+
 .navigation-menu {
   position: absolute;
   top: 48px;

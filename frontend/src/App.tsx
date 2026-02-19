@@ -133,7 +133,7 @@ function App() {
           appTitle="OpenAR"
           pageName={nav.pageLabels[nav.currentPage]}
           showDimmingButton
-          showUserButton
+          showUserButton={!(nav.currentPage === "upload" && !auth.session)}
           showClock
           menuButtonActivated={nav.showNavigationMenu}
           userButtonActivated={nav.showUserPanel}
@@ -158,14 +158,24 @@ function App() {
       </header>
 
       {nav.showUserPanel && (
-        <div className="user-panel">
-          <obc-user-menu
-            ref={profileMenuRef}
-            type={auth.userMenuState}
-            size="small"
-            username={auth.profileUsername}
-            password={auth.profilePassword}
-          />
+        <div className={`user-panel${!auth.session ? " user-panel--auth" : ""}`}>
+          {auth.session ? (
+            <obc-user-menu
+              ref={profileMenuRef}
+              type={auth.userMenuState}
+              size="small"
+              username={auth.profileUsername}
+              password={auth.profilePassword}
+            />
+          ) : (
+            <AuthGate
+              initialMode="login"
+              onAuthenticated={async () => {
+                nav.setShowUserPanel(false);
+                await auth.handleAuthenticated();
+              }}
+            />
+          )}
         </div>
       )}
 
