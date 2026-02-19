@@ -28,5 +28,8 @@
     "frontend/**/*.{css,json,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "@ocean-industries-concept-lab/openbridge-webcomponents": "^0.0.20260218140123"
   }
 }

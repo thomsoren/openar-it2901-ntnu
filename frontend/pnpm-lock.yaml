@@ -21,8 +21,8 @@ importers:
         specifier: ^9.30.0
         version: 9.39.2
       "@ocean-industries-concept-lab/openbridge-webcomponents":
-        specifier: "*"
-        version: 0.0.20260106082657
+        specifier: ^0.0.20260218140123
+        version: 0.0.20260218140123
       "@ocean-industries-concept-lab/openbridge-webcomponents-react":
         specifier: "*"
         version: 0.0.20260106082657(@types/react@19.2.7)(react@19.2.3)
@@ -1413,6 +1413,13 @@ packages:
       {
         integrity: sha512-sBp6BbrhiRaAV1TBYu4IHelaEtaHGQ6G8IepH/YK2nR+zCm64NnYrrseME7W6S+NcSgqrHkimu6LQpqt2lzobA==,
         tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents/0.0.20260106082657/b4f87544465f34ebed350f8c43248b8c9c0105f7,
+      }
+
+  "@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260218140123":
+    resolution:
+      {
+        integrity: sha512-r/s6uplLS0agTLz/GbRXGbvhmARwmj6gn5wm7tysU9WLYI9gHwfJfmDSEYyyu8iDtG8TtM/TfWVZY55vDOIFRg==,
+        tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents/0.0.20260218140123/7d3ad90d2ad7e91cddda41efecad42b0c9de03a6,
       }
 
   "@rolldown/pluginutils@1.0.0-beta.27":
@@ -4611,6 +4618,14 @@ snapshots:
       react: 19.2.3
 
   "@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260106082657":
+    dependencies:
+      "@lit-labs/observers": 2.1.0
+      "@lit/localize": 0.12.2
+      chart.js: 4.5.1
+      lit: 3.3.2
+      uplot: 1.6.32
+
+  "@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260218140123":
     dependencies:
       "@lit-labs/observers": 2.1.0
       "@lit/localize": 0.12.2

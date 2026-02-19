@@ -1,16 +1,16 @@
 import { API_CONFIG } from "../config/video";
-import { ObcPoiTarget } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-target/poi-target";
-import { ObcPoiTargetButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-target-button/poi-target-button";
-import { ObcPoiTargetButtonGroup } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-target-button-group/poi-target-button-group";
-import { ObcPoiTargetButtonType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-target-button/poi-target-button";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-group/poi-group";
+import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
+import { ObcPoiType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/building-blocks/poi/poi";
 
 function Components() {
   const backgroundUrl = `${API_CONFIG.BASE_URL}/api/assets/oceanbackground`;
 
   const sampleValues = [
-    { label: "BRG", value: "145", unit: "°" },
-    { label: "RNG", value: "2.4", unit: "nm" },
-    { label: "TTG", value: "12:30", unit: "" },
+    { value: "145", label: "BRG", unit: "°" },
+    { value: "2.4", label: "RNG", unit: "nm" },
+    { value: "12:30", label: "TTG", unit: "" },
   ];
 
   return (
@@ -42,7 +42,7 @@ function Components() {
           justifyContent: "center",
         }}
       >
-        {/* POI Target Button Group Section */}
+        {/* POI Group Section */}
         <section
           style={{
             position: "relative",
@@ -51,7 +51,7 @@ function Components() {
             alignItems: "center",
           }}
         >
-          <h3 style={{ marginTop: "150px" }}>POI Target Button Group</h3>
+          <h3 style={{ marginTop: "150px" }}>POI Group</h3>
           <div
             style={{
               height: "400px",
@@ -63,17 +63,21 @@ function Components() {
               paddingBottom: "20px",
             }}
           >
-            <div style={{ position: "relative" }}>
-              <ObcPoiTargetButtonGroup expand>
-                <ObcPoiTarget type={ObcPoiTargetButtonType.Button} />
-                <ObcPoiTarget type={ObcPoiTargetButtonType.Button} />
-                <ObcPoiTarget type={ObcPoiTargetButtonType.Button} />
-              </ObcPoiTargetButtonGroup>
+            <div style={{ position: "relative", width: "400px", height: "300px" }}>
+              <obc-poi-group
+                style={{ position: "absolute", top: 0, left: 0 }}
+                expand={false}
+                positionVertical="200px"
+              >
+                <obc-poi-data style={{ position: "absolute" }} x={150} y={100} buttonY={200} />
+                <obc-poi-data style={{ position: "absolute" }} x={170} y={100} buttonY={200} />
+                <obc-poi-data style={{ position: "absolute" }} x={190} y={100} buttonY={200} />
+              </obc-poi-group>
             </div>
           </div>
         </section>
 
-        {/* POI Target Button Section */}
+        {/* POI Data Section */}
         <section
           style={{
             position: "relative",
@@ -82,7 +86,7 @@ function Components() {
             alignItems: "center",
           }}
         >
-          <h3 style={{ marginTop: "150px" }}>POI Target Button</h3>
+          <h3 style={{ marginTop: "150px" }}>POI Data</h3>
           <div
             style={{
               display: "flex",
@@ -95,17 +99,32 @@ function Components() {
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <ObcPoiTargetButton type={ObcPoiTargetButtonType.Button} />
-              <p style={{ fontSize: "12px", opacity: 0.5, marginTop: "1rem" }}>Normal</p>
+              <div style={{ position: "relative", width: "100px", height: "100px" }}>
+                <obc-poi-data
+                  type={ObcPoiType.Point}
+                  x={50}
+                  y={50}
+                  buttonY={50}
+                  value={PoiDataValue.Unchecked}
+                />
+              </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <ObcPoiTargetButton type={ObcPoiTargetButtonType.Enhanced} values={sampleValues} />
-              <p style={{ fontSize: "12px", opacity: 0.5, marginTop: "1rem" }}>Enhanced</p>
+              <div style={{ position: "relative", width: "150px", height: "100px" }}>
+                <obc-poi-data
+                  type={ObcPoiType.Point}
+                  x={75}
+                  y={50}
+                  buttonY={50}
+                  value={PoiDataValue.Unchecked}
+                  data={sampleValues}
+                />
+              </div>
             </div>
           </div>
         </section>
 
-        {/* POI Target Section */}
+        {/* POI Data with Line Section */}
         <section
           style={{
             position: "relative",
@@ -114,7 +133,7 @@ function Components() {
             alignItems: "center",
           }}
         >
-          <h3 style={{ marginTop: "150px" }}>POI Target</h3>
+          <h3 style={{ marginTop: "150px" }}>POI Data with Line</h3>
           <div
             style={{
               height: "400px",
@@ -134,12 +153,26 @@ function Components() {
               }}
             >
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <ObcPoiTarget type={ObcPoiTargetButtonType.Button} />
-                <p style={{ fontSize: "12px", opacity: 0.5, marginTop: "1rem" }}>Normal</p>
+                <div style={{ position: "relative", width: "100px", height: "150px" }}>
+                  <obc-poi-data
+                    type={ObcPoiType.Line}
+                    x={50}
+                    y={75}
+                    buttonY={150}
+                    value={PoiDataValue.Unchecked}
+                  />
+                </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <ObcPoiTarget type={ObcPoiTargetButtonType.Enhanced} />
-                <p style={{ fontSize: "12px", opacity: 0.5, marginTop: "1rem" }}>Enhanced</p>
+                <div style={{ position: "relative", width: "100px", height: "150px" }}>
+                  <obc-poi-data
+                    type={ObcPoiType.Line}
+                    x={50}
+                    y={75}
+                    buttonY={150}
+                    value={PoiDataValue.Checked}
+                  />
+                </div>
               </div>
             </div>
           </div>
