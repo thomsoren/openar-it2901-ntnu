@@ -74,10 +74,16 @@ def admin_user(db_session: Session) -> AppUser:
 def client(db_session: Session):
     """TestClient that overrides get_db to use the in-memory SQLite session."""
     # Import here to avoid pulling in the full app module graph at collection time.
-    from auth.routes import router
+    from auth.routes import limiter, router
     from fastapi import FastAPI
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
 
     app = FastAPI()
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.include_router(router)
 
     def _override_get_db():
