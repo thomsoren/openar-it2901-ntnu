@@ -23,6 +23,8 @@ class WorkerOrchestrator:
         monitor_interval_seconds: float = 2.0,
         initial_backoff_seconds: float = 1.0,
         max_backoff_seconds: float = 60.0,
+        idle_timeout_seconds: float = 300.0,
+        protected_stream_ids: set[str] | None = None,
     ):
         self._workers: dict[str, WorkerHandle] = {}
         self._lock = threading.Lock()
@@ -30,6 +32,8 @@ class WorkerOrchestrator:
         self._monitor_interval_seconds = monitor_interval_seconds
         self._initial_backoff_seconds = initial_backoff_seconds
         self._max_backoff_seconds = max_backoff_seconds
+        self._idle_timeout_seconds = idle_timeout_seconds
+        self._protected_stream_ids: set[str] = protected_stream_ids or set()
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
@@ -72,6 +76,12 @@ class WorkerOrchestrator:
                 raise StreamNotFoundError(f"Stream '{stream_id}' not found")
             return handle
 
+    def touch_stream(self, stream_id: str):
+        with self._lock:
+            handle = self._workers.get(stream_id)
+            if handle:
+                handle.last_heartbeat = time.monotonic()
+
     def list_streams(self) -> list[dict]:
         with self._lock:
             return [h.to_dict() for h in self._workers.values()]
@@ -108,9 +118,28 @@ class WorkerOrchestrator:
             with self._lock:
                 snapshot = list(self._workers.items())
 
+            if self._idle_timeout_seconds > 0:
+                idle_ids = [
+                    sid for sid, h in snapshot
+                    if sid not in self._protected_stream_ids
+                    and (now - h.last_heartbeat) > self._idle_timeout_seconds
+                ]
+                for sid in idle_ids:
+                    logger.info(
+                        "Stopping idle stream '%s' (no heartbeat for %.0fs)",
+                        sid, self._idle_timeout_seconds,
+                    )
+                    try:
+                        self.stop_stream(sid)
+                    except StreamNotFoundError:
+                        pass
+
             for stream_id, handle in snapshot:
                 if handle.is_alive:
                     handle.next_restart_at = 0.0
+                    # Reset backoff so a future crash starts from the initial delay,
+                    # not an exponentially grown one from a long-ago crash cycle.
+                    handle.backoff_seconds = self._initial_backoff_seconds
                     continue
 
                 if handle.next_restart_at == 0.0:

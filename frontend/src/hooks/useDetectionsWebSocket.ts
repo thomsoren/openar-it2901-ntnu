@@ -219,6 +219,9 @@ export const useDetectionsWebSocket = ({
   reconnectDelay = 3000,
 }: UseDetectionsWebSocketOptions): UseDetectionsWebSocketResult => {
   // Recreate the store when endpoint or connection policy changes.
+  // IMPORTANT: `config` must be referentially stable across renders — wrap it in
+  // useMemo at the call site. An inline object literal `config={{ track: true }}`
+  // produces a new reference every render, causing infinite reconnect loops.
   const store = useMemo(
     () => createWebSocketStore(url, config, autoReconnect, reconnectDelay),
     [url, config, autoReconnect, reconnectDelay]

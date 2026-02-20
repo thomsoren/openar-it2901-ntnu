@@ -123,14 +123,22 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
         if min_inference_interval > 0:
             next_infer_time = now + min_inference_interval
 
-        detection_queue.put({
+        payload = {
             "stream_id": stream_id,
             "frame_index": frame_idx,
             "timestamp_ms": ts,
             "fps": fps,
             "inference_fps": round(inf_fps, 1),
             "vessels": [{"detection": d.model_dump(), "vessel": None} for d in detections],
-        })
+        }
+        try:
+            detection_queue.put_nowait(payload)
+        except Full:
+            try:
+                detection_queue.get_nowait()
+                detection_queue.put_nowait(payload)
+            except (Empty, Full):
+                pass
 
     reader_thread.join(timeout=1)
     cap.release()
@@ -140,7 +148,7 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
 
 def start(source_url: str, stream_id: str, loop: bool = True) -> tuple[Process, Queue, Queue]:
     frame_queue_size = int(os.getenv("STREAM_FRAME_QUEUE_SIZE", "4"))
-    detection_queue: Queue = Queue()
+    detection_queue: Queue = Queue(maxsize=2)
     frame_queue: Queue = Queue(maxsize=max(1, frame_queue_size))
     p = Process(target=run, args=(source_url, stream_id, detection_queue, frame_queue, loop))
     p.start()

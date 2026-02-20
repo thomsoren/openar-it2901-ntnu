@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 class StreamConfig(BaseModel):
     """Runtime configuration for one stream worker."""
 
-    stream_id: str = Field(..., min_length=1)
+    stream_id: str = Field(..., min_length=1, pattern=r"^[a-zA-Z0-9_-]+$")
     source_url: str = Field(..., min_length=1)
     loop: bool = True
 
@@ -26,6 +26,7 @@ class WorkerHandle:
     frame_queue: Queue
     config: StreamConfig
     started_at: float = field(default_factory=time.monotonic)
+    last_heartbeat: float = field(default_factory=time.monotonic)
     restart_count: int = 0
     backoff_seconds: float = 1.0
     next_restart_at: float = 0.0

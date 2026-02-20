@@ -179,30 +179,39 @@ async def stream_mjpeg_for_stream(stream_id: str):
 
     async def generate():
         current_handle = initial_handle
+        # Track queue identity, not handle identity — the orchestrator mutates the
+        # handle in-place on restart (same Python object, new frame_queue attribute).
+        current_queue = current_handle.frame_queue
 
         while True:
             try:
-                data = await asyncio.to_thread(current_handle.frame_queue.get, True, 1.0)
+                data = await asyncio.to_thread(current_queue.get, True, 0.05)
             except Empty:
-                # On timeout, verify stream still exists and track restarts.
+                # On timeout, verify stream still exists and pick up a new queue
+                # if the worker was restarted since the last iteration.
                 try:
-                    latest_handle = orchestrator.get_stream(stream_id)
+                    orchestrator.get_stream(stream_id)
                 except StreamNotFoundError:
                     break
-                if latest_handle is not current_handle:
-                    current_handle = latest_handle
+                new_queue = current_handle.frame_queue
+                if new_queue is not current_queue:
+                    current_queue = new_queue
                 continue
 
             if data is None:
-                # Sentinel means stopped/restarted; switch handle if stream still exists.
+                # Sentinel: worker exited. Don't break — the orchestrator will restart
+                # the worker and update handle.frame_queue. Continue polling until the
+                # new queue appears or the stream is fully removed.
                 try:
-                    latest_handle = orchestrator.get_stream(stream_id)
+                    orchestrator.get_stream(stream_id)
                 except StreamNotFoundError:
                     break
-                if latest_handle is not current_handle:
-                    current_handle = latest_handle
-                    continue
-                break
+                new_queue = current_handle.frame_queue
+                if new_queue is not current_queue:
+                    current_queue = new_queue
+                # Either way continue — Empty path will poll until new frames arrive.
+                continue
+
             frame, _, _ = data
             _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n"
@@ -293,7 +302,7 @@ async def stream_ais_geojson(
     )
 
 
-MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", "8"))
 DEFAULT_STREAM_ID = os.getenv("DEFAULT_STREAM_ID", "default")
 
 orchestrator: WorkerOrchestrator | None = None
@@ -319,9 +328,11 @@ async def broadcast_detections(stream_id: str):
             break
 
         try:
-            data = await asyncio.to_thread(handle.inference_queue.get, True, 1.0)
+            data = await asyncio.to_thread(handle.inference_queue.get, True, 0.05)
         except Empty:
             continue
+        except asyncio.CancelledError:
+            raise
 
         if data is None:
             await asyncio.sleep(0.1)
@@ -368,15 +379,26 @@ def resolve_stream_source(source_url: str | None) -> str | None:
         return raw
 
     candidate = Path(raw)
-    # Try a few intuitive local path roots for developer convenience.
+    # Also try appending .mp4 so "test1" resolves the same as "test1.mp4".
+    name_mp4 = candidate.name if candidate.suffix else candidate.name + ".mp4"
+    video_dir = BASE_DIR / "data" / "raw" / "video"
+    base_resolved = BASE_DIR.resolve()
     local_candidates = [
         candidate,
         BASE_DIR / candidate,
-        BASE_DIR / "data" / "raw" / "video" / candidate.name,
+        video_dir / candidate.name,
+        video_dir / name_mp4,
     ]
     for path in local_candidates:
-        if path.exists():
-            return str(path)
+        try:
+            resolved = path.resolve()
+            # Prevent path traversal: relative candidates must stay within BASE_DIR.
+            if not path.is_absolute():
+                resolved.relative_to(base_resolved)
+            if resolved.exists():
+                return str(resolved)
+        except (ValueError, OSError):
+            continue
 
     # Return original value so worker logs include what the caller provided.
     return raw
@@ -384,7 +406,10 @@ def resolve_stream_source(source_url: str | None) -> str | None:
 @asynccontextmanager
 async def lifespan(_):
     global orchestrator
-    orchestrator = WorkerOrchestrator(max_workers=MAX_WORKERS)
+    orchestrator = WorkerOrchestrator(
+        max_workers=MAX_WORKERS,
+        protected_stream_ids={DEFAULT_STREAM_ID},
+    )
     orchestrator.start_monitoring()
     source_url = resolve_default_source()
     if source_url:
@@ -455,6 +480,14 @@ async def list_streams():
     if not orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
     return {"streams": orchestrator.list_streams(), "max_workers": MAX_WORKERS}
+
+
+@app.post("/api/streams/{stream_id}/heartbeat", status_code=204)
+async def heartbeat_stream(stream_id: str):
+    """Signal that a client still has this stream open as a tab."""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    orchestrator.touch_stream(stream_id)
 
 
 @app.websocket("/api/detections/ws/{stream_id}")
