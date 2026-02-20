@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { AISData } from "../types/aisData";
 import { API_CONFIG } from "../config/video";
-// React hook
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,
   shipLat: number = 63.4365,

@@ -222,13 +222,15 @@ export const useDetectionsWebSocket = ({
   autoReconnect = true,
   reconnectDelay = 3000,
 }: UseDetectionsWebSocketOptions): UseDetectionsWebSocketResult => {
-  const resolvedUrl = useMemo(() => url ?? DETECTION_CONFIG.WS_URL(streamId), [streamId, url]);
+  const wsUrl = useMemo(() => url ?? DETECTION_CONFIG.WS_URL(streamId), [url, streamId]);
 
-  // Create store once per target URL.
+  // Recreate the store when endpoint or connection policy changes.
+  // IMPORTANT: `config` must be referentially stable across renders — wrap it in
+  // useMemo at the call site. An inline object literal `config={{ track: true }}`
+  // produces a new reference every render, causing infinite reconnect loops.
   const store = useMemo(
-    () => createWebSocketStore(resolvedUrl, config, autoReconnect, reconnectDelay),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [autoReconnect, reconnectDelay, resolvedUrl]
+    () => createWebSocketStore(wsUrl, config, autoReconnect, reconnectDelay),
+    [wsUrl, config, autoReconnect, reconnectDelay]
   );
 
   const state = useSyncExternalStore(store.subscribe, store.getState);
