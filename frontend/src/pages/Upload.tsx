@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ObcAlertFrame } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/alert-frame/alert-frame";
+import { ObcAttachmentListItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/attachment-list-item/attachment-list-item";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
@@ -32,17 +33,6 @@ type UploadProps = {
 type SelectedFile = {
   file: File;
   addedAt: Date;
-};
-
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) {
-    return "0 bytes";
-  }
-
-  const units = ["bytes", "KB", "MB", "GB", "TB"];
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / Math.pow(1024, exponent);
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
 };
 
 const formatDate = (date: Date) => {
@@ -362,43 +352,28 @@ export default function Upload({ currentUser }: UploadProps) {
             <div className="upload-page__left-panel">
               <div className="upload-page__file-list">
                 {files.map((entry, index) => (
-                  <div
+                  <ObcAttachmentListItem
                     key={`${entry.file.name}-${index}`}
-                    className={[
-                      "upload-page__attachment-item",
-                      index === activeIndex ? "upload-page__attachment-item--selected" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    onClick={() => setActiveIndex(index)}
+                    label={entry.file.name}
+                    date={formatDate(entry.addedAt)}
+                    time={formatTime(entry.addedAt)}
+                    hasTimeDate
+                    hasTrailingAction
+                    amplified={index === activeIndex}
+                    showDivider={index < files.length - 1}
+                    onAttachmentItemClick={() => setActiveIndex(index)}
                   >
-                    {/* TODO: Replace with <obc-attachment-list-item> when available */}
-                    <div className="upload-page__attachment-label">{entry.file.name}</div>
-                    <div className="upload-page__attachment-meta">
-                      <span className="upload-page__attachment-date">
-                        {formatDate(entry.addedAt)}
-                      </span>
-                      <span className="upload-page__attachment-time">
-                        {formatTime(entry.addedAt)}
-                      </span>
-                    </div>
-                    <div className="upload-page__attachment-actions">
-                      <span className="upload-page__attachment-size">
-                        {formatFileSize(entry.file.size)}
-                      </span>
-                      {index === activeIndex && (
-                        <ObcIconButton
-                          variant={IconButtonVariant.flat}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFile(index);
-                          }}
-                        >
-                          <ObiCloseGoogle />
-                        </ObcIconButton>
-                      )}
-                    </div>
-                  </div>
+                    <ObcIconButton
+                      slot="trailing-action"
+                      variant={IconButtonVariant.flat}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFile(index);
+                      }}
+                    >
+                      <ObiCloseGoogle />
+                    </ObcIconButton>
+                  </ObcAttachmentListItem>
                 ))}
               </div>
 

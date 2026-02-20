@@ -176,68 +176,6 @@
   padding: 4px;
 }
 
-/* Attachment list item placeholder */
-
-.upload-page__attachment-item {
-  display: flex;
-  align-items: center;
-  padding-left: 16px;
-  min-height: 48px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.upload-page__attachment-item--selected {
-  background: var(--amplified-enabled-background-color, #e4eefd);
-  border: 1px solid var(--amplified-enabled-border-color, #b2cff9);
-}
-
-.upload-page__attachment-label {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--font-family-main, "Noto Sans", sans-serif);
-  font-size: var(--global-typography-ui-body-font-size, 16px);
-  line-height: var(--global-typography-ui-body-line-height, 24px);
-  color: var(--element-neutral-color, #535353);
-  font-feature-settings: "ss04" 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.upload-page__attachment-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 0 16px;
-  flex-shrink: 0;
-}
-
-.upload-page__attachment-date {
-  font-family: var(--font-family-main, "Noto Sans", sans-serif);
-  font-size: var(--global-typography-ui-label-active-font-size, 12px);
-  font-weight: var(--font-weight-bold, 670);
-  line-height: var(--global-typography-ui-label-active-line-height, 16px);
-  color: var(--element-neutral-color, #535353);
-  font-feature-settings: "ss04" 1;
-}
-
-.upload-page__attachment-time {
-  font-family: var(--font-family-main, "Noto Sans", sans-serif);
-  font-size: var(--global-typography-ui-label-font-size, 12px);
-  font-weight: var(--global-typography-ui-label-font-weight, 400);
-  line-height: var(--global-typography-ui-label-line-height, 16px);
-  color: var(--element-neutral-color, #535353);
-  font-feature-settings: "ss04" 1;
-}
-
-.upload-page__attachment-actions {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  padding-right: 8px;
-}
-
 /* Left panel bottom controls (drop zone + browse) */
 
 .upload-page__left-panel-controls {
