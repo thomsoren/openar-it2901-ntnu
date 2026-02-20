@@ -1,8 +1,8 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { useSettings } from "../contexts/SettingsContext";
+import { useSettings } from "../contexts/useSettings";
 import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
 
 function Fusion() {
@@ -10,11 +10,12 @@ function Fusion() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { videoFitMode, detectionVisible } = useSettings();
+  const wsConfig = useMemo(() => ({ track: true, loop: true }), []);
 
   // Use WebSocket for real-time fusion detections
   const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
     url: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws`,
-    config: { track: true, loop: true },
+    config: wsConfig,
     enabled: detectionsEnabled,
   });
 

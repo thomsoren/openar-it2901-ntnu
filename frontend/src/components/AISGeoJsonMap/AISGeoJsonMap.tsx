@@ -248,7 +248,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     rangeRef.current?.setLatLng([rLat, rLon]);
 
     if (followMode) centerMap();
-  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap]);
+  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap, followMode]);
 
   // Refresh tile layer when theme changes
   useEffect(() => {

@@ -16,6 +16,70 @@ header {
   width: 240px;
 }
 
+.navigation-stream-panel {
+  margin-top: 12px;
+  padding: 10px 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.navigation-stream-panel__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(225, 232, 242, 0.92);
+  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
+}
+
+.navigation-stream-card {
+  --app-components-alert-menu-border-radius: 0;
+  --shadow-floating: none;
+}
+
+.navigation-stream-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.navigation-stream-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.navigation-stream-button {
+  display: block;
+  width: 100%;
+  align-self: stretch;
+  --ui-components-button-border-radius: 0;
+  --button-border-radius-top-left: 0;
+  --button-border-radius-top-right: 0;
+  --button-border-radius-bottom-left: 0;
+  --button-border-radius-bottom-right: 0;
+}
+
+.navigation-stream-controls__hint {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(214, 223, 236, 0.88);
+  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
+}
+
+.navigation-stream-controls__error {
+  font-size: 12px;
+  line-height: 1.3;
+  color: #ffb3b3;
+  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
+}
+
 .brilliance {
   position: absolute;
   top: 4px;
