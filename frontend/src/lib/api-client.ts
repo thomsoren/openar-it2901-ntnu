@@ -25,16 +25,6 @@ export const clearApiAccessToken = () => {
 
 export const getApiAccessToken = () => accessToken;
 
-export const withAccessToken = (url: string): string => {
-  if (!accessToken) {
-    return url;
-  }
-
-  const resolved = new URL(resolveUrl(url));
-  resolved.searchParams.set("access_token", accessToken);
-  return resolved.toString();
-};
-
 const toHeaders = (headers?: HeadersInit): Headers => {
   if (headers instanceof Headers) {
     return new Headers(headers);

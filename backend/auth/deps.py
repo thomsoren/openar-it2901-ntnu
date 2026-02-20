@@ -22,9 +22,7 @@ def _extract_bearer_token(authorization: str | None) -> str | None:
 
 
 def extract_token_from_request(request: Request) -> str | None:
-    return _extract_bearer_token(request.headers.get("authorization")) or request.query_params.get(
-        "access_token"
-    )
+    return _extract_bearer_token(request.headers.get("authorization"))
 
 
 def extract_token_from_websocket(websocket: WebSocket) -> str | None:
