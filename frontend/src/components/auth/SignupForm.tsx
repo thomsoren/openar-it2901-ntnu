@@ -39,8 +39,8 @@ export default function SignupForm({
     if (!password) {
       setPasswordError("Password is required");
       hasError = true;
-    } else if (password.length < 12) {
-      setPasswordError("Password must be at least 12 characters");
+    } else if (password.length < 8) {
+      setPasswordError("Password must be at least 8 characters");
       hasError = true;
     }
     if (!confirmPassword) {

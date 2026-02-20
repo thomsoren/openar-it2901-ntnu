@@ -36,8 +36,8 @@ export default function LoginForm({
     if (!password) {
       setPasswordError("Password is required");
       hasError = true;
-    } else if (password.length < 12) {
-      setPasswordError("Password must be at least 12 characters");
+    } else if (password.length < 8) {
+      setPasswordError("Password must be at least 8 characters");
       hasError = true;
     }
     if (hasError) return;
@@ -86,7 +86,7 @@ export default function LoginForm({
           disabled={isSubmitting}
           error={Boolean(passwordError)}
           errorText={passwordError}
-          helperText="Passwords should contain 12 characters, include uppercase, lowercase, numbers, and symbols."
+          helperText="Passwords should contain 8 characters, include uppercase, lowercase, numbers, and symbols."
           onInput={(e) => {
             const target = e.target as HTMLInputElement;
             setPassword(target.value);
