@@ -23,6 +23,7 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 - **Redis:** Required for detection pub/sub
 - **CUDA:** For GPU-accelerated inference (optional but recommended)
 - Access to GitHub Packages for `@ocean-industries-concept-lab` components
+- **MediaMTX:** required for streaming, setup described below
 
 ### Quick Start
 
@@ -42,6 +43,29 @@ cp backend/.env.example backend/.env
 # Run both backend and frontend concurrently
 pnpm dev
 ```
+
+
+## MediaMTX Setup (Docker)
+
+This project uses MediaMTX for stream fan-out:
+- backend worker publishes H.264 via RTSP to MediaMTX
+- frontend consumes WebRTC (WHEP), with HLS as fallback
+
+### Prerequisites
+
+- Docker Desktop running
+- Docker context working (`docker version` should show both Client and Server)
+
+If you get `Cannot connect to the Docker daemon...`, start Docker Desktop first.
+
+### Start MediaMTX
+
+From repo root:
+
+```bash
+docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml up -d
+```
+
 
 Start Redis in a separate terminal before `pnpm dev`:
 

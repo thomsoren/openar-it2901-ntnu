@@ -123,39 +123,10 @@ curl -X POST http://localhost:8000/api/storage/presign \
 
 The backend includes a FastAPI server that serves detections and video to the frontend.
 
-## MediaMTX Setup (Docker)
 
-This project uses MediaMTX for stream fan-out:
-- backend worker publishes H.264 via RTSP to MediaMTX
-- frontend consumes WebRTC (WHEP), with HLS as fallback
 
-### Prerequisites
 
-- Docker Desktop running
-- Docker context working (`docker version` should show both Client and Server)
 
-If you get `Cannot connect to the Docker daemon...`, start Docker Desktop first.
-
-### Start MediaMTX
-
-From repo root:
-
-```bash
-docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml up -d
-```
-
-Check status:
-
-```bash
-docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml ps
-docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml logs --tail=100 mediamtx
-```
-
-Expected exposed ports:
-- `8554` RTSP ingest
-- `8889` WHEP/WebRTC egress
-- `8888` HLS egress
-- `8189/udp` WebRTC ICE UDP
 
 ### Configure backend/frontend env
 
