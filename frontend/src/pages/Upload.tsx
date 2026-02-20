@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ObcAlertFrame } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/alert-frame/alert-frame";
 import { ObcAttachmentListItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/attachment-list-item/attachment-list-item";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
@@ -78,26 +78,20 @@ export default function Upload({ currentUser }: UploadProps) {
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
 
   const uploading = uploadStatus === "uploading";
   const canUpload = currentUser.is_admin;
   const activeFile = files[activeIndex] ?? null;
-  const activeRawFile = activeFile?.file ?? null;
   const hasFiles = files.length > 0;
 
-  useEffect(() => {
-    if (!activeRawFile) {
-      setPreviewUrl(null);
-      return;
+  const setPreviewFromFile = (file: File | null) => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
     }
-
-    const objectUrl = URL.createObjectURL(activeRawFile);
-    setPreviewUrl(objectUrl);
-
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-    };
-  }, [activeRawFile]);
+    setPreviewError(false);
+    setPreviewUrl(file ? URL.createObjectURL(file) : null);
+  };
 
   const resetUploadState = () => {
     setUploadStatus("idle");
@@ -116,19 +110,28 @@ export default function Upload({ currentUser }: UploadProps) {
 
     setFiles((prev) => [...prev, { file: newFile, addedAt: new Date() }]);
     setActiveIndex(files.length);
+    setPreviewFromFile(newFile);
   };
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+    const remaining = files.filter((_, i) => i !== index);
+    setFiles(remaining);
+
+    let nextIndex: number;
     if (activeIndex >= files.length - 1) {
-      setActiveIndex(Math.max(0, files.length - 2));
+      nextIndex = Math.max(0, files.length - 2);
     } else if (index < activeIndex) {
-      setActiveIndex((prev) => prev - 1);
+      nextIndex = activeIndex - 1;
+    } else {
+      nextIndex = activeIndex;
     }
+    setActiveIndex(nextIndex);
+    setPreviewFromFile(remaining[nextIndex]?.file ?? null);
     resetUploadState();
   };
 
   const closePreview = () => {
+    setPreviewFromFile(null);
     setFiles([]);
     setActiveIndex(0);
     resetUploadState();
@@ -292,7 +295,7 @@ export default function Upload({ currentUser }: UploadProps) {
           <div className="upload-page__header">
             <div className="upload-page__title">Upload video file</div>
             <div className="upload-page__subtitle">
-              Select, preview and upload video file to S3 using a pre-signed URL
+              Select, preview and upload video file, and watch your video with AR overlay.
             </div>
           </div>
 
@@ -333,7 +336,7 @@ export default function Upload({ currentUser }: UploadProps) {
         <div className="upload-page__header">
           <div className="upload-page__title">Upload video file</div>
           <div className="upload-page__subtitle">
-            Select, preview and upload video file to S3 using a pre-signed URL
+            Select, preview and upload video file, and watch your video with AR overlay.
           </div>
         </div>
 
@@ -361,7 +364,10 @@ export default function Upload({ currentUser }: UploadProps) {
                     hasTrailingAction
                     amplified={index === activeIndex}
                     showDivider={index < files.length - 1}
-                    onAttachmentItemClick={() => setActiveIndex(index)}
+                    onAttachmentItemClick={() => {
+                      setActiveIndex(index);
+                      setPreviewFromFile(entry.file);
+                    }}
                   >
                     <ObcIconButton
                       slot="trailing-action"
@@ -386,15 +392,19 @@ export default function Upload({ currentUser }: UploadProps) {
 
             {/* Right panel — video preview */}
             <div className="upload-page__right-panel">
-              {previewUrl ? (
+              {previewUrl && !previewError ? (
                 <video
                   className="upload-page__video-preview"
                   controls
-                  preload="metadata"
                   src={previewUrl}
-                >
-                  Your browser does not support the video preview element.
-                </video>
+                  onError={() => setPreviewError(true)}
+                />
+              ) : null}
+              {previewError ? (
+                <div className="upload-page__preview-error">
+                  Preview unavailable — this video format is not supported by your browser. You can
+                  still upload the file.
+                </div>
               ) : null}
             </div>
           </div>
