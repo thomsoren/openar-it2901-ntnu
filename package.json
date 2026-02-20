@@ -2,11 +2,13 @@
   "name": "openar",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"pnpm run dev:redis\" \"pnpm run dev:backend\" \"pnpm run dev:frontend\" \"pnpm run dev:auth\"",
-    "dev:redis": "sh ./scripts/dev-redis.sh",
+    "dev": "pnpm run dev:infra && concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\" \"pnpm run dev:auth\"",
+    "dev:infra": "docker compose -f infra/docker-compose.postgres.yml up -d",
     "dev:frontend": "cd frontend && pnpm dev",
     "dev:backend": "cd backend && uv run main.py",
     "dev:auth": "cd auth-service && pnpm dev",
+    "seed-admin": "sh ./scripts/seed-admin.sh",
+    "setup": "sh ./scripts/setup.sh",
     "install:frontend": "cd frontend && pnpm install",
     "install:backend": "cd backend && uv sync",
     "install:auth": "cd auth-service && pnpm install",
@@ -30,8 +32,5 @@
     "frontend/**/*.{css,json,md}": [
       "prettier --write"
     ]
-  },
-  "dependencies": {
-    "@ocean-industries-concept-lab/openbridge-webcomponents": "^0.0.20260218140123"
   }
 }
