@@ -61,6 +61,7 @@ const getInitialJoinedStreams = (): string[] => {
 };
 
 function Datavision() {
+  const streamId = "default";
   const videoRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const reconnectTimerRef = useRef<number | null>(null);

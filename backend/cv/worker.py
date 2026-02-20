@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Queue, loop: bool = True):
     from cv.detectors import get_detector
+    from cv.publisher import DetectionPublisher
+
     detector = get_detector()
+    publisher = DetectionPublisher()
 
     cap = cv2.VideoCapture(source_url)
     if not cap.isOpened():
@@ -37,9 +40,7 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    detection_queue.put(
-        {"type": "ready", "stream_id": stream_id, "width": width, "height": height, "fps": fps}
-    )
+    publisher.publish(stream_id, {"type": "ready", "width": width, "height": height, "fps": fps})
 
     # Shared state between threads
     lock = threading.Lock()
@@ -123,33 +124,26 @@ def run(source_url: str, stream_id: str, detection_queue: Queue, frame_queue: Qu
         if min_inference_interval > 0:
             next_infer_time = now + min_inference_interval
 
-        payload = {
-            "stream_id": stream_id,
-            "frame_index": frame_idx,
-            "timestamp_ms": ts,
-            "fps": fps,
-            "inference_fps": round(inf_fps, 1),
-            "vessels": [{"detection": d.model_dump(), "vessel": None} for d in detections],
-        }
-        try:
-            detection_queue.put_nowait(payload)
-        except Full:
-            try:
-                detection_queue.get_nowait()
-                detection_queue.put_nowait(payload)
-            except (Empty, Full):
-                pass
+        publisher.publish(
+            stream_id,
+            {
+                "type": "detections",
+                "frame_index": frame_idx,
+                "timestamp_ms": ts,
+                "fps": fps,
+                "inference_fps": round(inf_fps, 1),
+                "vessels": [{"detection": d.model_dump(), "vessel": None} for d in detections],
+            }
+        )
 
     reader_thread.join(timeout=1)
     cap.release()
-    detection_queue.put(None)
+    publisher.close()
     frame_queue.put(None)
 
 
-def start(source_url: str, stream_id: str, loop: bool = True) -> tuple[Process, Queue, Queue]:
-    frame_queue_size = int(os.getenv("STREAM_FRAME_QUEUE_SIZE", "4"))
-    detection_queue: Queue = Queue(maxsize=2)
-    frame_queue: Queue = Queue(maxsize=max(1, frame_queue_size))
-    p = Process(target=run, args=(source_url, stream_id, detection_queue, frame_queue, loop))
+def start(video_path: Path, stream_id: str = DEFAULT_DETECTIONS_STREAM_ID) -> tuple[Process, Queue]:
+    frame_queue: Queue = Queue(maxsize=30)
+    p = Process(target=run, args=(video_path, frame_queue, stream_id))
     p.start()
-    return p, detection_queue, frame_queue
+    return p, frame_queue

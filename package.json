@@ -2,7 +2,8 @@
   "name": "openar",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
+    "dev": "concurrently \"pnpm run dev:redis\" \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
+    "dev:redis": "sh ./scripts/dev-redis.sh",
     "dev:frontend": "cd frontend && pnpm dev",
     "dev:backend": "cd backend && uv run main.py",
     "install:frontend": "cd frontend && pnpm install",
