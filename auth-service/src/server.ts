@@ -32,7 +32,16 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", env.betterAuthUrl);
 
   if (url.pathname.startsWith(authBasePath)) {
-    await authHandler(request, response);
+    try {
+      await authHandler(request, response);
+    } catch (error) {
+      console.error("Auth handler error:", error);
+      if (!response.headersSent) {
+        response.statusCode = 500;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ detail: "Internal auth error" }));
+      }
+    }
     return;
   }
 
@@ -62,7 +71,12 @@ const server = createServer(async (request, response) => {
 });
 
 const start = async () => {
-  await runAuthMigrations();
+  try {
+    await runAuthMigrations();
+  } catch (error) {
+    console.error("Auth migration failed:", error);
+    process.exit(1);
+  }
 
   server.listen(env.port, () => {
     // eslint-disable-next-line no-console
