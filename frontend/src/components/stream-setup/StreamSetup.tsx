@@ -20,6 +20,7 @@ import {
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar";
 import { apiFetch } from "../../lib/api-client";
+import { readApiError } from "../../utils/api-helpers";
 import "./StreamSetup.css";
 
 type StreamSetupProps = {
@@ -57,15 +58,6 @@ const formatDate = (date: Date) => {
 
 const formatTime = (date: Date) => {
   return date.toLocaleTimeString("en-GB", { hour12: false });
-};
-
-const readErrorMessage = async (response: Response, fallback: string) => {
-  try {
-    const payload = (await response.json()) as { detail?: string };
-    return payload.detail || fallback;
-  } catch {
-    return fallback;
-  }
 };
 
 export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) {
@@ -155,7 +147,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
       });
 
       if (!presignResponse.ok) {
-        throw new Error(await readErrorMessage(presignResponse, "Failed to generate upload URL"));
+        throw new Error(await readApiError(presignResponse, "Failed to generate upload URL"));
       }
 
       const payload = (await presignResponse.json()) as {

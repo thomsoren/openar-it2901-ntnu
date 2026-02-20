@@ -1,4 +1,6 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+import { API_CONFIG } from "../config/video";
+
+const API_BASE_URL = API_CONFIG.BASE_URL;
 
 let accessToken: string | null = null;
 

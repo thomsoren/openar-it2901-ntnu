@@ -1,3 +1,12 @@
+export const readApiError = async (response: Response, fallback: string): Promise<string> => {
+  try {
+    const payload = (await response.json()) as { detail?: string };
+    return payload.detail || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export const readJsonSafely = async (response: Response): Promise<Record<string, unknown>> => {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
