@@ -20,11 +20,14 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from redis.exceptions import RedisError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson
 from auth.deps import require_admin
-from auth.routes import router as auth_router
+from auth.routes import limiter, router as auth_router
 from common.config import (
     DEFAULT_DETECTIONS_STREAM_ID,
     VIDEO_PATH,
@@ -56,10 +59,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(auth_settings.cors_origins),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
 
 @app.get("/")

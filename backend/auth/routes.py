@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from auth.config import settings
@@ -13,7 +16,22 @@ from auth.security import create_access_token
 from db.database import get_db
 from db.models import AppUser
 
+logger = logging.getLogger(__name__)
+
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["auth"])
+
+_BETTER_AUTH_COOKIE_PREFIXES = ("better-auth.",)
+
+
+def _filter_better_auth_cookies(cookie_header: str) -> str:
+    """Keep only Better Auth cookies; drop analytics/tracking/unrelated cookies."""
+    pairs = [
+        pair.strip()
+        for pair in cookie_header.split(";")
+        if any(pair.strip().startswith(p) for p in _BETTER_AUTH_COOKIE_PREFIXES)
+    ]
+    return "; ".join(pairs)
 
 
 class AppUserResponse(BaseModel):
@@ -51,12 +69,14 @@ class ListUsersResponse(BaseModel):
     users: list[AppUserResponse]
 
 
+@limiter.limit("10/minute")
 @router.post("/auth/token/exchange", response_model=TokenExchangeResponse)
 async def exchange_token(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
-    cookie_header = request.headers.get("cookie", "")
+    raw_cookies = request.headers.get("cookie", "")
+    cookie_header = _filter_better_auth_cookies(raw_cookies)
     if not cookie_header:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -90,7 +110,15 @@ async def exchange_token(
             detail="No active Better Auth session",
         )
 
-    payload = session_response.json()
+    try:
+        payload = session_response.json()
+    except Exception as exc:
+        logger.warning("Auth service returned non-JSON response: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid session response",
+        ) from exc
+
     user_payload = payload.get("user") if isinstance(payload, dict) else None
     if not isinstance(user_payload, dict):
         raise HTTPException(
@@ -98,14 +126,21 @@ async def exchange_token(
             detail="Invalid session payload",
         )
 
-    user_id = str(user_payload.get("id", "")).strip()
+    user_id = user_payload.get("id")
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session payload missing required id field",
+        )
+    user_id = user_id.strip()
+
     username = user_payload.get("username")
-    normalized_username = str(username).strip().lower() if username is not None else ""
-    if not user_id or not normalized_username:
+    if not isinstance(username, str) or not username.strip():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session payload missing required username field",
         )
+    normalized_username = username.strip().lower()
 
     email = user_payload.get("email")
     normalized_email = str(email).strip().lower() if isinstance(email, str) else None
@@ -140,6 +175,7 @@ def get_me(
     return MeResponse(user=current_user)
 
 
+@limiter.limit("10/minute")
 @router.post("/auth/logout", response_model=LogoutResponse)
 async def logout(request: Request, response: Response):
     base_path = settings.better_auth_base_path
@@ -147,7 +183,7 @@ async def logout(request: Request, response: Response):
         base_path = f"/{base_path}"
 
     signout_url = f"{settings.better_auth_base_url.rstrip('/')}{base_path}/sign-out"
-    cookie_header = request.headers.get("cookie", "")
+    cookie_header = _filter_better_auth_cookies(request.headers.get("cookie", ""))
 
     if cookie_header:
         try:
@@ -161,11 +197,11 @@ async def logout(request: Request, response: Response):
                 )
                 if signout_response.status_code >= 500:
                     # Log-through behavior; logout remains idempotent from client perspective.
-                    print(
-                        f"[WARN] Better Auth sign-out returned {signout_response.status_code}"
+                    logger.warning(
+                        "Better Auth sign-out returned %s", signout_response.status_code
                     )
         except httpx.HTTPError as exc:
-            print(f"[WARN] Better Auth sign-out request failed: {exc}")
+            logger.warning("Better Auth sign-out request failed: %s", exc)
 
     for cookie_name in (
         "better-auth.session_token",

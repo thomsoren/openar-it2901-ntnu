@@ -27,6 +27,7 @@ dependencies = [
     "redis>=5.0.8",
     "torch",
     "torchvision",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
