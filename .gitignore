@@ -13,6 +13,7 @@ CLAUDE.md
 
 # Package manager local config
 /.npmrc
+frontend/.npmrc
 
 # Dependency folders
 node_modules/
