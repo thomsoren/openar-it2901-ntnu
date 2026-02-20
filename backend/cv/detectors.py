@@ -13,7 +13,7 @@ from cv.config import CONFIDENCE, IOU_THRESHOLD, AGNOSTIC_NMS, BYTETRACK_YAML
 
 
 class RTDETRDetector:
-    DEFAULT_MODEL = "epoch50.pt"  # Custom trained on CombinedShips
+    DEFAULT_MODEL = "best.pt"  # Custom trained on CombinedShips
     # All classes are boats in our custom model, no filtering needed
     BOAT_CLASSES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 

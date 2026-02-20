@@ -13,11 +13,14 @@ from typing import List
 from urllib.parse import urlparse
 
 import cv2
-from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from redis.exceptions import RedisError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.websockets import WebSocketDisconnect
 
 from ais import service as ais_service
@@ -27,6 +30,8 @@ from ais.fetch_ais import (
     fetch_ais_stream_projections_by_mmsi,
 )
 from ais.logger import AISSessionLogger
+from auth.deps import require_admin
+from auth.routes import limiter, router as auth_router
 from common.config import (
     BASE_DIR,
     VIDEO_PATH,
@@ -36,6 +41,8 @@ from common.config import (
 )
 from common.types import DetectedVessel
 from cv.utils import get_video_info
+from db.init_db import init_db
+from db.models import AppUser
 from fusion import fusion
 from orchestrator import (
     ResourceLimitExceededError,
@@ -54,28 +61,24 @@ app = FastAPI(
     version="0.2.0",
 )
 
-DEFAULT_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:3000",
-    "https://demo.bridgable.ai",
-    "http://demo.bridgable.ai",
-]
-ENV_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("FRONTEND_ORIGINS", "").split(",")
-    if origin.strip()
-]
+# Configure CORS to allow frontend requests
+# Origins are read from CORS_ORIGINS env var, falling back to
+# localhost dev defaults.  See auth/config.py for parsing logic.
+from auth.config import settings as auth_settings
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[*DEFAULT_ALLOWED_ORIGINS, *ENV_ALLOWED_ORIGINS],
+    allow_origins=list(auth_settings.cors_origins),
     allow_origin_regex=r"^https?://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.include_router(auth_router)
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "8"))
 DEFAULT_STREAM_ID = os.getenv("DEFAULT_STREAM_ID", "default")
@@ -137,6 +140,7 @@ def resolve_stream_source(source_url: str | None) -> str | None:
 async def lifespan(_: FastAPI):
     global orchestrator
 
+    init_db()
     app.state.redis_client = create_async_redis_client()
     orchestrator = WorkerOrchestrator(
         max_workers=MAX_WORKERS,
@@ -212,7 +216,11 @@ def reset_fusion_timer():
 
 
 @app.post("/api/storage/presign")
-def presign_storage(request: s3.PresignRequest):
+def presign_storage(
+    request: s3.PresignRequest,
+    _: AppUser = Depends(require_admin),
+):
+    """Generate a presigned URL for GET/PUT against S3 storage."""
     try:
         return s3.presign_storage(request)
     except ValueError as exc:
