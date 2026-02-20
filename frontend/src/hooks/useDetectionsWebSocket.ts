@@ -39,7 +39,10 @@ interface WebSocketState {
   vessels: DetectedVessel[];
   frameIndex: number;
   fps: number;
-  timestampMs: number;
+  detectionTimestampMs: number;
+  frameTimestampMs: number;
+  detectionFrameSentAtMs: number;
+  frameSentAtMs: number;
   videoInfo: VideoInfo | null;
   isConnected: boolean;
   isLoading: boolean;
@@ -75,7 +78,10 @@ function createWebSocketStore(
     vessels: [],
     frameIndex: 0,
     fps: 0,
-    timestampMs: 0,
+    detectionTimestampMs: 0,
+    frameTimestampMs: 0,
+    detectionFrameSentAtMs: 0,
+    frameSentAtMs: 0,
     videoInfo: null,
     isConnected: false,
     isLoading: true,
@@ -139,9 +145,18 @@ function createWebSocketStore(
             case "detections":
               setState({
                 frameIndex: data.frame_index,
-                timestampMs: data.timestamp_ms,
+                detectionTimestampMs: data.timestamp_ms || 0,
+                detectionFrameSentAtMs: data.frame_sent_at_ms || 0,
                 fps: data.fps,
                 vessels: data.vessels || [],
+              });
+              break;
+            case "frame_meta":
+              setState({
+                frameIndex: data.frame_index,
+                frameTimestampMs: data.timestamp_ms || 0,
+                frameSentAtMs: data.frame_sent_at_ms || 0,
+                fps: data.fps || state.fps,
               });
               break;
 

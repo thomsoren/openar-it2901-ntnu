@@ -10,11 +10,16 @@ export const API_CONFIG = {
   WS_BASE_URL,
 } as const;
 
-// Video configuration
+const MEDIAMTX_WHEP_BASE = import.meta.env.VITE_MEDIAMTX_WHEP_BASE || "http://localhost:8889";
+const MEDIAMTX_HLS_BASE = import.meta.env.VITE_MEDIAMTX_HLS_BASE || "http://localhost:8888";
+
+const normalizeBase = (value: string): string => value.replace(/\/$/, "");
+
 export const VIDEO_CONFIG = {
-  WIDTH: 1920,
-  HEIGHT: 1080,
-  SOURCE: `${API_CONFIG.BASE_URL}/api/video/mjpeg`,
+  MEDIAMTX_WHEP_URL: (streamId: string, baseUrl?: string) =>
+    `${normalizeBase(baseUrl || MEDIAMTX_WHEP_BASE)}/${streamId}/whep`,
+  MEDIAMTX_HLS_URL: (streamId: string, baseUrl?: string) =>
+    `${normalizeBase(baseUrl || MEDIAMTX_HLS_BASE)}/${streamId}/index.m3u8`,
 } as const;
 
 export const FUSION_VIDEO_CONFIG = {

@@ -23,7 +23,6 @@ class WorkerHandle:
 
     process: Process
     inference_queue: Queue
-    frame_queue: Queue
     config: StreamConfig
     started_at: float = field(default_factory=time.monotonic)
     last_heartbeat: float = field(default_factory=time.monotonic)
@@ -31,6 +30,8 @@ class WorkerHandle:
     backoff_seconds: float = 1.0
     next_restart_at: float = 0.0
     last_exitcode: int | None = None
+    viewer_count: int = 0
+    no_viewer_since: float = 0.0
 
     @property
     def is_alive(self) -> bool:
@@ -38,7 +39,7 @@ class WorkerHandle:
 
     def terminate(self):
         # Unblock API consumers waiting on queue.get() before terminating process.
-        for q in (self.inference_queue, self.frame_queue):
+        for q in (self.inference_queue,):
             try:
                 q.put_nowait(None)
             except Full:
@@ -69,4 +70,5 @@ class WorkerHandle:
             "backoff_seconds": self.backoff_seconds,
             "next_restart_at_monotonic": self.next_restart_at,
             "last_exitcode": self.last_exitcode,
+            "viewer_count": self.viewer_count,
         }

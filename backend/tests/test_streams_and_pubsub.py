@@ -54,7 +54,7 @@ def redis_available():
 def fake_worker(monkeypatch):
     def _fake_start(source_url: str, stream_id: str, loop: bool = True):
         del source_url, stream_id, loop
-        return FakeProcess(), Queue(maxsize=10), Queue(maxsize=10)
+        return FakeProcess(), Queue(maxsize=10)
 
     monkeypatch.setattr("orchestrator.orchestrator.worker.start", _fake_start)
     monkeypatch.setattr(api, "get_video_info", lambda _source: SimpleNamespace(width=1920, height=1080, fps=25))
@@ -123,3 +123,28 @@ def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker):
             thread.join(timeout=1)
             publisher.close()
 
+
+def test_streams_include_playback_urls(fake_worker):
+    stream_id = "playback-test"
+    with TestClient(api.app) as client:
+        start_response = client.post(
+            f"/api/streams/{stream_id}/start",
+            json={"source_url": "rtsp://example.com/live", "loop": True},
+        )
+        assert start_response.status_code == 201, start_response.text
+        start_payload = start_response.json()
+        assert "playback_urls" in start_payload
+        assert isinstance(start_payload["playback_urls"].get("media_enabled"), bool)
+
+        list_response = client.get("/api/streams")
+        assert list_response.status_code == 200, list_response.text
+        list_payload = list_response.json()
+        stream = next(item for item in list_payload["streams"] if item["stream_id"] == stream_id)
+        assert "playback_urls" in stream
+        assert isinstance(stream["playback_urls"].get("media_enabled"), bool)
+
+        playback_response = client.get(f"/api/streams/{stream_id}/playback")
+        assert playback_response.status_code == 200, playback_response.text
+        playback_payload = playback_response.json()
+        assert playback_payload["stream_id"] == stream_id
+        assert isinstance(playback_payload["playback_urls"].get("media_enabled"), bool)

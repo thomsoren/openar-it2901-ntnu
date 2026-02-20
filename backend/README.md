@@ -123,6 +123,91 @@ curl -X POST http://localhost:8000/api/storage/presign \
 
 The backend includes a FastAPI server that serves detections and video to the frontend.
 
+## MediaMTX Setup (Docker)
+
+This project uses MediaMTX for stream fan-out:
+- backend worker publishes H.264 via RTSP to MediaMTX
+- frontend consumes WebRTC (WHEP), with HLS as fallback
+
+### Prerequisites
+
+- Docker Desktop running
+- Docker context working (`docker version` should show both Client and Server)
+
+If you get `Cannot connect to the Docker daemon...`, start Docker Desktop first.
+
+### Start MediaMTX
+
+From repo root:
+
+```bash
+docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml up -d
+```
+
+Check status:
+
+```bash
+docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml ps
+docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml logs --tail=100 mediamtx
+```
+
+Expected exposed ports:
+- `8554` RTSP ingest
+- `8889` WHEP/WebRTC egress
+- `8888` HLS egress
+- `8189/udp` WebRTC ICE UDP
+
+### Configure backend/frontend env
+
+In `backend/.env`:
+
+```bash
+MEDIAMTX_ENABLED=true
+MEDIAMTX_RTSP_BASE=rtsp://localhost:8554
+MEDIAMTX_WHEP_BASE=http://localhost:8889
+MEDIAMTX_HLS_BASE=http://localhost:8888
+```
+
+In `frontend/.env`:
+
+```bash
+VITE_MEDIAMTX_WHEP_BASE=http://localhost:8889
+VITE_MEDIAMTX_HLS_BASE=http://localhost:8888
+```
+
+### Run app
+
+From repo root:
+
+```bash
+pnpm dev
+```
+
+Then verify stream playback URLs from backend:
+
+```bash
+curl http://localhost:8000/api/streams/default/playback
+```
+
+You should see `whep_url` and `hls_url`.
+
+### Quick troubleshooting
+
+- `zsh: no such file or directory: <backend-compose-file>`:
+  Use the real compose path, not placeholders.
+- `docker compose ...` appears to hang:
+  Usually Docker Desktop is not fully started yet.
+- No containers in `docker compose ... ps`:
+  Start with `up -d` first.
+- Chrome latency much higher than Safari:
+  Confirm UI status says `Video: WEBRTC`; if it says `HLS`, you are on fallback.
+
+### Stop MediaMTX
+
+```bash
+docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml down
+```
+
 ### Starting the API Server
 
 ```bash

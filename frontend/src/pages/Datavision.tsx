@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ObcTabRow } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
+import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
+import {
+  CircularProgressState,
+  ProgressBarMode,
+  ProgressBarType,
+} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
+import VideoPlayer, { type VideoPlayerState } from "../components/video-player/VideoPlayer";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useSettings } from "../contexts/useSettings";
-import { API_CONFIG, VIDEO_CONFIG, DETECTION_CONFIG } from "../config/video";
+import { API_CONFIG, DETECTION_CONFIG } from "../config/video";
 import "./Datavision.css";
 
 interface StreamSummary {
@@ -14,6 +21,13 @@ interface StreamSummary {
   pid: number | null;
   restart_count: number;
   source_url: string;
+  playback_urls?: {
+    whep_url?: string;
+    hls_url?: string;
+    rtsp_url?: string;
+    mjpeg_url?: string;
+    media_enabled?: boolean;
+  };
 }
 
 interface TabSelectedDetail {
@@ -61,7 +75,7 @@ const getInitialJoinedStreams = (): string[] => {
 };
 
 function Datavision() {
-  const videoRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const firstFrameWatchdogRef = useRef<number | null>(null);
@@ -77,6 +91,18 @@ function Datavision() {
   const [hasLoadedStreamList, setHasLoadedStreamList] = useState(false);
   const [wsEnabled, setWsEnabled] = useState(true);
   const [videoSession, setVideoSession] = useState(0);
+  const [videoState, setVideoState] = useState<VideoPlayerState>({
+    transport: "webrtc",
+    status: "idle",
+    error: null,
+  });
+  const [clockTickMs, setClockTickMs] = useState(() => performance.now());
+  const detectionClockRef = useRef<Record<string, { timestampMs: number; perfMs: number }>>({});
+  const frameClockRef = useRef<Record<string, { timestampMs: number; perfMs: number }>>({});
+  const [videoDisplayMs, setVideoDisplayMs] = useState(0);
+  const pendingLatencyRef = useRef<Array<{ sourceTsMs: number; frameSentAtMs: number }>>([]);
+  const [lastDisplayLatencyMs, setLastDisplayLatencyMs] = useState<number | null>(null);
+  const [displayLatencySamples, setDisplayLatencySamples] = useState<number[]>([]);
   const apiBase = API_CONFIG.BASE_URL.replace(/\/$/, "");
   const MAX_RECONNECT_ATTEMPTS = 8;
 
@@ -106,18 +132,23 @@ function Datavision() {
 
   // Receive detection updates via WebSocket (runs at YOLO speed ~5 FPS)
   // Video plays independently at native 25 FPS
-  const { vessels, isLoading, error, isConnected, fps, timestampMs } = useDetectionsWebSocket({
-    url: wsUrl,
-    enabled: wsEnabled,
-  });
+  const {
+    vessels,
+    isLoading,
+    error,
+    isConnected,
+    detectionTimestampMs,
+    frameTimestampMs,
+    frameSentAtMs,
+  } = useDetectionsWebSocket({ url: wsUrl, enabled: wsEnabled });
 
   // Calculate video transform for accurate POI positioning
   const videoTransform = useVideoTransform(
     videoRef,
     containerRef,
     videoFitMode,
-    VIDEO_CONFIG.WIDTH,
-    VIDEO_CONFIG.HEIGHT,
+    undefined,
+    undefined,
     imageLoaded
   );
 
@@ -253,9 +284,9 @@ function Datavision() {
     return () => window.clearInterval(interval);
   }, [joinedStreamIds, apiFetch]);
 
-  // When the browser tab becomes visible again, force a fresh MJPEG connection.
+  // When the browser tab becomes visible again, force a fresh stream connection.
   // Browsers often silently drop streaming connections for background tabs and
-  // don't fire onError, so the img stays frozen/dark without this.
+  // don't fire onError, so the video can stay frozen without this.
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -272,7 +303,16 @@ function Datavision() {
     reconnectCountRef.current = 0;
     firstFrameRetryDoneRef.current = false;
     setControlError(null);
-  }, [activeStreamId]);
+    pendingLatencyRef.current = [];
+    setLastDisplayLatencyMs(null);
+    setDisplayLatencySamples([]);
+    setVideoDisplayMs(0);
+    setVideoState({
+      transport: "webrtc",
+      status: "idle",
+      error: null,
+    });
+  }, [activeStreamId, videoSession]);
 
   useEffect(() => {
     imageLoadedRef.current = false;
@@ -477,9 +517,183 @@ function Datavision() {
     [activeStreamId, visibleStreams]
   );
 
-  const activeStreamVideoSource = useMemo(
-    () => `${apiBase}/api/video/mjpeg/${activeStreamId}?v=${videoSession}`,
-    [activeStreamId, apiBase, videoSession]
+  const activeStreamPlayback = activeStream?.playback_urls ?? null;
+  const detectionsReady = isConnected && !isLoading && !error;
+  const showVideoLoader =
+    !imageLoaded ||
+    !detectionsReady ||
+    videoState.status === "connecting" ||
+    videoState.status === "stalled";
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setClockTickMs(performance.now());
+      const videoEl = videoRef.current;
+      if (videoEl) {
+        const current = Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
+        setVideoDisplayMs(Math.max(0, current * 1000));
+      }
+    }, 200);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (detectionTimestampMs <= 0) {
+      return;
+    }
+    detectionClockRef.current[activeStreamId] = {
+      timestampMs: detectionTimestampMs,
+      perfMs: performance.now(),
+    };
+  }, [activeStreamId, detectionTimestampMs]);
+
+  useEffect(() => {
+    if (frameTimestampMs <= 0 || frameSentAtMs <= 0) {
+      return;
+    }
+    pendingLatencyRef.current.push({
+      sourceTsMs: frameTimestampMs,
+      frameSentAtMs,
+    });
+    if (pendingLatencyRef.current.length > 300) {
+      pendingLatencyRef.current.splice(0, pendingLatencyRef.current.length - 300);
+    }
+  }, [frameTimestampMs, frameSentAtMs]);
+
+  useEffect(() => {
+    if (frameTimestampMs <= 0) {
+      return;
+    }
+    frameClockRef.current[activeStreamId] = {
+      timestampMs: frameTimestampMs,
+      perfMs: performance.now(),
+    };
+  }, [activeStreamId, frameTimestampMs]);
+
+  useEffect(() => {
+    const pending = pendingLatencyRef.current;
+    if (pending.length === 0) {
+      return;
+    }
+    const effectiveClockMs = videoDisplayMs > 0 ? videoDisplayMs : frameTimestampMs;
+    if (effectiveClockMs <= 0) {
+      return;
+    }
+
+    while (pending.length > 0 && pending[0].sourceTsMs <= effectiveClockMs) {
+      const sample = pending.shift();
+      if (!sample) {
+        break;
+      }
+      const latencyMs = Math.max(0, Date.now() - sample.frameSentAtMs);
+      setLastDisplayLatencyMs(latencyMs);
+      setDisplayLatencySamples((prev) => {
+        const next = [...prev, latencyMs];
+        if (next.length > 200) {
+          next.splice(0, next.length - 200);
+        }
+        return next;
+      });
+    }
+  }, [frameTimestampMs, videoDisplayMs]);
+
+  const detectionClockMs = useMemo(() => {
+    const saved = detectionClockRef.current[activeStreamId];
+    if (!saved) {
+      return Math.max(0, detectionTimestampMs);
+    }
+    const delta = Math.max(0, clockTickMs - saved.perfMs);
+    return Math.max(saved.timestampMs, saved.timestampMs + delta);
+  }, [activeStreamId, clockTickMs, detectionTimestampMs]);
+
+  const frameClockMs = useMemo(() => {
+    const saved = frameClockRef.current[activeStreamId];
+    if (!saved) {
+      return Math.max(0, frameTimestampMs);
+    }
+    const delta = Math.max(0, clockTickMs - saved.perfMs);
+    return Math.max(saved.timestampMs, saved.timestampMs + delta);
+  }, [activeStreamId, clockTickMs, frameTimestampMs]);
+
+  const videoClockMs = useMemo(() => {
+    if (videoDisplayMs > 0) {
+      return videoDisplayMs;
+    }
+    return frameClockMs;
+  }, [frameClockMs, videoDisplayMs]);
+
+  // Keep displayed detection time aligned to the displayed video timeline.
+  // Detection freshness is shown separately by "(+Xs)".
+  const detectionDisplayClockMs = useMemo(() => {
+    if (videoClockMs > 0) {
+      return videoClockMs;
+    }
+    return detectionClockMs;
+  }, [videoClockMs, detectionClockMs]);
+
+  const secondsSinceLastUpdate = useMemo(() => {
+    const saved = detectionClockRef.current[activeStreamId];
+    if (!saved) {
+      return 0;
+    }
+    return Math.max(0, (clockTickMs - saved.perfMs) / 1000);
+  }, [activeStreamId, clockTickMs]);
+
+  const latencyStats = useMemo(() => {
+    if (displayLatencySamples.length === 0) {
+      return { p50: null as number | null, p95: null as number | null };
+    }
+    const sorted = [...displayLatencySamples].sort((a, b) => a - b);
+    const percentile = (q: number) =>
+      sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q))];
+    return {
+      p50: percentile(0.5),
+      p95: percentile(0.95),
+    };
+  }, [displayLatencySamples]);
+
+  const formatClock = (ms: number) =>
+    `${String(Math.floor(ms / 60000)).padStart(2, "0")}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+
+  const handleVideoStatusChange = useCallback(
+    (next: VideoPlayerState) => {
+      setVideoState(next);
+
+      if (next.status === "playing") {
+        imageLoadedRef.current = true;
+        reconnectCountRef.current = 0;
+        setImageLoaded(true);
+        clearReconnectTimers();
+        setControlError((prev) => {
+          if (
+            prev?.startsWith("Video stream") ||
+            prev?.startsWith("Waiting for first video frame") ||
+            prev?.startsWith("WebRTC stream") ||
+            prev?.startsWith("HLS stream")
+          ) {
+            return null;
+          }
+          return prev;
+        });
+        return;
+      }
+
+      if (next.status === "error") {
+        imageLoadedRef.current = false;
+        setImageLoaded(false);
+        scheduleReconnect(
+          next.transport === "webrtc" ? "WebRTC stream reconnecting" : "HLS stream reconnecting"
+        );
+        return;
+      }
+
+      // Do not tear down an already visible stream on transient waiting/stalled states.
+      // Live streams often emit short stalls while still healthy.
+      if (!imageLoadedRef.current) {
+        setImageLoaded(false);
+      }
+    },
+    [clearReconnectTimers, scheduleReconnect]
   );
 
   return (
@@ -507,34 +721,42 @@ function Datavision() {
 
             {activeStream && (
               <>
-                <img
-                  key={activeStreamVideoSource}
-                  ref={videoRef}
-                  src={activeStreamVideoSource}
-                  alt={`Video stream ${activeStream.stream_id}`}
+                <VideoPlayer
+                  key={`${activeStreamId}-${videoSession}`}
+                  streamId={activeStream.stream_id}
+                  whepUrl={activeStreamPlayback?.whep_url}
+                  hlsUrl={activeStreamPlayback?.hls_url}
+                  sessionToken={videoSession}
                   className="background-video"
-                  style={{ objectFit: videoFitMode }}
-                  onLoad={() => {
-                    imageLoadedRef.current = true;
-                    reconnectCountRef.current = 0;
-                    setImageLoaded(true);
-                    clearReconnectTimers();
-                    if (
-                      controlError?.startsWith("Video stream") ||
-                      controlError?.startsWith("Waiting for first video frame")
-                    ) {
-                      setControlError(null);
-                    }
+                  style={{ objectFit: videoFitMode, backgroundColor: "#e5e9ef" }}
+                  onVideoReady={(videoEl) => {
+                    videoRef.current = videoEl;
                   }}
-                  onError={() => {
-                    imageLoadedRef.current = false;
-                    setImageLoaded(false);
-                    scheduleReconnect("Video stream reconnecting");
-                  }}
+                  onStatusChange={handleVideoStatusChange}
                 />
 
-                {!imageLoaded && (
-                  <div className="status-overlay">Starting stream — waiting for first frame...</div>
+                {showVideoLoader && (
+                  <div className="video-loading-center">
+                    <ObcProgressBar
+                      className="video-loading-center__progress"
+                      type={ProgressBarType.circular}
+                      mode={ProgressBarMode.indeterminate}
+                      circularState={CircularProgressState.indeterminate}
+                      style={
+                        {
+                          "--instrument-enhanced-secondary-color": "#4ea9dd",
+                          "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+                        } as CSSProperties
+                      }
+                    >
+                      <span slot="icon"></span>
+                    </ObcProgressBar>
+                    <div className="video-loading-center__label">
+                      {!imageLoaded
+                        ? "Starting stream — waiting for first frame..."
+                        : "Waiting for detections..."}
+                    </div>
+                  </div>
                 )}
                 {isLoading && imageLoaded && (
                   <div className="status-overlay">Connecting to detection stream...</div>
@@ -542,9 +764,16 @@ function Datavision() {
                 {error && <div className="status-overlay status-error">Error: {error}</div>}
                 {!isLoading && !error && (
                   <div className="status-overlay status-info">
-                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeStreamId} | Time:{" "}
-                    {`${String(Math.floor(timestampMs / 60000)).padStart(2, "0")}:${String(Math.floor((timestampMs % 60000) / 1000)).padStart(2, "0")}`}{" "}
-                    | Detection: {(fps ?? 0).toFixed(1)} FPS | Vessels: {vessels.length}
+                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeStreamId} | Video
+                    Time: {formatClock(videoClockMs)} | Detection Time:{" "}
+                    {formatClock(detectionDisplayClockMs)}{" "}
+                    {`(+${secondsSinceLastUpdate.toFixed(1)}s)`} | Video:{" "}
+                    {videoState.transport.toUpperCase()} {videoState.status}
+                    {lastDisplayLatencyMs !== null
+                      ? ` | Display latency: ${Math.round(lastDisplayLatencyMs)}ms${latencyStats.p50 !== null && latencyStats.p95 !== null ? ` (p50 ${Math.round(latencyStats.p50)} / p95 ${Math.round(latencyStats.p95)})` : ""}`
+                      : ""}
+                    | Vessels: {vessels.length}
+                    {videoState.error ? ` | Video error: ${videoState.error}` : ""}
                     {controlError ? ` | Control: ${controlError}` : ""}
                   </div>
                 )}

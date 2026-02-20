@@ -1,0 +1,24 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx-spike
+    ports:
+      - "8554:8554"       # RTSP ingest
+      - "8888:8888"       # HLS egress
+      - "8889:8889"       # WHEP/WebRTC egress
+      - "8189:8189/udp"   # ICE/UDP
+      - "9997:9997"       # API (if enabled)
+      - "9998:9998"       # Metrics (if enabled)
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    command: ["/mediamtx.yml"]
+
+  # Optional: use with mediamtx.auth.docker.yml (set volume manually)
+  auth-mock:
+    image: python:3.12-alpine
+    container_name: mediamtx-auth-mock
+    command: ["python", "/app/auth_mock.py"]
+    volumes:
+      - ./auth_mock.py:/app/auth_mock.py:ro
+    ports:
+      - "10080:10080"
