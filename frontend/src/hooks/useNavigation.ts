@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 
 const PAGE_STORAGE_KEY = "openar.currentPage";
-const PAGES = ["datavision", "ais", "components", "fusion", "settings", "upload"] as const;
+const PAGES = ["datavision", "ais", "components", "fusion", "settings"] as const;
 
 export type PageId = (typeof PAGES)[number];
-export type AuthGateMode = "login" | "signup";
 
 const pageLabels: Record<PageId, string> = {
   datavision: "Datavision",
@@ -12,7 +11,6 @@ const pageLabels: Record<PageId, string> = {
   components: "Components",
   fusion: "Fusion",
   settings: "Settings",
-  upload: "Upload",
 };
 
 const getStoredPage = (): PageId => {
@@ -32,7 +30,6 @@ export function useNavigation() {
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [currentPage, setCurrentPage] = useState<PageId>(() => getStoredPage());
-  const [authGateMode, setAuthGateMode] = useState<AuthGateMode>("login");
 
   useEffect(() => {
     try {
@@ -44,9 +41,6 @@ export function useNavigation() {
 
   const handleNavigationItemClick = (page: PageId) => {
     setCurrentPage(page);
-    if (page === "upload") {
-      setAuthGateMode("login");
-    }
     setShowNavigationMenu(false);
     setShowUserPanel(false);
   };
@@ -56,7 +50,6 @@ export function useNavigation() {
     showNavigationMenu,
     showUserPanel,
     currentPage,
-    authGateMode,
     pageLabels,
     setShowBrillianceMenu,
     setShowNavigationMenu,

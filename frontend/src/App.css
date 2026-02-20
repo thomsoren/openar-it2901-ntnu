@@ -8,7 +8,7 @@ header {
 
 .user-panel {
   position: absolute;
-  top: 56px;
+  top: 52px;
   right: 12px;
   width: min(300px, calc(100vw - 24px));
   z-index: 120;

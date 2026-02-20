@@ -1,26 +1,36 @@
-/* ── Page wrapper (both states) ── */
+/* ── Base layout (both states) ── */
 
-.upload-page {
+.stream-setup {
   width: 100%;
-  min-height: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--container-backdrop-color, #e8e8e8);
+  overflow: auto;
+  padding: 24px 16px;
   box-sizing: border-box;
+}
+
+/* ── No-file state: narrow centered column ── */
+
+.stream-setup__content {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 24px 16px;
-  background: var(--container-backdrop-color);
-  overflow: auto;
+  gap: 12px;
+  width: 480px;
+  max-width: 100%;
 }
 
 /* ── Shared header ── */
 
-.upload-page__header {
+.stream-setup__header {
   display: flex;
   flex-direction: column;
-  width: 100%;
+  margin-bottom: 4px;
 }
 
-.upload-page__title {
+.stream-setup__title {
   font-family: var(--font-family-main, "Noto Sans", sans-serif);
   font-size: var(--font-size-150, 24px);
   font-weight: var(--font-weight-bold, 670);
@@ -29,7 +39,7 @@
   font-feature-settings: "ss04" 1;
 }
 
-.upload-page__subtitle {
+.stream-setup__subtitle {
   font-family: var(--font-family-main, "Noto Sans", sans-serif);
   font-size: var(--global-typography-ui-body-font-size, 16px);
   font-weight: var(--global-typography-ui-body-font-weight, 400);
@@ -38,22 +48,9 @@
   font-feature-settings: "ss04" 1;
 }
 
-/* ── State 1: No file selected — centered narrow layout ── */
-
-.upload-page__empty {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  width: 480px;
-  max-width: 100%;
-}
-
 /* ── Drag & drop zone ── */
 
-.upload-page__dropzone {
+.stream-setup__dropzone {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -65,19 +62,19 @@
   border-radius: 12px;
 }
 
-.upload-page__dropzone--active {
+.stream-setup__dropzone--active {
   background: var(--indent-hover-background-color, rgba(0, 0, 0, 0.1));
   border-color: var(--indent-hover-border-color, rgba(0, 0, 0, 0.04));
 }
 
-.upload-page__dropzone-content {
+.stream-setup__dropzone-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
 }
 
-.upload-page__dropzone-icon {
+.stream-setup__dropzone-icon {
   width: 24px;
   height: 24px;
   display: flex;
@@ -85,27 +82,64 @@
   justify-content: center;
 }
 
-.upload-page__dropzone-text {
+.stream-setup__dropzone-text {
   font-family: var(--font-family-main, "Noto Sans", sans-serif);
   font-size: var(--global-typography-ui-button-font-size, 16px);
   font-weight: var(--global-typography-ui-button-font-weight, 600);
   line-height: var(--global-typography-ui-button-line-height, 24px);
   color: var(--on-indent-active-color, #3d3d3d);
   font-feature-settings: "ss04" 1;
+  word-break: break-all;
+  text-align: center;
 }
 
-.upload-page__rich-button {
+.stream-setup__rich-button {
   display: block;
   width: 100%;
 }
 
-.upload-page__native-file-input {
+.stream-setup__native-file-input {
   display: none;
 }
 
-/* ── State 2: File selected — wide preview modal ── */
+.stream-setup__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+  color: var(--element-neutral-color, #535353);
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: 14px;
+}
 
-.upload-page__preview-container {
+.stream-setup__divider::before,
+.stream-setup__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-divider-color, #ddd);
+}
+
+.stream-setup__status {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: 14px;
+  color: var(--element-neutral-color, #535353);
+  text-align: center;
+  padding: 8px 0;
+}
+
+.stream-setup__alert {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ── File-selected state: wide preview modal ── */
+
+.stream-setup--preview {
+  align-items: flex-start;
+}
+
+.stream-setup__preview-container {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -113,7 +147,7 @@
   max-width: 100%;
 }
 
-.upload-page__modal {
+.stream-setup__modal {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -127,7 +161,7 @@
 
 /* Modal title bar */
 
-.upload-page__modal-titlebar {
+.stream-setup__modal-titlebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -136,7 +170,7 @@
   border-bottom: 1px solid var(--border-outline-color, #ddd);
 }
 
-.upload-page__modal-title {
+.stream-setup__modal-title {
   font-family: var(--font-family-main, "Noto Sans", sans-serif);
   font-size: var(--global-typography-ui-overline-font-size, 16px);
   font-weight: var(--font-weight-semibold, 600);
@@ -148,7 +182,7 @@
 
 /* Modal split content */
 
-.upload-page__modal-content {
+.stream-setup__modal-content {
   display: flex;
   flex: 1;
   min-height: 0;
@@ -156,7 +190,7 @@
 
 /* Left panel — file list + add controls */
 
-.upload-page__left-panel {
+.stream-setup__left-panel {
   display: flex;
   flex-direction: column;
   width: 480px;
@@ -167,7 +201,7 @@
   overflow: hidden;
 }
 
-.upload-page__file-list {
+.stream-setup__file-list {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -178,7 +212,7 @@
 
 /* Left panel bottom controls (drop zone + browse) */
 
-.upload-page__left-panel-controls {
+.stream-setup__left-panel-controls {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -189,7 +223,7 @@
 
 /* Right panel — video preview */
 
-.upload-page__right-panel {
+.stream-setup__right-panel {
   display: flex;
   flex: 1;
   min-width: 0;
@@ -199,14 +233,21 @@
   overflow: hidden;
 }
 
-.upload-page__video-preview {
+.stream-setup__video-preview {
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #000;
 }
 
-.upload-page__preview-error {
+.stream-setup__preview-placeholder {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-body-font-size, 16px);
+  line-height: var(--global-typography-ui-body-line-height, 24px);
+  color: var(--element-neutral-color, #535353);
+}
+
+.stream-setup__preview-error {
   padding: 24px;
   max-width: 400px;
   font-family: var(--font-family-main, "Noto Sans", sans-serif);
@@ -218,7 +259,7 @@
 
 /* Modal footer */
 
-.upload-page__modal-footer {
+.stream-setup__modal-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -227,14 +268,17 @@
   flex-shrink: 0;
 }
 
-/* Alert and progress */
-
-.upload-page__alert {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.upload-page__progress {
+.stream-setup__modal-progress {
   width: 100%;
   padding: 0 24px 8px;
+}
+
+/* Auth gate within stream tab */
+.stream-setup-auth {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--container-backdrop-color, #e8e8e8);
 }
