@@ -1,17 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useState } from "react";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
+import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
+import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/text-input-field/text-input-field";
 import { authClient } from "../../lib/auth-client";
-import type { TextInputElement } from "./types";
-import {
-  clearInputError,
-  getInputValue,
-  mapAuthErrorMessage,
-  normalizeUsername,
-  setInputError,
-  syntheticEmailFromUsername,
-  GoogleIcon,
-} from "./utils";
+import { mapAuthErrorMessage, GoogleIcon } from "./utils";
 
 type SignupFormProps = {
   isSubmitting: boolean;
@@ -24,96 +17,108 @@ export default function SignupForm({
   setIsSubmitting,
   onAuthenticated,
 }: SignupFormProps) {
-  const emailRef = useRef<TextInputElement | null>(null);
-  const passwordRef = useRef<TextInputElement | null>(null);
-  const confirmRef = useRef<TextInputElement | null>(null);
-
-  useEffect(() => {
-    const el = emailRef.current;
-    if (el) {
-      el.label = "Email";
-      el.placeholder = "your@email.com";
-    }
-
-    const pw = passwordRef.current;
-    if (pw) {
-      pw.label = "Password";
-      pw.placeholder = "Password";
-      pw.type = "password";
-    }
-
-    const cf = confirmRef.current;
-    if (cf) {
-      cf.label = "Confirm password";
-      cf.placeholder = "Password";
-      cf.type = "password";
-    }
-  }, []);
-
-  useEffect(() => {
-    if (emailRef.current) emailRef.current.disabled = isSubmitting;
-    if (passwordRef.current) passwordRef.current.disabled = isSubmitting;
-    if (confirmRef.current) confirmRef.current.disabled = isSubmitting;
-  }, [isSubmitting]);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmError, setConfirmError] = useState("");
 
   const handleSignUp = useCallback(async () => {
-    clearInputError(emailRef);
-    clearInputError(passwordRef);
-    clearInputError(confirmRef);
+    setEmailError("");
+    setPasswordError("");
+    setConfirmError("");
 
-    const email = getInputValue(emailRef).trim();
-    const password = getInputValue(passwordRef);
-    const confirmPassword = getInputValue(confirmRef);
+    const trimmedEmail = email.trim();
 
     let hasError = false;
-    if (!email) {
-      setInputError(emailRef, "Email is required");
+    if (!trimmedEmail) {
+      setEmailError("Email is required");
       hasError = true;
     }
     if (!password) {
-      setInputError(passwordRef, "Password is required");
+      setPasswordError("Password is required");
       hasError = true;
-    } else if (password.length < 8) {
-      setInputError(passwordRef, "Password must be at least 8 characters");
+    } else if (password.length < 12) {
+      setPasswordError("Password must be at least 12 characters");
       hasError = true;
     }
     if (!confirmPassword) {
-      setInputError(confirmRef, "Confirm your password");
+      setConfirmError("Confirm your password");
       hasError = true;
     } else if (password !== confirmPassword) {
-      setInputError(confirmRef, "Passwords do not match");
+      setConfirmError("Passwords do not match");
       hasError = true;
     }
     if (hasError) return;
 
     setIsSubmitting(true);
     try {
-      const normalizedUsername = normalizeUsername(email);
+      const normalizedEmail = trimmedEmail.toLowerCase();
+      const username = normalizedEmail.includes("@")
+        ? normalizedEmail.split("@")[0]
+        : normalizedEmail;
       const signUpResponse = await authClient.signUp.email({
-        name: normalizedUsername,
-        username: normalizedUsername,
-        email: syntheticEmailFromUsername(normalizedUsername),
+        name: username,
+        username,
+        email: normalizedEmail,
         password,
       });
 
       if (signUpResponse.error) {
-        throw new Error(signUpResponse.error.message || "Sign up failed");
+        setPasswordError(mapAuthErrorMessage(signUpResponse.error, "Sign up failed"));
+        return;
       }
 
       await onAuthenticated();
     } catch (error) {
-      setInputError(passwordRef, mapAuthErrorMessage(error, "Sign up failed"));
+      setPasswordError(mapAuthErrorMessage(error, "Sign up failed"));
     } finally {
       setIsSubmitting(false);
     }
-  }, [onAuthenticated, setIsSubmitting]);
+  }, [email, password, confirmPassword, onAuthenticated, setIsSubmitting]);
 
   return (
     <div className="auth-gate__form">
       <div className="auth-gate__inputs">
-        <obc-text-input-field ref={emailRef} />
-        <obc-text-input-field ref={passwordRef} />
-        <obc-text-input-field ref={confirmRef} />
+        <ObcTextInputField
+          label="Email"
+          placeholder="your@email.com"
+          value={email}
+          disabled={isSubmitting}
+          error={Boolean(emailError)}
+          errorText={emailError}
+          onInput={(e) => {
+            const target = e.target as HTMLInputElement;
+            setEmail(target.value);
+          }}
+        />
+        <ObcTextInputField
+          label="Password"
+          placeholder="Password"
+          type={HTMLInputTypeAttribute.Password}
+          value={password}
+          disabled={isSubmitting}
+          error={Boolean(passwordError)}
+          errorText={passwordError}
+          onInput={(e) => {
+            const target = e.target as HTMLInputElement;
+            setPassword(target.value);
+          }}
+        />
+        <ObcTextInputField
+          label="Confirm password"
+          placeholder="Password"
+          type={HTMLInputTypeAttribute.Password}
+          value={confirmPassword}
+          disabled={isSubmitting}
+          error={Boolean(confirmError)}
+          errorText={confirmError}
+          onInput={(e) => {
+            const target = e.target as HTMLInputElement;
+            setConfirmPassword(target.value);
+          }}
+        />
       </div>
       <div className="auth-gate__actions">
         <ObcButton

@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useState } from "react";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
+import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
+import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/text-input-field/text-input-field";
 import { authClient } from "../../lib/auth-client";
-import type { TextInputElement } from "./types";
-import {
-  clearInputError,
-  getInputValue,
-  mapAuthErrorMessage,
-  normalizeUsername,
-  setInputError,
-  GoogleIcon,
-} from "./utils";
+import { mapAuthErrorMessage, GoogleIcon } from "./utils";
 
 type LoginFormProps = {
   isSubmitting: boolean;
@@ -23,74 +17,81 @@ export default function LoginForm({
   setIsSubmitting,
   onAuthenticated,
 }: LoginFormProps) {
-  const emailRef = useRef<TextInputElement | null>(null);
-  const passwordRef = useRef<TextInputElement | null>(null);
-
-  useEffect(() => {
-    const el = emailRef.current;
-    if (el) {
-      el.label = "Email";
-      el.placeholder = "your@email.com";
-    }
-
-    const pw = passwordRef.current;
-    if (pw) {
-      pw.label = "Password";
-      pw.placeholder = "Password";
-      pw.type = "password";
-      pw.helperText =
-        "Passwords should contain 12 characters, include uppercase, lowercase, numbers, and symbols.";
-    }
-  }, []);
-
-  useEffect(() => {
-    if (emailRef.current) emailRef.current.disabled = isSubmitting;
-    if (passwordRef.current) passwordRef.current.disabled = isSubmitting;
-  }, [isSubmitting]);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   const handleSignIn = useCallback(async () => {
-    clearInputError(emailRef);
-    clearInputError(passwordRef);
+    setEmailError("");
+    setPasswordError("");
 
-    const email = getInputValue(emailRef).trim();
-    const password = getInputValue(passwordRef);
+    const trimmedEmail = email.trim();
 
     let hasError = false;
-    if (!email) {
-      setInputError(emailRef, "Email is required");
+    if (!trimmedEmail) {
+      setEmailError("Email is required");
       hasError = true;
     }
     if (!password) {
-      setInputError(passwordRef, "Password is required");
+      setPasswordError("Password is required");
+      hasError = true;
+    } else if (password.length < 12) {
+      setPasswordError("Password must be at least 12 characters");
       hasError = true;
     }
     if (hasError) return;
 
     setIsSubmitting(true);
     try {
-      const normalizedUsername = normalizeUsername(email);
-      const signInResponse = await authClient.signIn.username({
-        username: normalizedUsername,
+      const normalizedEmail = trimmedEmail.toLowerCase();
+      const signInResponse = await authClient.signIn.email({
+        email: normalizedEmail,
         password,
       });
 
       if (signInResponse.error) {
-        throw new Error(signInResponse.error.message || "Invalid username or password");
+        setPasswordError(mapAuthErrorMessage(signInResponse.error, "Authentication failed"));
+        return;
       }
 
       await onAuthenticated();
     } catch (error) {
-      setInputError(passwordRef, mapAuthErrorMessage(error, "Authentication failed"));
+      setPasswordError(mapAuthErrorMessage(error, "Authentication failed"));
     } finally {
       setIsSubmitting(false);
     }
-  }, [onAuthenticated, setIsSubmitting]);
+  }, [email, password, onAuthenticated, setIsSubmitting]);
 
   return (
     <div className="auth-gate__form">
       <div className="auth-gate__inputs">
-        <obc-text-input-field ref={emailRef} />
-        <obc-text-input-field ref={passwordRef} />
+        <ObcTextInputField
+          label="Email"
+          placeholder="your@email.com"
+          value={email}
+          disabled={isSubmitting}
+          error={Boolean(emailError)}
+          errorText={emailError}
+          onInput={(e) => {
+            const target = e.target as HTMLInputElement;
+            setEmail(target.value);
+          }}
+        />
+        <ObcTextInputField
+          label="Password"
+          placeholder="Password"
+          type={HTMLInputTypeAttribute.Password}
+          value={password}
+          disabled={isSubmitting}
+          error={Boolean(passwordError)}
+          errorText={passwordError}
+          helperText="Passwords should contain 12 characters, include uppercase, lowercase, numbers, and symbols."
+          onInput={(e) => {
+            const target = e.target as HTMLInputElement;
+            setPassword(target.value);
+          }}
+        />
       </div>
       <div className="auth-gate__actions">
         <ObcButton
@@ -114,11 +115,3 @@ export default function LoginForm({
     </div>
   );
 }
-
-export const clearLoginErrors = (refs: {
-  emailRef: React.RefObject<TextInputElement | null>;
-  passwordRef: React.RefObject<TextInputElement | null>;
-}) => {
-  clearInputError(refs.emailRef);
-  clearInputError(refs.passwordRef);
-};

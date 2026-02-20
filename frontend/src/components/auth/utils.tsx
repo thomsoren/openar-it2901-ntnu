@@ -1,40 +1,28 @@
-import type { TextInputElement } from "./types";
+/** Shape of the error object returned by Better Auth client methods. */
+type BetterAuthError = { message?: string; status?: number };
 
-export const normalizeUsername = (value: string) => value.trim().toLowerCase();
-
-export const syntheticEmailFromUsername = (username: string) => `${username}@openar.local`;
-
-export const getInputValue = (ref: React.RefObject<TextInputElement | null>): string => {
-  return ref.current?.value || "";
-};
-
-export const setInputError = (ref: React.RefObject<TextInputElement | null>, errorText: string) => {
-  if (!ref.current) return;
-  ref.current.error = Boolean(errorText);
-  ref.current.errorText = errorText;
-};
-
-export const clearInputError = (ref: React.RefObject<TextInputElement | null>) => {
-  setInputError(ref, "");
-};
-
+/**
+ * Map a Better Auth / network error to a user-friendly message.
+ *
+ * Prefers HTTP status codes for reliability; falls back to message keywords
+ * only when the status is unavailable (e.g. network errors wrapped in Error).
+ */
 export const mapAuthErrorMessage = (error: unknown, fallback: string) => {
-  const message = error instanceof Error ? error.message : fallback;
+  // Better Auth error objects carry { message, status }.
+  const authErr = error as BetterAuthError | undefined;
+  const status = authErr?.status;
+  const message =
+    (authErr?.message ?? (error instanceof Error ? error.message : undefined)) || fallback;
+
+  // Status-based matching (preferred — resilient to wording changes)
+  if (status === 401) return "Invalid email or password";
+  if (status === 422) return "Account already exists. Try signing in instead.";
+  if (status === 400) return message; // validation error — Better Auth message is descriptive
+
+  // Fallback: keyword matching for errors without a status (e.g. network)
   const lower = message.toLowerCase();
-
-  if (
-    lower.includes("username") &&
-    (lower.includes("exists") || lower.includes("taken") || lower.includes("already"))
-  ) {
-    return "Username already taken";
-  }
-
-  if (lower.includes("invalid username or password") || lower.includes("invalid credentials")) {
-    return "Invalid username or password";
-  }
-
-  if (lower.includes("unprocessable_entity")) {
-    return "Invalid input. Check username and password format.";
+  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+    return "Authentication service unavailable. Please try again.";
   }
 
   return message;
