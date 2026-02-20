@@ -1,6 +1,6 @@
 import { API_CONFIG } from "../config/video";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-group/poi-group";
+import { ObcPoiData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-data/poi-data";
+import { ObcPoiGroup } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-group/poi-group";
 import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
 
 function Components() {
@@ -63,15 +63,15 @@ function Components() {
             }}
           >
             <div style={{ position: "relative", width: "400px", height: "300px" }}>
-              <obc-poi-group
+              <ObcPoiGroup
                 style={{ position: "absolute", top: 0, left: 0 }}
                 expand={false}
                 positionVertical="200px"
               >
-                <obc-poi-data style={{ position: "absolute" }} x={150} y={100} buttonY={200} />
-                <obc-poi-data style={{ position: "absolute" }} x={170} y={100} buttonY={200} />
-                <obc-poi-data style={{ position: "absolute" }} x={190} y={100} buttonY={200} />
-              </obc-poi-group>
+                <ObcPoiData style={{ position: "absolute" }} x={150} y={100} buttonY={200} />
+                <ObcPoiData style={{ position: "absolute" }} x={170} y={100} buttonY={200} />
+                <ObcPoiData style={{ position: "absolute" }} x={190} y={100} buttonY={200} />
+              </ObcPoiGroup>
             </div>
           </div>
         </section>
@@ -99,12 +99,12 @@ function Components() {
           >
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
               <div style={{ position: "relative", width: "100px", height: "100px" }}>
-                <obc-poi-data x={50} y={50} buttonY={50} value={PoiDataValue.Unchecked} />
+                <ObcPoiData x={50} y={50} buttonY={50} value={PoiDataValue.Unchecked} />
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
               <div style={{ position: "relative", width: "150px", height: "100px" }}>
-                <obc-poi-data
+                <ObcPoiData
                   x={75}
                   y={50}
                   buttonY={50}
@@ -146,12 +146,12 @@ function Components() {
             >
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ position: "relative", width: "100px", height: "150px" }}>
-                  <obc-poi-data x={50} y={75} buttonY={150} value={PoiDataValue.Unchecked} />
+                  <ObcPoiData x={50} y={75} buttonY={150} value={PoiDataValue.Unchecked} />
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ position: "relative", width: "100px", height: "150px" }}>
-                  <obc-poi-data x={50} y={75} buttonY={150} value={PoiDataValue.Checked} />
+                  <ObcPoiData x={50} y={75} buttonY={150} value={PoiDataValue.Checked} />
                 </div>
               </div>
             </div>

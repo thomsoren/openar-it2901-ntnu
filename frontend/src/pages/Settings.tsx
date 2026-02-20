@@ -27,7 +27,7 @@ function Settings() {
             label="Enable AIS"
             checked={aisEnabled}
             description="Toggle AIS (Automatic Identification System) display"
-            onChange={(e) => {
+            onInput={(e) => {
               const target = e.target as HTMLInputElement;
               setAisEnabled(target.checked);
             }}
@@ -37,7 +37,7 @@ function Settings() {
             label="Show Overlay"
             checked={overlayVisible}
             description="Toggle overlay visibility on video feed"
-            onChange={(e) => {
+            onInput={(e) => {
               const target = e.target as HTMLInputElement;
               setOverlayVisible(target.checked);
             }}
@@ -47,7 +47,7 @@ function Settings() {
             label="Show Detections"
             checked={detectionVisible}
             description="Toggle detection boxes visibility"
-            onChange={(e) => {
+            onInput={(e) => {
               const target = e.target as HTMLInputElement;
               setDetectionVisible(target.checked);
             }}

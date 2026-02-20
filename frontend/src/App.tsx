@@ -1,14 +1,15 @@
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/user-menu/user-menu";
 import { ObcTopBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/top-bar/top-bar";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import { ObcClock } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/clock/clock";
 import { ObcNavigationMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-menu/navigation-menu";
 import { ObcNavigationItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-item/navigation-item";
+import { ObcUserMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/user-menu/user-menu";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { ObcElevatedCardSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
+import { ObcUserMenuSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/user-menu/user-menu";
 import "./App.css";
 import Ais from "./pages/Ais";
 import Fusion from "./pages/Fusion";
@@ -21,7 +22,6 @@ import AccessDenied from "./components/auth/AccessDenied";
 import { useClock } from "./hooks/useClock";
 import { useNavigation } from "./hooks/useNavigation";
 import { useAuth } from "./hooks/useAuth";
-import { useUserMenu } from "./hooks/useUserMenu";
 
 const handleBrillianceChange = (event: CustomEvent) => {
   document.documentElement.setAttribute("data-obc-theme", event.detail.value);
@@ -31,18 +31,6 @@ function App() {
   const { clockDate } = useClock();
   const nav = useNavigation();
   const auth = useAuth();
-  const { profileMenuRef } = useUserMenu({
-    showUserPanel: nav.showUserPanel,
-    userMenuState: auth.userMenuState,
-    userInitials: auth.userInitials,
-    userLabel: auth.userLabel,
-    signedInActions: auth.signedInActions,
-    profileUsername: auth.profileUsername,
-    profilePassword: auth.profilePassword,
-    handleProfileSignIn: auth.handleProfileSignIn,
-    handleSignOut: auth.handleSignOut,
-  });
-
   const renderPublicPage = () => {
     if (nav.currentPage === "datavision") {
       return <Datavision />;
@@ -136,6 +124,7 @@ function App() {
           pageName={nav.pageLabels[nav.currentPage]}
           showDimmingButton
           showUserButton
+          disableUserButton={isOnLoginPage}
           showClock
           menuButtonActivated={nav.showNavigationMenu}
           userButtonActivated={nav.showUserPanel}
@@ -163,12 +152,14 @@ function App() {
       {nav.showUserPanel && (
         <div className={`user-panel${!auth.session ? " user-panel--auth" : ""}`}>
           {auth.session ? (
-            <obc-user-menu
-              ref={profileMenuRef}
+            <ObcUserMenu
               type={auth.userMenuState}
-              size="small"
-              username={auth.profileUsername}
-              password={auth.profilePassword}
+              size={ObcUserMenuSize.small}
+              hasRecentlySignedIn={false}
+              userInitials={auth.userInitials}
+              userLabel={auth.userLabel}
+              signedInActions={auth.signedInActions}
+              onSignOutClick={() => void auth.handleSignOut()}
             />
           ) : (
             <AuthGate

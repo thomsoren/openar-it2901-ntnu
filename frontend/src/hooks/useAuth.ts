@@ -7,21 +7,17 @@ import {
   setApiAccessToken,
 } from "../lib/api-client";
 import type { BackendUser } from "../types/auth";
+import {
+  ObcUserMenuType,
+  type ObcUserMenuSignedInAction,
+} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/user-menu/user-menu.js";
 
 // Refresh the backend JWT this many seconds before it expires.
 const REFRESH_BUFFER_SEC = 60;
 
 type AuthBridgeStatus = "idle" | "loading" | "ready" | "error";
 
-export type UserMenuState = "sign-in" | "loading-sign-in" | "signed-in";
-export type UserMenuSignInDetail = {
-  username?: string;
-  password?: string;
-};
-export type UserMenuAction = {
-  id: string;
-  label: string;
-};
+export type UserMenuState = ObcUserMenuType;
 
 const readApiError = async (response: Response, fallback: string) => {
   try {
@@ -71,15 +67,18 @@ export function useAuth() {
   } = authClient.useSession();
 
   const sessionUsername = (session?.user as { username?: string } | undefined)?.username;
-  const signedInActions = useMemo<UserMenuAction[]>(() => [{ id: "noop", label: "" }], []);
+  const signedInActions = useMemo<ObcUserMenuSignedInAction[]>(
+    () => [{ id: "noop", label: "" }],
+    []
+  );
   const userLabel = sessionUsername || session?.user?.name || session?.user?.email || "User";
   const userInitials = useMemo(() => getInitials(userLabel), [userLabel]);
   const userMenuState: UserMenuState =
     isProfileSigningIn || isSigningOut || isSessionPending
-      ? "loading-sign-in"
+      ? ObcUserMenuType.loadingSignIn
       : session
-        ? "signed-in"
-        : "sign-in";
+        ? ObcUserMenuType.signedIn
+        : ObcUserMenuType.signIn;
 
   useEffect(() => {
     if (refreshTimerRef.current) {

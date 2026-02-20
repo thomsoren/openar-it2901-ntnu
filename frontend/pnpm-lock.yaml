@@ -24,12 +24,9 @@ importers:
       '@eslint/js':
         specifier: ^9.30.0
         version: 9.39.2
-      '@ocean-industries-concept-lab/openbridge-webcomponents':
-        specifier: ^0.0.20260218140123
-        version: 0.0.20260218140123
       '@ocean-industries-concept-lab/openbridge-webcomponents-react':
-        specifier: '*'
-        version: 0.0.20260106082657(@types/react@19.2.7)(react@19.2.3)
+        specifier: ^0.0.20260220122440
+        version: 0.0.20260220122440(@types/react@19.2.7)(react@19.2.3)
       '@types/leaflet':
         specifier: ^1.9.21
         version: 1.9.21
@@ -946,17 +943,14 @@ packages:
     resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
     engines: {node: '>= 20.19.0'}
 
-  '@ocean-industries-concept-lab/openbridge-webcomponents-react@0.0.20260106082657':
-    resolution: {integrity: sha512-QmnsKnHKndlo7wrawukQxu1XSoIV2sLFT08cw+9/coZIwk/mJ/p1w0QX7oYSvnkngX4SqgGUu/DzH6GizBFuqg==, tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents-react/0.0.20260106082657/be358d493c504e6648a71b2e396cd8cbe4e1e31a}
+  '@ocean-industries-concept-lab/openbridge-webcomponents-react@0.0.20260220122440':
+    resolution: {integrity: sha512-iL0HOP4wOFnfDFsNP4G0czsS7SFUCEBCn5MIj0DekiL24u26S+WTxujJgjVbVlARGJHTQRMRWw6F76js3U+9Rg==, tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents-react/0.0.20260220122440/9c573b61bd6915604a4367eca97886a37f6f9edb}
     peerDependencies:
       '@types/react': ^17 || ^18 || ^19
       react: ^17 || ^18 || ^19
 
-  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260106082657':
-    resolution: {integrity: sha512-sBp6BbrhiRaAV1TBYu4IHelaEtaHGQ6G8IepH/YK2nR+zCm64NnYrrseME7W6S+NcSgqrHkimu6LQpqt2lzobA==, tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents/0.0.20260106082657/b4f87544465f34ebed350f8c43248b8c9c0105f7}
-
-  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260218140123':
-    resolution: {integrity: sha512-r/s6uplLS0agTLz/GbRXGbvhmARwmj6gn5wm7tysU9WLYI9gHwfJfmDSEYyyu8iDtG8TtM/TfWVZY55vDOIFRg==, tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents/0.0.20260218140123/7d3ad90d2ad7e91cddda41efecad42b0c9de03a6}
+  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260220122440':
+    resolution: {integrity: sha512-DU6G6WdG5tKLCYqBLIEiDb9BkorDqRuXx71tvtgHjPqbZGF6HpgmvkPYkvygRzBEvBjsut6rTirW+K9/OF6iOw==, tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents/0.0.20260220122440/04b9986203f2d5d02c8e83b249afcc5e1573e432}
 
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
@@ -3322,22 +3316,14 @@ snapshots:
 
   '@noble/hashes@2.0.1': {}
 
-  '@ocean-industries-concept-lab/openbridge-webcomponents-react@0.0.20260106082657(@types/react@19.2.7)(react@19.2.3)':
+  '@ocean-industries-concept-lab/openbridge-webcomponents-react@0.0.20260220122440(@types/react@19.2.7)(react@19.2.3)':
     dependencies:
       '@lit/react': 1.0.8(@types/react@19.2.7)
-      '@ocean-industries-concept-lab/openbridge-webcomponents': 0.0.20260106082657
+      '@ocean-industries-concept-lab/openbridge-webcomponents': 0.0.20260220122440
       '@types/react': 19.2.7
       react: 19.2.3
 
-  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260106082657':
-    dependencies:
-      '@lit-labs/observers': 2.1.0
-      '@lit/localize': 0.12.2
-      chart.js: 4.5.1
-      lit: 3.3.2
-      uplot: 1.6.32
-
-  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260218140123':
+  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260220122440':
     dependencies:
       '@lit-labs/observers': 2.1.0
       '@lit/localize': 0.12.2
