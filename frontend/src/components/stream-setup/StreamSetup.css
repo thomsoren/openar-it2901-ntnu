@@ -1,0 +1,292 @@
+/* ── Base layout (both states) ── */
+
+.stream-setup {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--container-backdrop-color, #e8e8e8);
+  overflow: auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+/* ── No-file state: narrow centered column ── */
+
+.stream-setup__content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 480px;
+  max-width: 100%;
+}
+
+/* ── Shared header ── */
+
+.stream-setup__header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 4px;
+}
+
+.stream-setup__title {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--font-size-150, 24px);
+  font-weight: var(--font-weight-bold, 670);
+  line-height: var(--line-height-150, 32px);
+  color: var(--element-active-color, #1f1f1f);
+  font-feature-settings: "ss04" 1;
+}
+
+.stream-setup__subtitle {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-body-font-size, 16px);
+  font-weight: var(--global-typography-ui-body-font-weight, 400);
+  line-height: var(--global-typography-ui-body-line-height, 24px);
+  color: var(--element-neutral-color, #535353);
+  font-feature-settings: "ss04" 1;
+}
+
+/* ── Drag & drop zone ── */
+
+.stream-setup__dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--indent-enabled-background-color, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--indent-enabled-border-color, rgba(0, 0, 0, 0.1));
+  border-radius: 12px;
+}
+
+.stream-setup__dropzone--active {
+  background: var(--indent-hover-background-color, rgba(0, 0, 0, 0.1));
+  border-color: var(--indent-hover-border-color, rgba(0, 0, 0, 0.04));
+}
+
+.stream-setup__dropzone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.stream-setup__dropzone-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stream-setup__dropzone-text {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-button-font-size, 16px);
+  font-weight: var(--global-typography-ui-button-font-weight, 600);
+  line-height: var(--global-typography-ui-button-line-height, 24px);
+  color: var(--on-indent-active-color, #3d3d3d);
+  font-feature-settings: "ss04" 1;
+  word-break: break-all;
+  text-align: center;
+}
+
+.stream-setup__rich-button {
+  display: block;
+  width: 100%;
+}
+
+.stream-setup__native-file-input {
+  display: none;
+}
+
+.stream-setup__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+  color: var(--element-neutral-color, #535353);
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: 14px;
+}
+
+.stream-setup__divider::before,
+.stream-setup__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-divider-color, #ddd);
+}
+
+.stream-setup__status {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: 14px;
+  color: var(--element-neutral-color, #535353);
+  text-align: center;
+  padding: 8px 0;
+}
+
+.stream-setup__message {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-body-font-size, 16px);
+  line-height: var(--global-typography-ui-body-line-height, 24px);
+  color: var(--element-neutral-color, #535353);
+  text-align: center;
+  padding: 8px 0;
+}
+
+.stream-setup__message[data-status="error"] {
+  color: var(--alert-alarm-color, #c0392b);
+}
+
+/* ── File-selected state: wide preview modal ── */
+
+.stream-setup--preview {
+  align-items: flex-start;
+}
+
+.stream-setup__preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 1248px;
+  max-width: 100%;
+}
+
+.stream-setup__modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 640px;
+  background: var(--container-background-color, #f7f7f7);
+  border: 1px solid var(--border-outline-color, #ddd);
+  border-radius: 6px;
+  box-shadow: var(--shadow-flat, 0px 1px 2px 0px rgba(0, 0, 0, 0.23));
+  overflow: hidden;
+}
+
+/* Modal title bar */
+
+.stream-setup__modal-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 24px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-outline-color, #ddd);
+}
+
+.stream-setup__modal-title {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-overline-font-size, 16px);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: var(--global-typography-ui-overline-line-height, 24px);
+  letter-spacing: var(--global-typography-ui-overline-letter-spacing, 0.15px);
+  color: var(--element-neutral-color, #535353);
+  font-feature-settings: "ss04" 1;
+}
+
+/* Modal split content */
+
+.stream-setup__modal-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Left panel — file list + add controls */
+
+.stream-setup__left-panel {
+  display: flex;
+  flex-direction: column;
+  width: 480px;
+  flex-shrink: 0;
+  height: 100%;
+  background: var(--container-background-color, #f7f7f7);
+  border-right: 1px solid var(--border-outline-color, #ddd);
+  overflow: hidden;
+}
+
+.stream-setup__file-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+/* Left panel bottom controls (drop zone + browse) */
+
+.stream-setup__left-panel-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid var(--border-outline-color, #ddd);
+  flex-shrink: 0;
+}
+
+/* Right panel — video preview */
+
+.stream-setup__right-panel {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  background: #d4d4d4;
+  overflow: hidden;
+}
+
+.stream-setup__video-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.stream-setup__preview-placeholder {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-body-font-size, 16px);
+  line-height: var(--global-typography-ui-body-line-height, 24px);
+  color: var(--element-neutral-color, #535353);
+}
+
+.stream-setup__preview-error {
+  padding: 24px;
+  max-width: 400px;
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-body-font-size, 16px);
+  line-height: var(--global-typography-ui-body-line-height, 24px);
+  color: var(--element-neutral-color, #535353);
+  text-align: center;
+}
+
+/* Modal footer */
+
+.stream-setup__modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 24px 8px 16px;
+  border-top: 1px solid var(--border-divider-color, #ddd);
+  flex-shrink: 0;
+}
+
+.stream-setup__modal-progress {
+  width: 100%;
+  padding: 0 24px 8px;
+}
+
+/* Auth gate within stream tab */
+.stream-setup-auth {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--container-backdrop-color, #e8e8e8);
+}

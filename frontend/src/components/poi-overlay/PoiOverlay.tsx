@@ -1,5 +1,6 @@
 import React from "react";
-import { ObcPoiTarget } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-target/poi-target";
+import { ObcPoiData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-data/poi-data";
+import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
 import { DetectedVessel } from "../../types/detection";
 import { POI_CONFIG } from "../../config/video";
 import { VideoTransform } from "../../hooks/useVideoTransform";
@@ -28,18 +29,29 @@ function PoiOverlay({ vessels = [], videoTransform }: PoiOverlayProps) {
         const screenX = scaledX + videoTransform.offsetX;
         const screenY = scaledY + videoTransform.offsetY;
 
+        // POI configuration for obc-poi-data:
+        // - x: horizontal position
+        // - y: line length (height from button to target)
+        // - buttonY: vertical position of the button (top of POI)
+        // We want the target at screenY (detection point), with line extending upward
+        const lineHeight = POI_CONFIG.HEIGHT;
+        const buttonY = screenY - lineHeight;
+
+        // Prepare vessel data for display
+        const vesselData = item.vessel?.name
+          ? [{ value: item.vessel.name, label: "Vessel", unit: "" }]
+          : [];
+
         return (
-          <div
+          <ObcPoiData
             key={trackId}
-            className="poi-marker"
-            style={{
-              left: `${screenX}px`,
-              top: `${screenY}px`,
-            }}
-          >
-            <ObcPoiTarget height={POI_CONFIG.HEIGHT} />
-            {item.vessel?.name && <span className="poi-label">{item.vessel.name}</span>}
-          </div>
+            style={{ position: "absolute" }}
+            x={screenX}
+            y={lineHeight}
+            buttonY={buttonY}
+            value={PoiDataValue.Unchecked}
+            data={vesselData}
+          />
         );
       })}
     </div>

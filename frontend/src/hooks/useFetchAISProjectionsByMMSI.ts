@@ -84,7 +84,7 @@ export function useFetchAISProjectionsByMMSI(
 
           // Extract MMSI with fallback chain
           const mmsiValue =
-            data.mmsi || data.properties?.mmsi || parseInt(data.id?.split(":")[-1] || "0");
+            data.mmsi || data.properties?.mmsi || parseInt(data.id?.split(":").at(-1) || "0");
 
           // Create projection object matching ProjectedCoordinate interface
           const projected: ProjectedCoordinate = {
@@ -96,7 +96,7 @@ export function useFetchAISProjectionsByMMSI(
             bearing_deg: data.projection?.bearing_deg || 0,
             relative_bearing_deg: data.projection?.rel_bearing_deg || 0,
             in_fov: true,
-            timestamp: data.timestamp || 0,
+            timestamp: data.timestamp || new Date().toISOString(),
           };
 
           // Use Map to maintain one entry per MMSI

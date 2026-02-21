@@ -11,11 +11,17 @@ from pathlib import Path
 from typing import List
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket
+import cv2
+import shutil
+
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from redis.exceptions import RedisError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.websockets import WebSocketDisconnect
 
 from ais import service as ais_service
@@ -25,6 +31,8 @@ from ais.fetch_ais import (
     fetch_ais_stream_projections_by_mmsi,
 )
 from ais.logger import AISSessionLogger
+from auth.deps import require_admin
+from auth.routes import limiter, router as auth_router
 from common.config import (
     BASE_DIR,
     MEDIAMTX_ENABLED,
@@ -36,6 +44,8 @@ from common.config import (
 )
 from common.types import DetectedVessel
 from cv.utils import get_video_info
+from db.init_db import init_db
+from db.models import AppUser
 from fusion import fusion
 from orchestrator import (
     ResourceLimitExceededError,
@@ -54,28 +64,24 @@ app = FastAPI(
     version="0.2.0",
 )
 
-DEFAULT_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:3000",
-    "https://demo.bridgable.ai",
-    "http://demo.bridgable.ai",
-]
-ENV_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("FRONTEND_ORIGINS", "").split(",")
-    if origin.strip()
-]
+# Configure CORS to allow frontend requests
+# Origins are read from CORS_ORIGINS env var, falling back to
+# localhost dev defaults.  See auth/config.py for parsing logic.
+from auth.config import settings as auth_settings
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[*DEFAULT_ALLOWED_ORIGINS, *ENV_ALLOWED_ORIGINS],
+    allow_origins=list(auth_settings.cors_origins),
     allow_origin_regex=r"^https?://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.include_router(auth_router)
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "8"))
 STREAM_IDLE_TIMEOUT_SECONDS = float(os.getenv("STREAM_IDLE_TIMEOUT_SECONDS", "300"))
@@ -102,12 +108,45 @@ def resolve_default_source() -> str | None:
     return None
 
 
+def _download_s3_to_cache(s3_key: str) -> str:
+    """Download an S3 object to a local cache directory and return the local path."""
+    cache_dir = BASE_DIR / "data" / "cache" / "s3"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use the filename from the S3 key
+    filename = Path(s3_key).name
+    local_path = cache_dir / filename
+
+    if local_path.exists():
+        logger.info("[s3] Using cached file: %s", local_path)
+        return str(local_path)
+
+    logger.info("[s3] Downloading s3://%s to %s", s3_key, local_path)
+    try:
+        client = s3._client()
+        full_key, _ = s3._normalize_key(s3_key)
+        client.download_file(s3.S3_BUCKET, full_key, str(local_path))
+        logger.info("[s3] Download complete: %s", local_path)
+        return str(local_path)
+    except Exception as exc:
+        # Clean up partial download
+        if local_path.exists():
+            local_path.unlink(missing_ok=True)
+        raise RuntimeError(f"Failed to download s3://{s3_key}: {exc}") from exc
+
+
 def resolve_stream_source(source_url: str | None) -> str | None:
     """Resolve local paths robustly while preserving remote stream URLs."""
     if not source_url or not source_url.strip():
         return resolve_default_source()
 
     raw = source_url.strip()
+
+    # Handle s3:// references — download to local cache for OpenCV
+    if raw.startswith("s3://"):
+        s3_key = raw[5:]  # strip "s3://"
+        return _download_s3_to_cache(s3_key)
+
     if _is_remote_stream(raw):
         return raw
 
@@ -154,6 +193,7 @@ def augment_stream_payload(stream: dict) -> dict:
 async def lifespan(_: FastAPI):
     global orchestrator
 
+    init_db()
     app.state.redis_client = create_async_redis_client()
     protected_stream_ids = {DEFAULT_STREAM_ID} if PROTECT_DEFAULT_STREAM else set()
     orchestrator = WorkerOrchestrator(
@@ -249,7 +289,11 @@ def reset_fusion_timer():
 
 
 @app.post("/api/storage/presign")
-def presign_storage(request: s3.PresignRequest):
+def presign_storage(
+    request: s3.PresignRequest,
+    _: AppUser = Depends(require_admin),
+):
+    """Generate a presigned URL for GET/PUT against S3 storage."""
     try:
         return s3.presign_storage(request)
     except ValueError as exc:
@@ -446,7 +490,10 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
     if not orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 
-    source_url = resolve_stream_source(request.source_url)
+    try:
+        source_url = resolve_stream_source(request.source_url)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     if not source_url:
         raise HTTPException(status_code=400, detail="source_url is required for this stream")
 
@@ -463,6 +510,39 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
         **handle.to_dict(),
         "playback_urls": build_stream_playback_payload(stream_id),
     }
+
+
+@app.post("/api/streams/{stream_id}/upload", status_code=201)
+async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool = True):
+    """Accept a video file upload, save locally, and start a stream from it."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    upload_dir = BASE_DIR / "data" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    local_path = upload_dir / file.filename
+
+    try:
+        with open(local_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {exc}")
+
+    config = StreamConfig(
+        stream_id=stream_id, source_url=str(local_path), loop=loop
+    )
+    try:
+        handle = orchestrator.start_stream(config)
+    except StreamAlreadyRunningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ResourceLimitExceededError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {"status": "started", **handle.to_dict()}
 
 
 @app.delete("/api/streams/{stream_id}", status_code=204)

@@ -20,30 +20,25 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 - **pnpm:** Install with `npm install -g pnpm`
 - **Python:** 3.11+
 - **uv:** Fast Python package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
-- **Redis:** Required for detection pub/sub
+- **Docker:** Required for PostgreSQL and Redis
 - **CUDA:** For GPU-accelerated inference (optional but recommended)
 - Access to GitHub Packages for `@ocean-industries-concept-lab` components
 - **MediaMTX:** required for streaming, setup described below
 
 ### Quick Start
 
-From the project root:
-
 ```bash
-# Install root dependencies
-pnpm install
+# 1. First-time setup (copies .env files, starts Docker infra, installs deps)
+pnpm run setup
 
-# Install all project dependencies (backend + frontend)
-pnpm run install
-
-# Set up environment variables (see Configuration section)
-cp backend/.env.example backend/.env
-# Edit backend/.env with your API keys
-
-# Run both backend and frontend concurrently
+# 2. Start all services
 pnpm dev
+
+# 3. In another terminal — create a dev admin user
+pnpm seed-admin
 ```
 
+This creates a default admin account you can log in with immediately:
 
 ## MediaMTX Setup (Docker)
 
@@ -66,49 +61,29 @@ From repo root:
 docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml up -d
 ```
 
-
-Start Redis in a separate terminal before `pnpm dev`:
-
-**macOS (Homebrew)**
-
-```bash
-brew install redis
-brew services start redis
-```
-
-**Ubuntu/Debian**
-
-```bash
-sudo apt-get install redis-server
-sudo systemctl enable --now redis-server
-```
-
-**Optional (Docker)**
-
-```bash
-docker run --name openar-redis -p 6379:6379 -d redis:7
-```
+| Field | Value |
+|-------|-------|
+| Email | `test@openar.local` |
+| Password | `12341234` |
+| Admin | Yes |
 
 **Access:**
-- Backend API: `http://localhost:8000`
-- Frontend: `http://localhost:5173` (or `5174`, `5175` if port taken)
-- API Docs: `http://localhost:8000/docs`
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- Auth Service: http://localhost:3001
+- API Docs: http://localhost:8000/docs
 
 ### Configuration
 
-Create a `.env` file in the `backend/` directory:
+`pnpm run setup` automatically creates `.env` files from `.env.example` for all three services. The defaults work out of the box for local development — no API keys needed to get started.
 
-```bash
-# Required for AIS vessel data
-AIS_CLIENT_ID=your_client_id
-AIS_CLIENT_SECRET=your_client_secret
+To enable optional features, edit the `.env` files:
 
-# Optional: S3 Storage (Hetzner or compatible)
-S3_ACCESS_KEY=your_access_key
-S3_SECRET_KEY=your_secret_key
-S3_PUBLIC_BASE_URL=https://your-cdn.com
-S3_PRESIGN_EXPIRES=900
-```
+| Feature | File | Variables |
+|---------|------|-----------|
+| AIS vessel data | `backend/.env` | `AIS_CLIENT_ID`, `AIS_CLIENT_SECRET` |
+| S3 storage | `backend/.env` | `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_BASE_URL` |
+| Roboflow detector | `backend/.env` | `ROBOFLOW_API_KEY` |
 
 **Getting API Keys:**
 - AIS API: https://www.barentswatch.no/minside/devaccess/ais
@@ -169,12 +144,14 @@ pnpm login --registry https://npm.pkg.github.com/ --scope=ocean-industries-conce
 
 | Script | Description |
 |--------|-------------|
-| `pnpm dev` | Run backend and frontend concurrently |
+| `pnpm run setup` | First-time setup: start PostgreSQL + install all deps |
+| `pnpm dev` | Start infra (PostgreSQL + Redis) then run all services concurrently |
+| `pnpm seed-admin` | Create a dev admin user (test@openar.local / 12341234) |
+| `pnpm dev:infra` | Start PostgreSQL + Redis via Docker |
 | `pnpm dev:frontend` | Run frontend only (Vite dev server) |
 | `pnpm dev:backend` | Run backend only (FastAPI with uvicorn) |
-| `pnpm run install` | Install all dependencies (root + backend + frontend) |
-| `pnpm install:frontend` | Install frontend dependencies |
-| `pnpm install:backend` | Install backend dependencies |
+| `pnpm dev:auth` | Run auth service only |
+| `pnpm run install` | Install all dependencies (backend + frontend + auth) |
 
 ## Project Structure
 

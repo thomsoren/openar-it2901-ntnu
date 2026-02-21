@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcTopBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/top-bar/top-bar";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import { ObcClock } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/clock/clock";
 import { ObcNavigationMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-menu/navigation-menu";
 import { ObcNavigationItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-item/navigation-item";
+import { ObcUserMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/user-menu/user-menu";
 import { ObcInput } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/input/input";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
+import { ObcUserMenuSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/user-menu/user-menu";
 import { ObcTabbedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tabbed-card/tabbed-card";
 import "./App.css";
 import Ais from "./pages/Ais";
@@ -14,30 +16,16 @@ import Fusion from "./pages/Fusion";
 import Components from "./pages/Components";
 import Datavision from "./pages/Datavision";
 import Settings from "./pages/Settings";
-import Upload from "./pages/Upload";
-import { API_CONFIG } from "./config/video";
+import AuthGate from "./components/auth/AuthGate";
+import { useClock } from "./hooks/useClock";
+import { useNavigation } from "./hooks/useNavigation";
+import { useAuth } from "./hooks/useAuth";
+import { apiFetch } from "./lib/api-client";
+import { readJsonSafely, explainFetchError } from "./utils/api-helpers";
+import type { StreamSummary } from "./types/stream";
 
-const PAGE_STORAGE_KEY = "openar.currentPage";
-const STREAM_SELECTION_STORAGE_KEY = "openar.selectedStreamId";
-const JOINED_STREAMS_STORAGE_KEY = "openar.joinedStreamIds";
-const STREAM_SELECTION_EVENT = "openar-stream-select";
-const PAGES = ["datavision", "ais", "components", "fusion", "settings", "upload"] as const;
-type PageId = (typeof PAGES)[number];
-
-const getStoredPage = (): PageId => {
-  try {
-    const stored = localStorage.getItem(PAGE_STORAGE_KEY) as PageId | null;
-    if (stored && PAGES.includes(stored)) {
-      return stored;
-    }
-  } catch {
-    // Ignore storage failures (private mode, blocked storage, etc.).
-  }
-  return "datavision";
-};
-
-const handleBrillianceChange = (e: CustomEvent) => {
-  document.documentElement.setAttribute("data-obc-theme", e.detail.value);
+const handleBrillianceChange = (event: CustomEvent) => {
+  document.documentElement.setAttribute("data-obc-theme", event.detail.value);
 };
 
 const getTextInputValue = (event: Event, fallback: string): string => {
@@ -48,39 +36,54 @@ const getTextInputValue = (event: Event, fallback: string): string => {
   return fallback;
 };
 
-const readJsonSafely = async (
-  response: Response
-): Promise<{ detail?: string; streams?: StreamSummary[] }> => {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    throw new Error("Backend returned non-JSON response. Check API URL/proxy config.");
-  }
-  return response.json();
-};
-
-const explainFetchError = (err: unknown, fallback: string): string => {
-  if (err instanceof TypeError && err.message === "Failed to fetch") {
-    return "Failed to fetch. Verify backend URL, network reachability, and CORS origin allowlist.";
-  }
-  return err instanceof Error ? err.message : fallback;
-};
-
-interface StreamSummary {
-  stream_id: string;
-  status: string;
-  pid: number | null;
-  restart_count: number;
-  source_url: string;
-}
-
 interface TabChangeDetail {
   tab: number;
 }
 
 function App() {
-  const [showBrillianceMenu, setShowBrillianceMenu] = useState(false);
-  const [showNavigationMenu, setShowNavigationMenu] = useState(false);
-  const [currentPage, setCurrentPage] = useState<PageId>(() => getStoredPage());
+  const { clockDate } = useClock();
+  const nav = useNavigation();
+  const auth = useAuth();
+
+  const [isOnAuthGate, setIsOnAuthGate] = useState(false);
+  const userPanelRef = useRef<HTMLDivElement>(null);
+  const brillianceRef = useRef<HTMLDivElement>(null);
+
+  const handleAuthGateVisibleChange = useCallback(
+    (visible: boolean) => {
+      setIsOnAuthGate(visible);
+      if (visible) {
+        nav.setShowUserPanel(false);
+      }
+    },
+    [nav]
+  );
+
+  // Close user panel and brilliance menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      // Check if click is inside the topbar (contains the toggle buttons)
+      const topbar = document.querySelector("obc-top-bar");
+      if (topbar?.contains(target)) return;
+
+      if (nav.showUserPanel && userPanelRef.current && !userPanelRef.current.contains(target)) {
+        nav.setShowUserPanel(false);
+      }
+      if (
+        nav.showBrillianceMenu &&
+        brillianceRef.current &&
+        !brillianceRef.current.contains(target)
+      ) {
+        nav.setShowBrillianceMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [nav, nav.showUserPanel, nav.showBrillianceMenu]);
+
+  // Stream management state — local to the nav menu panel
   const [streamIdInput, setStreamIdInput] = useState("stream");
   const [sourceUrlInput, setSourceUrlInput] = useState("");
   const [streamSearch, setStreamSearch] = useState("");
@@ -88,61 +91,28 @@ function App() {
   const [streamPanelTab, setStreamPanelTab] = useState(0);
   const [streamActionError, setStreamActionError] = useState<string | null>(null);
   const [streamActionBusy, setStreamActionBusy] = useState(false);
-  const apiBase = API_CONFIG.BASE_URL.replace(/\/$/, "");
 
-  const pageLabels = {
-    datavision: "Datavision",
-    ais: "AIS",
-    components: "Components",
-    fusion: "Fusion",
-    settings: "Settings",
-    upload: "Upload",
-  } as const;
-
-  const handleDimmingButtonClicked = () => {
-    setShowBrillianceMenu((prev) => !prev);
-  };
-
-  const handleMenuButtonClicked = () => {
-    setShowNavigationMenu((prev) => !prev);
-  };
-
-  const handleNavigationItemClick = (page: PageId) => {
-    setCurrentPage(page);
-    setShowNavigationMenu(false);
-  };
+  // When user selects a stream from the nav menu, pass it to Datavision via prop
+  const [externalStreamId, setExternalStreamId] = useState<string | null>(null);
 
   const selectStream = (streamId: string) => {
-    try {
-      localStorage.setItem(STREAM_SELECTION_STORAGE_KEY, streamId);
-    } catch {
-      // Ignore storage errors.
-    }
-    try {
-      const raw = localStorage.getItem(JOINED_STREAMS_STORAGE_KEY);
-      const existing = raw ? (JSON.parse(raw) as string[]) : [];
-      const normalized = Array.from(
-        new Set([...existing, streamId].map((id) => id.trim()).filter((id) => id.length > 0))
-      );
-      localStorage.setItem(JOINED_STREAMS_STORAGE_KEY, JSON.stringify(normalized));
-    } catch {
-      // Ignore storage errors.
-    }
-    window.dispatchEvent(new CustomEvent(STREAM_SELECTION_EVENT, { detail: { streamId } }));
-    setCurrentPage("datavision");
-    setShowNavigationMenu(false);
+    setExternalStreamId(streamId);
+    nav.handleNavigationItemClick("datavision");
   };
 
   const loadStreams = useCallback(async (): Promise<StreamSummary[]> => {
-    const streamsResponse = await fetch(`${apiBase}/api/streams`);
-    const streamsPayload = await readJsonSafely(streamsResponse);
-    if (!streamsResponse.ok) {
-      throw new Error(streamsPayload.detail || "Failed to load streams");
+    const response = await apiFetch("/api/streams");
+    const payload = (await readJsonSafely(response)) as {
+      detail?: string;
+      streams?: StreamSummary[];
+    };
+    if (!response.ok) {
+      throw new Error(payload.detail || "Failed to load streams");
     }
-    const streams = Array.isArray(streamsPayload.streams) ? streamsPayload.streams : [];
+    const streams = Array.isArray(payload.streams) ? payload.streams : [];
     setRunningStreams(streams);
     return streams;
-  }, [apiBase]);
+  }, []);
 
   const handleStreamPanelTabChange = (event: CustomEvent<TabChangeDetail>) => {
     setStreamPanelTab(event.detail?.tab ?? 0);
@@ -186,16 +156,12 @@ function App() {
     setStreamActionBusy(true);
     setStreamActionError(null);
     try {
-      const body: { source_url: string; loop: boolean } = {
-        source_url: sourceReference,
-        loop: true,
-      };
-      const response = await fetch(`${apiBase}/api/streams/${encodeURIComponent(streamId)}/start`, {
+      const response = await apiFetch(`/api/streams/${encodeURIComponent(streamId)}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ source_url: sourceReference, loop: true }),
       });
-      const payload = await readJsonSafely(response);
+      const payload = (await readJsonSafely(response)) as { detail?: string };
       if (!response.ok) {
         if (response.status === 409) {
           throw new Error(`Stream '${streamId}' is already running. Use a different Stream ID.`);
@@ -213,63 +179,40 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(PAGE_STORAGE_KEY, currentPage);
-    } catch {
-      // Ignore storage failures (private mode, blocked storage, etc.).
+  const renderPublicPage = () => {
+    if (nav.currentPage === "datavision") {
+      return (
+        <Datavision
+          externalStreamId={externalStreamId}
+          onAuthGateVisibleChange={handleAuthGateVisibleChange}
+        />
+      );
     }
-  }, [currentPage]);
 
+    if (nav.currentPage === "ais") {
+      return <Ais />;
+    }
+
+    if (nav.currentPage === "components") {
+      return <Components />;
+    }
+
+    if (nav.currentPage === "fusion") {
+      return <Fusion />;
+    }
+
+    return <Settings />;
+  };
+
+  // Refresh stream list when nav menu opens
   useEffect(() => {
-    const ensureDefaultStream = async () => {
-      try {
-        let streams = await loadStreams();
-        const hasDefault = streams.some((stream) => stream.stream_id === "default");
-        if (!hasDefault) {
-          const response = await fetch(`${apiBase}/api/streams/default/start`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ loop: true }),
-          });
-          if (!response.ok && response.status !== 409) {
-            const payload = await readJsonSafely(response);
-            throw new Error(payload.detail || "Failed to start default stream");
-          }
-          streams = await loadStreams();
-        }
-        try {
-          const raw = localStorage.getItem(JOINED_STREAMS_STORAGE_KEY);
-          const existing = raw ? (JSON.parse(raw) as string[]) : [];
-          const availableIds = new Set(streams.map((stream) => stream.stream_id));
-          const normalized = Array.from(
-            new Set(
-              ["default", ...existing]
-                .map((id) => String(id).trim())
-                .filter((id) => id.length > 0 && availableIds.has(id))
-            )
-          );
-          localStorage.setItem(JOINED_STREAMS_STORAGE_KEY, JSON.stringify(normalized));
-          localStorage.setItem(STREAM_SELECTION_STORAGE_KEY, "default");
-        } catch {
-          // Ignore storage errors.
-        }
-      } catch (err) {
-        setStreamActionError(explainFetchError(err, "Failed to initialize default stream"));
-      }
-    };
-
-    ensureDefaultStream();
-  }, [apiBase, loadStreams]);
-
-  useEffect(() => {
-    if (!showNavigationMenu) {
+    if (!nav.showNavigationMenu) {
       return;
     }
     loadStreams().catch((err) =>
       setStreamActionError(explainFetchError(err, "Failed to load streams"))
     );
-  }, [showNavigationMenu, loadStreams]);
+  }, [nav.showNavigationMenu, loadStreams]);
 
   const filteredStreams = useMemo(() => {
     const query = streamSearch.trim().toLowerCase();
@@ -284,54 +227,85 @@ function App() {
       <header>
         <ObcTopBar
           appTitle="OpenAR"
-          pageName={pageLabels[currentPage]}
+          pageName={nav.pageLabels[nav.currentPage]}
           showDimmingButton
-          showAppsButton
-          menuButtonActivated={showNavigationMenu}
-          onMenuButtonClicked={handleMenuButtonClicked}
-          onDimmingButtonClicked={handleDimmingButtonClicked}
+          showUserButton
+          userButtonDisabled={isOnAuthGate}
+          showClock
+          menuButtonActivated={nav.showNavigationMenu}
+          userButtonActivated={nav.showUserPanel}
+          onMenuButtonClicked={() => nav.setShowNavigationMenu((previous) => !previous)}
+          onDimmingButtonClicked={() => {
+            nav.setShowUserPanel(false);
+            nav.setShowBrillianceMenu((previous) => !previous);
+          }}
+          onUserButtonClicked={() => {
+            if (isOnAuthGate) return;
+            nav.setShowBrillianceMenu(false);
+            nav.setShowUserPanel((previous) => !previous);
+          }}
         >
           <ObcClock
-            date={new Date().toISOString()}
-            timeZoneOffsetHours={new Date().getTimezoneOffset() / -60}
+            slot="clock"
+            date={clockDate}
+            timeZoneOffsetHours={new Date(clockDate).getTimezoneOffset() / -60}
             showTimezone
             blinkOnlyBreakpointPx={600}
           />
         </ObcTopBar>
       </header>
 
-      {showNavigationMenu && (
+      {nav.showUserPanel && (
+        <div ref={userPanelRef} className={`user-panel${!auth.session ? " user-panel--auth" : ""}`}>
+          {auth.session ? (
+            <ObcUserMenu
+              type={auth.userMenuState}
+              size={ObcUserMenuSize.small}
+              hasRecentlySignedIn={false}
+              userInitials={auth.userInitials}
+              userLabel={auth.userLabel}
+              signedInActions={auth.signedInActions}
+              onSignOutClick={() => void auth.handleSignOut()}
+            />
+          ) : (
+            <AuthGate
+              initialMode="login"
+              onAuthenticated={async () => {
+                nav.setShowUserPanel(false);
+                await auth.handleAuthenticated();
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {nav.showNavigationMenu && (
         <ObcNavigationMenu className="navigation-menu">
           <div slot="main">
             <ObcNavigationItem
               label="Fusion"
-              checked={currentPage === "fusion"}
-              onClick={() => handleNavigationItemClick("fusion")}
+              checked={nav.currentPage === "fusion"}
+              onClick={() => nav.handleNavigationItemClick("fusion")}
             />
             <ObcNavigationItem
               label="Datavision"
-              checked={currentPage === "datavision"}
-              onClick={() => handleNavigationItemClick("datavision")}
+              checked={nav.currentPage === "datavision"}
+              onClick={() => nav.handleNavigationItemClick("datavision")}
             />
             <ObcNavigationItem
               label="AIS"
-              checked={currentPage === "ais"}
-              onClick={() => handleNavigationItemClick("ais")}
+              checked={nav.currentPage === "ais"}
+              onClick={() => nav.handleNavigationItemClick("ais")}
             />
             <ObcNavigationItem
               label="Components"
-              checked={currentPage === "components"}
-              onClick={() => handleNavigationItemClick("components")}
+              checked={nav.currentPage === "components"}
+              onClick={() => nav.handleNavigationItemClick("components")}
             />
             <ObcNavigationItem
               label="Settings"
-              checked={currentPage === "settings"}
-              onClick={() => handleNavigationItemClick("settings")}
-            />
-            <ObcNavigationItem
-              label="Upload"
-              checked={currentPage === "upload"}
-              onClick={() => handleNavigationItemClick("upload")}
+              checked={nav.currentPage === "settings"}
+              onClick={() => nav.handleNavigationItemClick("settings")}
             />
 
             <div className="navigation-stream-panel">
@@ -408,26 +382,19 @@ function App() {
       <main
         className={[
           "main",
-          showNavigationMenu ? "main--with-sidebar" : "",
-          currentPage === "components" ? "main--no-padding" : "",
+          nav.showNavigationMenu ? "main--with-sidebar" : "",
+          nav.currentPage === "components" ? "main--no-padding" : "",
         ]
           .filter(Boolean)
           .join(" ")}
       >
-        {showBrillianceMenu && (
-          <ObcBrillianceMenu
-            onPaletteChanged={handleBrillianceChange}
-            show-auto-brightness
-            className="brilliance"
-          />
+        {nav.showBrillianceMenu && (
+          <div ref={brillianceRef} className="brilliance">
+            <ObcBrillianceMenu onPaletteChanged={handleBrillianceChange} show-auto-brightness />
+          </div>
         )}
 
-        {currentPage === "datavision" && <Datavision />}
-        {currentPage === "ais" && <Ais />}
-        {currentPage === "components" && <Components />}
-        {currentPage === "fusion" && <Fusion />}
-        {currentPage === "settings" && <Settings />}
-        {currentPage === "upload" && <Upload />}
+        {renderPublicPage()}
       </main>
     </>
   );

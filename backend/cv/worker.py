@@ -68,7 +68,7 @@ def run(
     detector = get_detector()
     publisher = DetectionPublisher()
 
-    cap = cv2.VideoCapture(source_url)
+    cap = cv2.VideoCapture(source_url, cv2.CAP_FFMPEG)
     if not cap.isOpened():
         logger.error("[%s] Failed to open source: %s", stream_id, source_url)
         _offer_latest(detection_queue, None)
