@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import threading
 import time
 
 from cv import worker
+from cv.ffmpeg import FFmpegDirectPublisher
 from orchestrator.exceptions import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -24,18 +26,50 @@ class WorkerOrchestrator:
         initial_backoff_seconds: float = 1.0,
         max_backoff_seconds: float = 60.0,
         idle_timeout_seconds: float = 300.0,
+        no_viewer_timeout_seconds: float = 15.0,
         protected_stream_ids: set[str] | None = None,
     ):
         self._workers: dict[str, WorkerHandle] = {}
+        self._stream_configs: dict[str, StreamConfig] = {}
         self._lock = threading.Lock()
         self._max_workers = max_workers
         self._monitor_interval_seconds = monitor_interval_seconds
         self._initial_backoff_seconds = initial_backoff_seconds
         self._max_backoff_seconds = max_backoff_seconds
         self._idle_timeout_seconds = idle_timeout_seconds
+        self._no_viewer_timeout_seconds = no_viewer_timeout_seconds
         self._protected_stream_ids: set[str] = protected_stream_ids or set()
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+
+    @staticmethod
+    def _start_ffmpeg(config: StreamConfig) -> "subprocess.Popen | None":
+        """Start an FFmpeg direct publisher for the given stream config."""
+        pub = FFmpegDirectPublisher(
+            source_url=config.source_url,
+            stream_id=config.stream_id,
+            loop=config.loop,
+        )
+        if pub.start():
+            return pub.process
+        return None
+
+    def _spawn_handle(self, config: StreamConfig, viewer_count: int = 0) -> WorkerHandle:
+        process, inference_queue = worker.start(
+            source_url=config.source_url,
+            stream_id=config.stream_id,
+            loop=config.loop,
+        )
+        ffmpeg_proc = self._start_ffmpeg(config)
+        return WorkerHandle(
+            process=process,
+            inference_queue=inference_queue,
+            config=config,
+            ffmpeg_process=ffmpeg_proc,
+            backoff_seconds=self._initial_backoff_seconds,
+            viewer_count=max(0, viewer_count),
+            no_viewer_since=0.0 if viewer_count > 0 else time.monotonic(),
+        )
 
     def start_stream(self, config: StreamConfig) -> WorkerHandle:
         with self._lock:
@@ -43,26 +77,17 @@ class WorkerOrchestrator:
                 raise StreamAlreadyRunningError(f"Stream '{config.stream_id}' is already running")
             if len(self._workers) >= self._max_workers:
                 raise ResourceLimitExceededError("Max concurrent streams reached")
-
-            process, inference_queue, frame_queue = worker.start(
-                source_url=config.source_url,
-                stream_id=config.stream_id,
-                loop=config.loop,
-            )
-            handle = WorkerHandle(
-                process=process,
-                inference_queue=inference_queue,
-                frame_queue=frame_queue,
-                config=config,
-                backoff_seconds=self._initial_backoff_seconds,
-            )
+            self._stream_configs[config.stream_id] = config
+            handle = self._spawn_handle(config=config, viewer_count=0)
             self._workers[config.stream_id] = handle
-            logger.info("Started stream '%s' with pid=%s", config.stream_id, process.pid)
+            logger.info("Started stream '%s' with pid=%s", config.stream_id, handle.process.pid)
             return handle
 
-    def stop_stream(self, stream_id: str):
+    def stop_stream(self, stream_id: str, remove_config: bool = True):
         with self._lock:
             handle = self._workers.pop(stream_id, None)
+            if remove_config:
+                self._stream_configs.pop(stream_id, None)
         if not handle:
             raise StreamNotFoundError(f"Stream '{stream_id}' not found")
 
@@ -81,6 +106,40 @@ class WorkerOrchestrator:
             handle = self._workers.get(stream_id)
             if handle:
                 handle.last_heartbeat = time.monotonic()
+
+    def acquire_stream_viewer(self, stream_id: str) -> WorkerHandle:
+        with self._lock:
+            handle = self._workers.get(stream_id)
+            if handle:
+                handle.viewer_count += 1
+                handle.no_viewer_since = 0.0
+                handle.last_heartbeat = time.monotonic()
+                return handle
+
+            config = self._stream_configs.get(stream_id)
+            if not config:
+                raise StreamNotFoundError(f"Stream '{stream_id}' not found")
+            if len(self._workers) >= self._max_workers:
+                raise ResourceLimitExceededError("Max concurrent streams reached")
+
+            handle = self._spawn_handle(config=config, viewer_count=1)
+            self._workers[stream_id] = handle
+            logger.info(
+                "Started stream '%s' with pid=%s for active viewer",
+                stream_id,
+                handle.process.pid,
+            )
+            return handle
+
+    def release_stream_viewer(self, stream_id: str):
+        with self._lock:
+            handle = self._workers.get(stream_id)
+            if not handle:
+                return
+            if handle.viewer_count > 0:
+                handle.viewer_count -= 1
+            if handle.viewer_count == 0 and handle.no_viewer_since == 0.0:
+                handle.no_viewer_since = time.monotonic()
 
     def list_streams(self) -> list[dict]:
         with self._lock:
@@ -118,23 +177,87 @@ class WorkerOrchestrator:
             with self._lock:
                 snapshot = list(self._workers.items())
 
-            if self._idle_timeout_seconds > 0:
-                idle_ids = [
-                    sid for sid, h in snapshot
-                    if sid not in self._protected_stream_ids
-                    and (now - h.last_heartbeat) > self._idle_timeout_seconds
-                ]
-                for sid in idle_ids:
-                    logger.info(
-                        "Stopping idle stream '%s' (no heartbeat for %.0fs)",
-                        sid, self._idle_timeout_seconds,
-                    )
-                    try:
-                        self.stop_stream(sid)
-                    except StreamNotFoundError:
-                        pass
+                # No-viewer timeout: mutations to no_viewer_since must happen
+                # under the lock to avoid racing with release_stream_viewer().
+                no_viewer_ids: list[str] = []
+                if self._no_viewer_timeout_seconds > 0:
+                    for sid, handle in snapshot:
+                        if sid in self._protected_stream_ids:
+                            continue
+                        if handle.viewer_count > 0:
+                            handle.no_viewer_since = 0.0
+                            continue
+                        if handle.no_viewer_since == 0.0:
+                            handle.no_viewer_since = now
+                            continue
+                        if (now - handle.no_viewer_since) >= self._no_viewer_timeout_seconds:
+                            no_viewer_ids.append(sid)
+
+                # Idle timeout: computed under lock alongside no-viewer check
+                # so both use the same consistent snapshot.
+                idle_ids: list[str] = []
+                if self._idle_timeout_seconds > 0:
+                    idle_ids = [
+                        sid for sid, h in snapshot
+                        if sid not in self._protected_stream_ids
+                        and (now - h.last_heartbeat) > self._idle_timeout_seconds
+                    ]
+
+            # Stop idle streams. Re-check under lock before each stop to
+            # avoid racing with acquire_stream_viewer / touch_stream.
+            for sid in idle_ids:
+                with self._lock:
+                    handle = self._workers.get(sid)
+                    if not handle:
+                        continue
+                    if (now - handle.last_heartbeat) <= self._idle_timeout_seconds:
+                        continue
+                logger.info(
+                    "Stopping idle stream '%s' (no heartbeat for %.0fs)",
+                    sid, self._idle_timeout_seconds,
+                )
+                try:
+                    self.stop_stream(sid)
+                except StreamNotFoundError:
+                    pass
+
+            # Stop streams with no viewers. Re-check under lock before each
+            # stop to avoid racing with acquire_stream_viewer.
+            for sid in no_viewer_ids:
+                with self._lock:
+                    handle = self._workers.get(sid)
+                    if not handle:
+                        continue
+                    if handle.viewer_count > 0:
+                        continue
+                logger.info(
+                    "Stopping stream '%s' (no active viewers for %.0fs)",
+                    sid,
+                    self._no_viewer_timeout_seconds,
+                )
+                try:
+                    # Keep stream config so a later viewer can auto-restart.
+                    self.stop_stream(sid, remove_config=False)
+                except StreamNotFoundError:
+                    pass
 
             for stream_id, handle in snapshot:
+                with self._lock:
+                    current = self._workers.get(stream_id)
+                    if current is not handle:
+                        # Stream was intentionally removed (for example no-viewer stop).
+                        continue
+
+                # --- FFmpeg health check (independent of worker) ---
+                if handle.ffmpeg_process is not None and handle.ffmpeg_process.poll() is not None:
+                    exit_code = handle.ffmpeg_process.returncode
+                    logger.warning(
+                        "FFmpeg died for stream '%s' (exit=%s), restarting",
+                        stream_id, exit_code,
+                    )
+                    handle.ffmpeg_process = self._start_ffmpeg(handle.config)
+
+                # --- Worker health check ---
                 if handle.is_alive:
                     handle.next_restart_at = 0.0
                     # Reset backoff so a future crash starts from the initial delay,
@@ -155,14 +278,9 @@ class WorkerOrchestrator:
                 if now < handle.next_restart_at:
                     continue
 
-                with self._lock:
-                    current = self._workers.get(stream_id)
-                    if current is not handle:
-                        continue
-
                 logger.warning("Restarting worker for stream '%s' now", stream_id)
                 try:
-                    process, inference_queue, frame_queue = worker.start(
+                    process, inference_queue = worker.start(
                         source_url=handle.config.source_url,
                         stream_id=stream_id,
                         loop=handle.config.loop,
@@ -188,7 +306,6 @@ class WorkerOrchestrator:
                     handle.last_exitcode = handle.process.exitcode
                     handle.process = process
                     handle.inference_queue = inference_queue
-                    handle.frame_queue = frame_queue
                     handle.restart_count += 1
                     handle.started_at = time.monotonic()
                     handle.backoff_seconds = min(

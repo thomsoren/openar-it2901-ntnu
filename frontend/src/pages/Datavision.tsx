@@ -1,251 +1,24 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ObcTabRow } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
-import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
+import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
+import {
+  CircularProgressState,
+  ProgressBarMode,
+  ProgressBarType,
+} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
+import VideoPlayer, { type VideoPlayerState } from "../components/video-player/VideoPlayer";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
-import { useMjpegStream } from "../hooks/useMjpegStream";
+import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useSettings } from "../contexts/useSettings";
 import { useAuth } from "../hooks/useAuth";
-import { VIDEO_CONFIG, DETECTION_CONFIG } from "../config/video";
+import { DETECTION_CONFIG } from "../config/video";
 import { apiFetch as apiFetchLib } from "../lib/api-client";
 import { readJsonSafely, explainFetchError } from "../utils/api-helpers";
-import type { StreamSummary } from "../types/stream";
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import "./Datavision.css";
-
-interface TabSelectedDetail {
-  tab: TabData;
-  id: string;
-  index: number;
-}
-
-const STREAM_SELECTION_STORAGE_KEY = "openar.selectedStreamId";
-const JOINED_STREAMS_STORAGE_KEY = "openar.joinedStreamIds";
-
-function nextAvailableStreamId(runningStreams: StreamSummary[], joinedStreamIds: string[]): string {
-  const existing = new Set([...runningStreams.map((s) => s.stream_id), ...joinedStreamIds]);
-  let index = 1;
-  let candidate = "stream";
-  while (existing.has(candidate)) {
-    index += 1;
-    candidate = `stream-${index}`;
-  }
-  return candidate;
-}
-
-const getInitialActiveStreamId = (): string => {
-  try {
-    const stored = localStorage.getItem(STREAM_SELECTION_STORAGE_KEY);
-    return stored?.trim() || "default";
-  } catch {
-    return "default";
-  }
-};
-
-const getInitialJoinedStreams = (): string[] => {
-  try {
-    const raw = localStorage.getItem(JOINED_STREAMS_STORAGE_KEY);
-    if (!raw) return ["default"];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) return ["default"];
-    return parsed as string[];
-  } catch {
-    return ["default"];
-  }
-};
-
-// ---------------------------------------------------------------------------
-// Reducer: single atomic state for all stream/tab management
-// ---------------------------------------------------------------------------
-
-interface StreamState {
-  activeStreamId: string;
-  joinedStreamIds: string[];
-  runningStreams: StreamSummary[];
-  /** Tab ID currently showing the setup view, or null if none. */
-  setupTabId: string | null;
-  wsEnabled: boolean;
-  hasLoadedStreamList: boolean;
-}
-
-type StreamAction =
-  | { type: "ADD_TAB"; tabId: string }
-  | { type: "CLOSE_TAB"; streamId: string }
-  | { type: "SELECT_TAB"; streamId: string }
-  | { type: "STREAM_READY"; streamId: string }
-  | { type: "SET_RUNNING_STREAMS"; streams: StreamSummary[] }
-  | { type: "SELECT_EXTERNAL_STREAM"; streamId: string };
-
-function streamReducer(state: StreamState, action: StreamAction): StreamState {
-  switch (action.type) {
-    case "ADD_TAB": {
-      const { tabId } = action;
-      return {
-        ...state,
-        setupTabId: tabId,
-        joinedStreamIds: state.joinedStreamIds.includes(tabId)
-          ? state.joinedStreamIds
-          : [...state.joinedStreamIds, tabId],
-        activeStreamId: tabId,
-        wsEnabled: false,
-      };
-    }
-
-    case "CLOSE_TAB": {
-      const { streamId } = action;
-      const isSetupTab = state.setupTabId === streamId;
-
-      const nextJoined = state.joinedStreamIds.filter((id) => id !== streamId);
-      // Setup tabs have no running stream entry to remove
-      const nextRunning = isSetupTab
-        ? state.runningStreams
-        : state.runningStreams.filter((s) => s.stream_id !== streamId);
-
-      let nextActive = state.activeStreamId;
-      let nextWs = state.wsEnabled;
-      let nextSetup = isSetupTab ? null : state.setupTabId;
-
-      if (state.activeStreamId === streamId) {
-        const fallback = nextJoined[0];
-        if (fallback) {
-          nextActive = fallback;
-          nextWs = nextSetup !== fallback;
-        } else {
-          // No tabs left — show setup for a new stream
-          const newId = nextAvailableStreamId(nextRunning, nextJoined);
-          nextActive = newId;
-          nextSetup = newId;
-          nextJoined.push(newId);
-          nextWs = false;
-        }
-      }
-
-      return {
-        ...state,
-        joinedStreamIds: nextJoined,
-        runningStreams: nextRunning,
-        setupTabId: nextSetup,
-        activeStreamId: nextActive,
-        wsEnabled: nextWs,
-      };
-    }
-
-    case "SELECT_TAB": {
-      const { streamId } = action;
-      const isSetup = state.setupTabId === streamId;
-      return {
-        ...state,
-        activeStreamId: streamId,
-        wsEnabled: !isSetup,
-      };
-    }
-
-    case "STREAM_READY": {
-      const { streamId } = action;
-      // Replace the setup tab's joined entry with the real stream ID.
-      // Important: check the *filtered* list, not the original, to avoid
-      // dropping the stream when setupTabId === streamId.
-      const filtered = state.setupTabId
-        ? state.joinedStreamIds.filter((id) => id !== state.setupTabId)
-        : state.joinedStreamIds;
-      const nextJoined = filtered.includes(streamId) ? filtered : [...filtered, streamId];
-      return {
-        ...state,
-        setupTabId: null,
-        joinedStreamIds: nextJoined,
-        activeStreamId: streamId,
-        wsEnabled: true,
-      };
-    }
-
-    case "SET_RUNNING_STREAMS": {
-      const { streams } = action;
-      const prev = new Map(state.runningStreams.map((s) => [`${s.stream_id}:${s.status}`, true]));
-      const streamsUnchanged =
-        state.runningStreams.length === streams.length &&
-        streams.every((s) => prev.has(`${s.stream_id}:${s.status}`));
-      if (streamsUnchanged && state.hasLoadedStreamList) return state;
-
-      // Inline sync: prune joined list against new running streams.
-      // Keep the active stream even if not yet in the running list
-      // (it may still be starting up after upload).
-      const available = new Set(streams.map((s) => s.stream_id));
-      const nextJoined = state.joinedStreamIds.filter(
-        (id) => id === state.setupTabId || id === state.activeStreamId || available.has(id)
-      );
-      const withDefault =
-        nextJoined.length > 0 || !available.has("default") ? nextJoined : ["default"];
-
-      // On first load, if all user-configured streams were pruned
-      // (only "default" left) and there's no setup tab, create one so
-      // the user can configure a new stream without having to refresh.
-      let nextSetup = state.setupTabId;
-      if (!state.hasLoadedStreamList && !nextSetup && !withDefault.some((id) => id !== "default")) {
-        const newTabId = nextAvailableStreamId(streams, withDefault);
-        nextSetup = newTabId;
-        withDefault.push(newTabId);
-      }
-
-      // Fix active stream if it's no longer in the joined list
-      let nextActive = state.activeStreamId;
-      let nextWs = state.wsEnabled;
-      if (!withDefault.includes(nextActive) && nextSetup !== nextActive) {
-        nextActive = withDefault[0] ?? "default";
-        nextWs = nextSetup !== nextActive;
-        if (!withDefault.includes(nextActive)) {
-          withDefault.push(nextActive);
-        }
-      }
-
-      return {
-        ...state,
-        runningStreams: streams,
-        hasLoadedStreamList: true,
-        joinedStreamIds: withDefault,
-        setupTabId: nextSetup,
-        activeStreamId: nextActive,
-        wsEnabled: nextWs,
-      };
-    }
-
-    case "SELECT_EXTERNAL_STREAM": {
-      const { streamId } = action;
-      const nextJoined = state.joinedStreamIds.includes(streamId)
-        ? state.joinedStreamIds
-        : [...state.joinedStreamIds, streamId];
-      return {
-        ...state,
-        joinedStreamIds: nextJoined,
-        activeStreamId: streamId,
-        wsEnabled: true,
-      };
-    }
-
-    default:
-      return state;
-  }
-}
-
-function initStreamState(): StreamState {
-  const joined = getInitialJoinedStreams();
-  const hasConfiguredStreams = joined.some((id) => id !== "default");
-  // First-time users (only "default" in joined) get the setup tab so they
-  // can configure a stream.  Returning users skip it.
-  const setupTabId = hasConfiguredStreams ? null : "stream";
-  if (setupTabId && !joined.includes(setupTabId)) {
-    joined.push(setupTabId);
-  }
-  return {
-    activeStreamId: hasConfiguredStreams ? getInitialActiveStreamId() : setupTabId!,
-    joinedStreamIds: joined,
-    runningStreams: [],
-    setupTabId,
-    wsEnabled: hasConfiguredStreams,
-    hasLoadedStreamList: false,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -258,34 +31,80 @@ interface DatavisionProps {
 }
 
 function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
-  const videoRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { videoFitMode, detectionVisible, multiStreamTestingEnabled } = useSettings();
   const auth = useAuth();
+
+  // --- Tab / stream state (extracted hook) ---
+  const {
+    tabs,
+    activeTabId,
+    showAddButton,
+    showCloseButtons,
+    activeIsSetup,
+    activeStream,
+    wsEnabled,
+    handleTabSelected,
+    handleTabClosed,
+    handleAddTab,
+    handleStreamReady,
+    configureTabId,
+    streamError,
+  } = useStreamTabs({ externalStreamId, multiStreamTestingEnabled });
+
+  // --- Video state ---
   const [controlError, setControlError] = useState<string | null>(null);
+  const [videoSession, setVideoSession] = useState(0);
+  const [videoState, setVideoState] = useState<VideoPlayerState>({
+    transport: "webrtc",
+    status: "idle",
+    error: null,
+  });
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const imageLoadedRef = useRef(false);
+  const reconnectCountRef = useRef(0);
+  const firstFrameRetryDoneRef = useRef(false);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const firstFrameWatchdogRef = useRef<number | null>(null);
+  const MAX_RECONNECT_ATTEMPTS = 8;
 
-  const [state, dispatch] = useReducer(streamReducer, undefined, initStreamState);
-  const { activeStreamId, joinedStreamIds, runningStreams, setupTabId, wsEnabled } = state;
-
-  const activeIsSetup = setupTabId === activeStreamId;
   const showingAuthGate = activeIsSetup && !auth.session;
 
   useEffect(() => {
     onAuthGateVisibleChange?.(showingAuthGate);
   }, [showingAuthGate, onAuthGateVisibleChange]);
 
-  const mjpegEnabled = !activeIsSetup;
-  const {
-    imgSrc,
-    imageLoaded,
-    reconnectError,
-    onLoad: onImgLoad,
-    onError: onImgError,
-  } = useMjpegStream(activeStreamId, mjpegEnabled);
+  const clearReconnectTimers = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (firstFrameWatchdogRef.current !== null) {
+      window.clearTimeout(firstFrameWatchdogRef.current);
+      firstFrameWatchdogRef.current = null;
+    }
+  }, []);
 
-  const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeStreamId), [activeStreamId]);
+  const scheduleReconnect = useCallback(
+    (reason: string) => {
+      if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        setControlError(`${reason} — gave up after ${MAX_RECONNECT_ATTEMPTS} attempts`);
+        return;
+      }
+      reconnectCountRef.current += 1;
+      const delay = Math.min(2000 * Math.pow(1.5, reconnectCountRef.current - 1), 15000);
+      setControlError(`${reason} (attempt ${reconnectCountRef.current})...`);
+      reconnectTimerRef.current = window.setTimeout(() => {
+        setVideoSession((prev) => prev + 1);
+      }, delay);
+    },
+    [MAX_RECONNECT_ATTEMPTS]
+  );
 
-  const { vessels, isLoading, error, isConnected, fps, timestampMs } = useDetectionsWebSocket({
+  const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
+
+  const { vessels, isLoading, error, isConnected } = useDetectionsWebSocket({
     url: wsUrl,
     enabled: wsEnabled,
   });
@@ -294,222 +113,132 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
     videoRef,
     containerRef,
     videoFitMode,
-    VIDEO_CONFIG.WIDTH,
-    VIDEO_CONFIG.HEIGHT,
+    undefined,
+    undefined,
     imageLoaded
   );
 
-  const refreshStreams = useCallback(async () => {
-    try {
-      const response = await apiFetchLib("/api/streams");
-      const payload = (await readJsonSafely(response)) as {
-        detail?: string;
-        streams?: StreamSummary[];
-      };
-      if (!response.ok) {
-        throw new Error(payload.detail || "Failed to load streams");
-      }
-      const streams = Array.isArray(payload.streams) ? payload.streams : [];
-      dispatch({ type: "SET_RUNNING_STREAMS", streams });
-    } catch (err) {
-      setControlError(explainFetchError(err, "Failed to load streams"));
-    }
-  }, []);
+  // --- Tab close with backend DELETE ---
+  const onTabClosed = useCallback(
+    async (event: CustomEvent<{ id?: string }>) => {
+      const tabId = event.detail?.id?.trim();
+      if (!tabId || tabId === "default") return;
 
-  // On mount: fetch stream list and ensure a default stream is running
-  useEffect(() => {
-    const ensureDefaultStream = async () => {
-      try {
-        const response = await apiFetchLib("/api/streams");
-        const payload = (await readJsonSafely(response)) as {
-          detail?: string;
-          streams?: StreamSummary[];
-        };
-        if (!response.ok) throw new Error(payload.detail || "Failed to load streams");
-        let streams = Array.isArray(payload.streams) ? payload.streams : [];
-        dispatch({ type: "SET_RUNNING_STREAMS", streams });
+      const wasSetup = configureTabId === tabId;
+      handleTabClosed(tabId);
 
-        const hasDefault = streams.some((s) => s.stream_id === "default");
-        if (!hasDefault) {
-          const startResp = await apiFetchLib("/api/streams/default/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ loop: true }),
+      if (!wasSetup) {
+        try {
+          const response = await apiFetchLib(`/api/streams/${encodeURIComponent(tabId)}`, {
+            method: "DELETE",
           });
-          if (!startResp.ok && startResp.status !== 409) {
-            const p = (await readJsonSafely(startResp)) as {
-              detail?: string;
-            };
-            throw new Error(p.detail || "Failed to start default stream");
+          if (!response.ok && response.status !== 404) {
+            const payload = (await readJsonSafely(response)) as { detail?: string };
+            throw new Error(payload.detail || "Failed to stop stream");
           }
-          // Re-fetch after starting
-          const refetchResp = await apiFetchLib("/api/streams");
-          const refetchPayload = (await readJsonSafely(refetchResp)) as {
-            detail?: string;
-            streams?: StreamSummary[];
-          };
-          if (refetchResp.ok) {
-            streams = Array.isArray(refetchPayload.streams) ? refetchPayload.streams : [];
-            dispatch({ type: "SET_RUNNING_STREAMS", streams });
-          }
+        } catch (err) {
+          setControlError(explainFetchError(err, "Failed to stop stream"));
         }
-      } catch (err) {
-        setControlError(explainFetchError(err, "Failed to initialize streams"));
       }
-    };
-    ensureDefaultStream();
-  }, []);
-
-  // Heartbeats — use refs so the interval doesn't re-fire on every state change
-  const joinedIdsRef = useRef(joinedStreamIds);
-  joinedIdsRef.current = joinedStreamIds;
-  const setupTabIdRef = useRef(setupTabId);
-  setupTabIdRef.current = setupTabId;
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      for (const id of joinedIdsRef.current) {
-        if (id === setupTabIdRef.current) continue;
-        apiFetchLib(`/api/streams/${encodeURIComponent(id)}/heartbeat`, { method: "POST" }).catch(
-          () => {}
-        );
-      }
-    }, 60_000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  // Poll stream list when multi-stream testing is enabled
-  useEffect(() => {
-    if (!multiStreamTestingEnabled) return;
-    const interval = window.setInterval(() => {
-      refreshStreams();
-    }, 3000);
-    return () => window.clearInterval(interval);
-  }, [multiStreamTestingEnabled, refreshStreams]);
-
-  // Persist active stream to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STREAM_SELECTION_STORAGE_KEY, activeStreamId);
-    } catch {
-      // Ignore storage errors.
-    }
-  }, [activeStreamId]);
-
-  // Persist joined streams to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(JOINED_STREAMS_STORAGE_KEY, JSON.stringify(joinedStreamIds));
-    } catch {
-      // Ignore storage errors.
-    }
-  }, [joinedStreamIds]);
-
-  // React to parent (App.tsx) selecting a stream from the nav menu
-  const prevExternalStreamIdRef = useRef(externalStreamId);
-  useEffect(() => {
-    if (externalStreamId && externalStreamId !== prevExternalStreamIdRef.current) {
-      dispatch({
-        type: "SELECT_EXTERNAL_STREAM",
-        streamId: externalStreamId,
-      });
-      refreshStreams().catch(() => {});
-    }
-    prevExternalStreamIdRef.current = externalStreamId;
-  }, [externalStreamId, refreshStreams]);
-
-  const { streamTabs, activeStream, hasConfiguredStreams } = useMemo(() => {
-    const byId = new Map(runningStreams.map((stream) => [stream.stream_id, stream] as const));
-
-    // Visible streams: joined streams that are actually running
-    let visible = joinedStreamIds
-      .filter((id) => id !== setupTabId)
-      .map((id) => byId.get(id))
-      .filter((stream): stream is StreamSummary => Boolean(stream))
-      .slice(0, 5);
-    if (visible.length === 0) {
-      const fallbackDefault = byId.get("default");
-      visible = fallbackDefault ? [fallbackDefault] : [];
-    }
-
-    // Tabs for running streams
-    const streamEntries: TabData[] = visible.map((stream) => ({
-      id: stream.stream_id,
-      title: stream.stream_id === "default" ? "Example" : stream.stream_id,
-    }));
-
-    // Add tabs for joined streams that aren't running yet (still starting)
-    const visibleIds = new Set(visible.map((s) => s.stream_id));
-    for (const id of joinedStreamIds) {
-      if (id !== setupTabId && !visibleIds.has(id)) {
-        streamEntries.push({ id, title: `${id} (starting...)` });
-      }
-    }
-
-    let tabs: TabData[];
-    if (setupTabId) {
-      const setupTab: TabData = { id: setupTabId, title: "Configure" };
-      tabs =
-        streamEntries.length === 0
-          ? [{ id: "default", title: "Example", disabled: true }, setupTab]
-          : [...streamEntries, setupTab];
-    } else {
-      tabs = streamEntries;
-    }
-
-    return {
-      streamTabs: tabs,
-      activeStream: visible.find((s) => s.stream_id === activeStreamId) ?? null,
-      hasConfiguredStreams: runningStreams.some(
-        (s) => s.stream_id !== "default" && s.status !== "setup"
-      ),
-    };
-  }, [joinedStreamIds, runningStreams, setupTabId, activeStreamId]);
-
-  const handleTabSelected = (event: CustomEvent<TabSelectedDetail>) => {
-    const streamId = event.detail?.id;
-    if (!streamId) return;
-    dispatch({ type: "SELECT_TAB", streamId });
-  };
-
-  const handleTabClosed = async (event: CustomEvent<{ id?: string }>) => {
-    const streamId = event.detail?.id?.trim();
-    if (!streamId) return;
-
-    const isSetup = setupTabId === streamId;
-    dispatch({ type: "CLOSE_TAB", streamId });
-
-    if (!isSetup) {
-      try {
-        const response = await apiFetchLib(`/api/streams/${encodeURIComponent(streamId)}`, {
-          method: "DELETE",
-        });
-        if (!response.ok && response.status !== 404) {
-          const payload = (await readJsonSafely(response)) as {
-            detail?: string;
-          };
-          throw new Error(payload.detail || "Failed to stop stream");
-        }
-      } catch (err) {
-        setControlError(explainFetchError(err, "Failed to stop stream"));
-      }
-    }
-  };
-
-  const handleAddTab = () => {
-    const candidate = nextAvailableStreamId(runningStreams, joinedStreamIds);
-    dispatch({ type: "ADD_TAB", tabId: candidate });
-  };
-
-  const handleStreamReady = useCallback(
-    (streamId: string) => {
-      dispatch({ type: "STREAM_READY", streamId });
-      refreshStreams().catch(() => {});
     },
-    [refreshStreams]
+    [configureTabId, handleTabClosed]
   );
 
-  const videoError = reconnectError || controlError;
+  // When the browser tab becomes visible again, force a fresh stream connection.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        reconnectCountRef.current = 0;
+        firstFrameRetryDoneRef.current = false;
+        setVideoSession((prev) => prev + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  // Reset video state when stream or session changes
+  useEffect(() => {
+    reconnectCountRef.current = 0;
+    firstFrameRetryDoneRef.current = false;
+    setControlError(null);
+    setVideoState({
+      transport: "webrtc",
+      status: "idle",
+      error: null,
+    });
+  }, [activeTabId, videoSession]);
+
+  useEffect(() => {
+    imageLoadedRef.current = false;
+    setImageLoaded(false);
+    clearReconnectTimers();
+    firstFrameWatchdogRef.current = window.setTimeout(() => {
+      if (imageLoadedRef.current) {
+        return;
+      }
+      if (firstFrameRetryDoneRef.current) {
+        return;
+      }
+      firstFrameRetryDoneRef.current = true;
+      scheduleReconnect("Video stream reconnecting");
+    }, 10000);
+
+    return () => {
+      clearReconnectTimers();
+    };
+  }, [activeTabId, clearReconnectTimers, scheduleReconnect]);
+
+  useEffect(() => {
+    return () => {
+      clearReconnectTimers();
+    };
+  }, [clearReconnectTimers]);
+
+  const activeStreamPlayback = activeStream?.playback_urls ?? null;
+  const showVideoLoader = !imageLoaded || videoState.status === "connecting";
+
+  const handleVideoStatusChange = useCallback(
+    (next: VideoPlayerState) => {
+      setVideoState(next);
+
+      if (next.status === "playing") {
+        imageLoadedRef.current = true;
+        reconnectCountRef.current = 0;
+        setImageLoaded(true);
+        clearReconnectTimers();
+        setControlError((prev) => {
+          if (
+            prev?.startsWith("Video stream") ||
+            prev?.startsWith("Waiting for first video frame") ||
+            prev?.startsWith("WebRTC stream") ||
+            prev?.startsWith("HLS stream")
+          ) {
+            return null;
+          }
+          return prev;
+        });
+        return;
+      }
+
+      if (next.status === "error") {
+        imageLoadedRef.current = false;
+        setImageLoaded(false);
+        scheduleReconnect(
+          next.transport === "webrtc" ? "WebRTC stream reconnecting" : "HLS stream reconnecting"
+        );
+        return;
+      }
+
+      if (!imageLoadedRef.current) {
+        setImageLoaded(false);
+      }
+    },
+    [clearReconnectTimers, scheduleReconnect]
+  );
+
+  // Merge stream errors from the hook into controlError
+  const displayError = controlError || streamError;
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -517,12 +246,12 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
         <div className="stream-tabs-shell">
           <ObcTabRow
             className="stream-tab-row"
-            tabs={streamTabs}
-            selectedTabId={activeStreamId}
-            hasAddNewTab={hasConfiguredStreams}
-            hasClose={hasConfiguredStreams}
+            tabs={tabs}
+            selectedTabId={activeTabId}
+            hasAddNewTab={showAddButton}
+            hasClose={showCloseButtons}
             onTabSelected={handleTabSelected}
-            onTabClosed={handleTabClosed}
+            onTabClosed={onTabClosed}
             onAddNewTab={handleAddTab}
           />
 
@@ -542,7 +271,7 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                     <AuthGate initialMode="login" onAuthenticated={auth.handleAuthenticated} />
                   </div>
                 ) : (
-                  <StreamSetup tabId={activeStreamId} onStreamReady={handleStreamReady} />
+                  <StreamSetup tabId={activeTabId} onStreamReady={handleStreamReady} />
                 )}
               </>
             )}
@@ -553,18 +282,40 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
 
             {!activeIsSetup && activeStream && (
               <>
-                <img
-                  ref={videoRef}
-                  src={imgSrc}
-                  alt={`Video stream ${activeStream.stream_id}`}
+                <VideoPlayer
+                  key={`${activeTabId}-${videoSession}`}
+                  streamId={activeStream.stream_id}
+                  whepUrl={activeStreamPlayback?.whep_url}
+                  hlsUrl={activeStreamPlayback?.hls_url}
+                  sessionToken={videoSession}
                   className="background-video"
-                  style={{ objectFit: videoFitMode }}
-                  onLoad={onImgLoad}
-                  onError={onImgError}
+                  style={{ objectFit: videoFitMode, backgroundColor: "#e5e9ef" }}
+                  onVideoReady={(videoEl) => {
+                    videoRef.current = videoEl;
+                  }}
+                  onStatusChange={handleVideoStatusChange}
                 />
 
-                {!imageLoaded && (
-                  <div className="status-overlay">Starting stream — waiting for first frame...</div>
+                {showVideoLoader && (
+                  <div className="video-loading-center">
+                    <ObcProgressBar
+                      className="video-loading-center__progress"
+                      type={ProgressBarType.circular}
+                      mode={ProgressBarMode.indeterminate}
+                      circularState={CircularProgressState.indeterminate}
+                      style={
+                        {
+                          "--instrument-enhanced-secondary-color": "#4ea9dd",
+                          "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+                        } as CSSProperties
+                      }
+                    >
+                      <span slot="icon"></span>
+                    </ObcProgressBar>
+                    <div className="video-loading-center__label">
+                      {!imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."}
+                    </div>
+                  </div>
                 )}
                 {isLoading && imageLoaded && (
                   <div className="status-overlay">Connecting to detection stream...</div>
@@ -572,10 +323,11 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                 {error && <div className="status-overlay status-error">Error: {error}</div>}
                 {!isLoading && !error && (
                   <div className="status-overlay status-info">
-                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeStreamId} | Time:{" "}
-                    {`${String(Math.floor(timestampMs / 60000)).padStart(2, "0")}:${String(Math.floor((timestampMs % 60000) / 1000)).padStart(2, "0")}`}{" "}
-                    | Detection: {(fps ?? 0).toFixed(1)} FPS | Vessels: {vessels.length}
-                    {videoError ? ` | Control: ${videoError}` : ""}
+                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
+                    {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
+                    {vessels.length}
+                    {videoState.error ? ` | Video error: ${videoState.error}` : ""}
+                    {displayError ? ` | Control: ${displayError}` : ""}
                   </div>
                 )}
 

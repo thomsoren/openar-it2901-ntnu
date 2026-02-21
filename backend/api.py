@@ -1,14 +1,12 @@
 """FastAPI backend for boat detection and AIS data."""
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
-from queue import Empty
 from typing import List
 from urllib.parse import urlparse
 
@@ -36,13 +34,14 @@ from auth.deps import require_admin
 from auth.routes import limiter, router as auth_router
 from common.config import (
     BASE_DIR,
+    MEDIAMTX_ENABLED,
     VIDEO_PATH,
+    build_playback_urls,
     create_async_redis_client,
     detections_channel,
     load_samples,
 )
 from common.types import DetectedVessel
-from cv.utils import get_video_info
 from db.init_db import init_db
 from db.models import AppUser
 from fusion import fusion
@@ -83,7 +82,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "8"))
+STREAM_IDLE_TIMEOUT_SECONDS = float(os.getenv("STREAM_IDLE_TIMEOUT_SECONDS", "300"))
+STREAM_NO_VIEWER_TIMEOUT_SECONDS = float(os.getenv("STREAM_NO_VIEWER_TIMEOUT_SECONDS", "15"))
 DEFAULT_STREAM_ID = os.getenv("DEFAULT_STREAM_ID", "default")
+PROTECT_DEFAULT_STREAM = os.getenv("PROTECT_DEFAULT_STREAM", "0").lower() in {"1", "true", "yes"}
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 orchestrator: WorkerOrchestrator | None = None
@@ -171,15 +173,32 @@ def resolve_stream_source(source_url: str | None) -> str | None:
     return raw
 
 
+def build_stream_playback_payload(stream_id: str) -> dict:
+    payload = {"media_enabled": MEDIAMTX_ENABLED}
+    if MEDIAMTX_ENABLED:
+        payload.update(build_playback_urls(stream_id))
+    return payload
+
+
+def augment_stream_payload(stream: dict) -> dict:
+    stream_id = str(stream.get("stream_id", "")).strip()
+    if not stream_id:
+        return stream
+    return {**stream, "playback_urls": build_stream_playback_payload(stream_id)}
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global orchestrator
 
     init_db()
     app.state.redis_client = create_async_redis_client()
+    protected_stream_ids = {DEFAULT_STREAM_ID} if PROTECT_DEFAULT_STREAM else set()
     orchestrator = WorkerOrchestrator(
         max_workers=MAX_WORKERS,
-        protected_stream_ids={DEFAULT_STREAM_ID},
+        idle_timeout_seconds=STREAM_IDLE_TIMEOUT_SECONDS,
+        no_viewer_timeout_seconds=STREAM_NO_VIEWER_TIMEOUT_SECONDS,
+        protected_stream_ids=protected_stream_ids,
     )
     orchestrator.start_monitoring()
 
@@ -203,6 +222,22 @@ async def lifespan(_: FastAPI):
 app.router.lifespan_context = lifespan
 
 
+async def _safe_ws_send_json(websocket: WebSocket, payload: dict) -> bool:
+    try:
+        await websocket.send_json(payload)
+        return True
+    except (WebSocketDisconnect, RuntimeError):
+        return False
+
+
+async def _safe_ws_send_text(websocket: WebSocket, payload: str) -> bool:
+    try:
+        await websocket.send_text(payload)
+        return True
+    except (WebSocketDisconnect, RuntimeError):
+        return False
+
+
 @app.get("/")
 def read_root():
     return {
@@ -213,6 +248,7 @@ def read_root():
             "detections_file": "/api/detections/file",
             "detections_ws": "/api/detections/ws/{stream_id}",
             "streams": "/api/streams",
+            "stream_playback": "/api/streams/{stream_id}/playback",
             "video": "/api/video",
             "ais": "/api/ais",
             "ais_stream": "/api/ais/stream",
@@ -288,56 +324,6 @@ def get_video():
     if not path or not path.exists():
         raise HTTPException(status_code=404, detail=f"Video not found: {path}")
     return FileResponse(path, media_type="video/mp4")
-
-
-@app.get("/api/video/mjpeg")
-async def stream_mjpeg():
-    return await stream_mjpeg_for_stream(DEFAULT_STREAM_ID)
-
-
-@app.get("/api/video/mjpeg/{stream_id}")
-async def stream_mjpeg_for_stream(stream_id: str):
-    if not orchestrator:
-        raise HTTPException(status_code=503, detail="Orchestrator unavailable")
-
-    try:
-        handle = orchestrator.get_stream(stream_id)
-    except StreamNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' is not running")
-
-    async def generate():
-        current_queue = handle.frame_queue
-
-        while True:
-            try:
-                data = await asyncio.to_thread(current_queue.get, True, 0.05)
-            except Empty:
-                try:
-                    orchestrator.get_stream(stream_id)
-                except StreamNotFoundError:
-                    break
-                if handle.frame_queue is not current_queue:
-                    current_queue = handle.frame_queue
-                continue
-
-            if data is None:
-                try:
-                    orchestrator.get_stream(stream_id)
-                except StreamNotFoundError:
-                    break
-                if handle.frame_queue is not current_queue:
-                    current_queue = handle.frame_queue
-                continue
-
-            frame, _, _ = data
-            _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n"
-
-    return StreamingResponse(
-        generate(),
-        media_type="multipart/x-mixed-replace; boundary=frame",
-        headers={"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"},
-    )
 
 
 @app.get("/api/video/fusion")
@@ -517,7 +503,11 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
     except ResourceLimitExceededError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    return {"status": "started", **handle.to_dict()}
+    return {
+        "status": "started",
+        **handle.to_dict(),
+        "playback_urls": build_stream_playback_payload(stream_id),
+    }
 
 
 @app.post("/api/streams/{stream_id}/upload", status_code=201)
@@ -570,7 +560,23 @@ async def stop_stream(stream_id: str):
 async def list_streams():
     if not orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
-    return {"streams": orchestrator.list_streams(), "max_workers": MAX_WORKERS}
+    streams = [augment_stream_payload(stream) for stream in orchestrator.list_streams()]
+    return {"streams": streams, "max_workers": MAX_WORKERS}
+
+
+@app.get("/api/streams/{stream_id}/playback")
+async def get_stream_playback(stream_id: str):
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+
+    try:
+        orchestrator.get_stream(stream_id)
+    except StreamNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id)}
 
 
 @app.post("/api/streams/{stream_id}/heartbeat", status_code=204)
@@ -591,25 +597,22 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
     await websocket.accept()
 
     if not orchestrator:
-        await websocket.send_json({"type": "error", "message": "Orchestrator unavailable"})
+        await _safe_ws_send_json(websocket, {"type": "error", "message": "Orchestrator unavailable"})
         await websocket.close(code=1011)
         return
 
+    viewer_attached = False
     try:
-        handle = orchestrator.get_stream(stream_id)
+        handle = orchestrator.acquire_stream_viewer(stream_id)
+        viewer_attached = True
     except StreamNotFoundError:
-        await websocket.send_json({"type": "error", "message": f"Stream '{stream_id}' is not running"})
+        await _safe_ws_send_json(websocket, {"type": "error", "message": f"Stream '{stream_id}' not found"})
         await websocket.close(code=1008)
         return
-
-    try:
-        info = await asyncio.to_thread(get_video_info, handle.config.source_url)
-        if info:
-            await websocket.send_json(
-                {"type": "ready", "width": info.width, "height": info.height, "fps": info.fps}
-            )
-    except Exception:
-        logger.exception("Failed to send initial ready payload for stream '%s'", stream_id)
+    except ResourceLimitExceededError as exc:
+        await _safe_ws_send_json(websocket, {"type": "error", "message": str(exc)})
+        await websocket.close(code=1013)
+        return
 
     channel = detections_channel(stream_id)
     redis_client = websocket.app.state.redis_client
@@ -620,7 +623,8 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
     except RedisError as exc:
         logger.warning("Redis subscribe failed for channel '%s': %s", channel, exc)
         try:
-            await websocket.send_json(
+            await _safe_ws_send_json(
+                websocket,
                 {"type": "error", "message": f"Detection stream unavailable: {type(exc).__name__}"}
             )
         finally:
@@ -634,8 +638,12 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
             payload = message.get("data")
             if isinstance(payload, bytes):
                 payload = payload.decode("utf-8")
-            await websocket.send_text(payload)
+            if not await _safe_ws_send_text(websocket, payload):
+                break
     except WebSocketDisconnect:
+        pass
+    except RuntimeError:
+        # Client already closed; normal during tab switches/reconnects.
         pass
     except Exception:
         logger.exception("Detections websocket stream failed for channel '%s'", channel)
@@ -645,6 +653,8 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
             await pubsub.aclose()
         except Exception:
             logger.exception("Failed to clean up pubsub for channel '%s'", channel)
+        if viewer_attached:
+            orchestrator.release_stream_viewer(stream_id)
 
 
 @app.websocket("/api/detections/ws")

@@ -6,7 +6,7 @@ import { ObcClock } from "@ocean-industries-concept-lab/openbridge-webcomponents
 import { ObcNavigationMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-menu/navigation-menu";
 import { ObcNavigationItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-item/navigation-item";
 import { ObcUserMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/user-menu/user-menu";
-import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
+import { ObcInput } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/input/input";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcUserMenuSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/user-menu/user-menu";
 import { ObcTabbedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tabbed-card/tabbed-card";
@@ -320,12 +320,14 @@ function App() {
                 <span slot="tab-title-1">Create</span>
 
                 <div slot="tab-content-0" className="navigation-stream-controls">
-                  <ObcTextInputField
-                    label="Search Running Streams"
+                  <div className="navigation-stream-controls__hint">Search Running Streams</div>
+                  <ObcInput
                     value={streamSearch}
-                    hasClearButton
                     placeholder="Search by stream id"
-                    onInput={(event) => setStreamSearch(getTextInputValue(event, streamSearch))}
+                    aria-label="Search Running Streams"
+                    onInput={(event: Event) =>
+                      setStreamSearch(getTextInputValue(event, streamSearch))
+                    }
                   />
                   <div className="navigation-stream-list">
                     {filteredStreams.length === 0 && (
@@ -344,19 +346,23 @@ function App() {
                 </div>
 
                 <div slot="tab-content-1" className="navigation-stream-controls">
-                  <ObcTextInputField
-                    label="Stream ID"
+                  <div className="navigation-stream-controls__hint">Stream ID</div>
+                  <ObcInput
                     value={streamIdInput}
-                    hasClearButton
                     placeholder="stream"
-                    onInput={(event) => setStreamIdInput(getTextInputValue(event, streamIdInput))}
+                    aria-label="Stream ID"
+                    onInput={(event: Event) =>
+                      setStreamIdInput(getTextInputValue(event, streamIdInput))
+                    }
                   />
-                  <ObcTextInputField
-                    label="Source URL (optional)"
+                  <div className="navigation-stream-controls__hint">Source URL (optional)</div>
+                  <ObcInput
                     value={sourceUrlInput}
-                    hasClearButton
                     placeholder="Leave empty to use default video"
-                    onInput={(event) => setSourceUrlInput(getTextInputValue(event, sourceUrlInput))}
+                    aria-label="Source URL"
+                    onInput={(event: Event) =>
+                      setSourceUrlInput(getTextInputValue(event, sourceUrlInput))
+                    }
                   />
                   <ObcButton
                     className="navigation-stream-button"

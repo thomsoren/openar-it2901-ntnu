@@ -123,6 +123,62 @@ curl -X POST http://localhost:8000/api/storage/presign \
 
 The backend includes a FastAPI server that serves detections and video to the frontend.
 
+
+
+
+
+
+### Configure backend/frontend env
+
+In `backend/.env`:
+
+```bash
+MEDIAMTX_ENABLED=true
+MEDIAMTX_RTSP_BASE=rtsp://localhost:8554
+MEDIAMTX_WHEP_BASE=http://localhost:8889
+MEDIAMTX_HLS_BASE=http://localhost:8888
+```
+
+In `frontend/.env`:
+
+```bash
+VITE_MEDIAMTX_WHEP_BASE=http://localhost:8889
+VITE_MEDIAMTX_HLS_BASE=http://localhost:8888
+```
+
+### Run app
+
+From repo root:
+
+```bash
+pnpm dev
+```
+
+Then verify stream playback URLs from backend:
+
+```bash
+curl http://localhost:8000/api/streams/default/playback
+```
+
+You should see `whep_url` and `hls_url`.
+
+### Quick troubleshooting
+
+- `zsh: no such file or directory: <backend-compose-file>`:
+  Use the real compose path, not placeholders.
+- `docker compose ...` appears to hang:
+  Usually Docker Desktop is not fully started yet.
+- No containers in `docker compose ... ps`:
+  Start with `up -d` first.
+- Chrome latency much higher than Safari:
+  Confirm UI status says `Video: WEBRTC`; if it says `HLS`, you are on fallback.
+
+### Stop MediaMTX
+
+```bash
+docker compose -f backend/streaming/mediamtx/docker-compose.mediamtx.yml down
+```
+
 ### Starting the API Server
 
 ```bash
