@@ -8,6 +8,7 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { AISData } from "../../types/aisData";
 import { destinationPoint, headingTo, distanceTo, buildFovPolygon } from "../../utils/geometryMath";
+import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -70,6 +71,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
   const theme = useObcPalette();
   const [followMode, setFollowMode] = useState(true);
+  const [selectedVessel, setSelectedVessel] = useState<AISData | null>(null);
 
   const centerMap = useCallback(() => {
     if (!mapRef.current) return;
@@ -239,12 +241,19 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
             iconAnchor: [5, 5],
             className: "",
           }),
-          interactive: false,
+          interactive: true,
         })
           .addTo(mapRef.current!)
           .bindTooltip(`MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`, {
             direction: "top",
             offset: [0, -10],
+          })
+          .on("click", () => {
+            setSelectedVessel(vessel);
+            mapRef.current?.panTo([vessel.latitude!, vessel.longitude!], {
+              animate: true,
+              duration: 0.5,
+            });
           });
         vesselMarkersRef.current.push(vesselMarker);
       });
@@ -265,6 +274,14 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     });
   }, [theme]);
 
+  // Keep selected vessel data in sync when AIS updates arrive
+  useEffect(() => {
+    if (!selectedVessel || !vessels) return;
+
+    const updated = vessels.find((v) => v.mmsi === selectedVessel.mmsi);
+    if (updated) setSelectedVessel(updated);
+  }, [vessels, selectedVessel]);
+
   return (
     <div className="geojson-map-container">
       <div className="geojson-map-header">
@@ -282,6 +299,19 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       >
         {followMode ? "Following" : "Follow"}
       </ObcButton>
+
+      {/* 
+          Selected vessel card 
+          TODO: Change with OBC-Poi-Card component
+      */}
+      {selectedVessel && (
+        <AISDataPanel
+          vessel={selectedVessel}
+          onClose={() => {
+            setSelectedVessel(null);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -1,0 +1,70 @@
+/* Expanded vessel card */
+.geojson-map-vessel-panel {
+  position: absolute;
+  bottom: 48px;
+  right: 12px;
+  z-index: 1000;
+  width: 260px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  background: #1a2535;
+  border: 1px solid #2e4060;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 12px;
+  color: #c8daf4;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.geojson-map-vessel-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #243044;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 1px solid #2e4060;
+}
+
+.geojson-map-vessel-panel-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+.geojson-map-vessel-panel-close:hover {
+  opacity: 1;
+}
+
+.geojson-map-vessel-panel-body {
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.geojson-map-vessel-panel-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.geojson-map-vessel-panel-row:last-child {
+  border-bottom: none;
+}
+
+.geojson-map-vessel-panel-label {
+  opacity: 0.65;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.geojson-map-vessel-panel-value {
+  text-align: right;
+  word-break: break-word;
+}
