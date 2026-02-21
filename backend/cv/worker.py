@@ -202,8 +202,7 @@ def run(
             time.sleep(0.005)
             continue
 
-        frame = latest_frame.copy()
-        detections = detector.detect(frame, track=True)
+        detections = detector.detect(latest_frame, track=True)
         last_processed_idx = frame_idx
 
         now = time.monotonic()

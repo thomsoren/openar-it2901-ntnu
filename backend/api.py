@@ -1,7 +1,6 @@
 """FastAPI backend for boat detection and AIS data."""
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -43,7 +42,6 @@ from common.config import (
     load_samples,
 )
 from common.types import DetectedVessel
-from cv.utils import get_video_info
 from db.init_db import init_db
 from db.models import AppUser
 from fusion import fusion
@@ -615,19 +613,6 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
         await _safe_ws_send_json(websocket, {"type": "error", "message": str(exc)})
         await websocket.close(code=1013)
         return
-
-    try:
-        info = await asyncio.to_thread(get_video_info, handle.config.source_url)
-        if info:
-            if not await _safe_ws_send_json(
-                websocket,
-                {"type": "ready", "width": info.width, "height": info.height, "fps": info.fps}
-            ):
-                return
-    except (WebSocketDisconnect, RuntimeError):
-        return
-    except Exception:
-        logger.exception("Failed to send initial ready payload for stream '%s'", stream_id)
 
     channel = detections_channel(stream_id)
     redis_client = websocket.app.state.redis_client

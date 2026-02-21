@@ -67,13 +67,6 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
   const firstFrameRetryDoneRef = useRef(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const firstFrameWatchdogRef = useRef<number | null>(null);
-  const [clockTickMs, setClockTickMs] = useState(() => performance.now());
-  const detectionClockRef = useRef<Record<string, { timestampMs: number; perfMs: number }>>({});
-  const frameClockRef = useRef<Record<string, { timestampMs: number; perfMs: number }>>({});
-  const [videoDisplayMs, setVideoDisplayMs] = useState(0);
-  const pendingLatencyRef = useRef<Array<{ sourceTsMs: number; frameSentAtMs: number }>>([]);
-  const [lastDisplayLatencyMs, setLastDisplayLatencyMs] = useState<number | null>(null);
-  const [displayLatencySamples, setDisplayLatencySamples] = useState<number[]>([]);
   const MAX_RECONNECT_ATTEMPTS = 8;
 
   const showingAuthGate = activeIsSetup && !auth.session;
@@ -111,15 +104,10 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
 
   const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
-  const {
-    vessels,
-    isLoading,
-    error,
-    isConnected,
-    detectionTimestampMs,
-    frameTimestampMs,
-    frameSentAtMs,
-  } = useDetectionsWebSocket({ url: wsUrl, enabled: wsEnabled });
+  const { vessels, isLoading, error, isConnected } = useDetectionsWebSocket({
+    url: wsUrl,
+    enabled: wsEnabled,
+  });
 
   const videoTransform = useVideoTransform(
     videoRef,
@@ -174,10 +162,6 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
     reconnectCountRef.current = 0;
     firstFrameRetryDoneRef.current = false;
     setControlError(null);
-    pendingLatencyRef.current = [];
-    setLastDisplayLatencyMs(null);
-    setDisplayLatencySamples([]);
-    setVideoDisplayMs(0);
     setVideoState({
       transport: "webrtc",
       status: "idle",
@@ -213,134 +197,6 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
 
   const activeStreamPlayback = activeStream?.playback_urls ?? null;
   const showVideoLoader = !imageLoaded || videoState.status === "connecting";
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setClockTickMs(performance.now());
-      const videoEl = videoRef.current;
-      if (videoEl) {
-        const current = Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
-        setVideoDisplayMs(Math.max(0, current * 1000));
-      }
-    }, 200);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (detectionTimestampMs <= 0) {
-      return;
-    }
-    detectionClockRef.current[activeTabId] = {
-      timestampMs: detectionTimestampMs,
-      perfMs: performance.now(),
-    };
-  }, [activeTabId, detectionTimestampMs]);
-
-  useEffect(() => {
-    if (frameTimestampMs <= 0 || frameSentAtMs <= 0) {
-      return;
-    }
-    pendingLatencyRef.current.push({
-      sourceTsMs: frameTimestampMs,
-      frameSentAtMs,
-    });
-    if (pendingLatencyRef.current.length > 300) {
-      pendingLatencyRef.current.splice(0, pendingLatencyRef.current.length - 300);
-    }
-  }, [frameTimestampMs, frameSentAtMs]);
-
-  useEffect(() => {
-    if (frameTimestampMs <= 0) {
-      return;
-    }
-    frameClockRef.current[activeTabId] = {
-      timestampMs: frameTimestampMs,
-      perfMs: performance.now(),
-    };
-  }, [activeTabId, frameTimestampMs]);
-
-  useEffect(() => {
-    const pending = pendingLatencyRef.current;
-    if (pending.length === 0) {
-      return;
-    }
-    const effectiveClockMs = videoDisplayMs > 0 ? videoDisplayMs : frameTimestampMs;
-    if (effectiveClockMs <= 0) {
-      return;
-    }
-
-    while (pending.length > 0 && pending[0].sourceTsMs <= effectiveClockMs) {
-      const sample = pending.shift();
-      if (!sample) {
-        break;
-      }
-      const latencyMs = Math.max(0, Date.now() - sample.frameSentAtMs);
-      setLastDisplayLatencyMs(latencyMs);
-      setDisplayLatencySamples((prev) => {
-        const next = [...prev, latencyMs];
-        if (next.length > 200) {
-          next.splice(0, next.length - 200);
-        }
-        return next;
-      });
-    }
-  }, [frameTimestampMs, videoDisplayMs]);
-
-  const detectionClockMs = useMemo(() => {
-    const saved = detectionClockRef.current[activeTabId];
-    if (!saved) {
-      return Math.max(0, detectionTimestampMs);
-    }
-    const delta = Math.max(0, clockTickMs - saved.perfMs);
-    return Math.max(saved.timestampMs, saved.timestampMs + delta);
-  }, [activeTabId, clockTickMs, detectionTimestampMs]);
-
-  const frameClockMs = useMemo(() => {
-    const saved = frameClockRef.current[activeTabId];
-    if (!saved) {
-      return Math.max(0, frameTimestampMs);
-    }
-    const delta = Math.max(0, clockTickMs - saved.perfMs);
-    return Math.max(saved.timestampMs, saved.timestampMs + delta);
-  }, [activeTabId, clockTickMs, frameTimestampMs]);
-
-  const videoClockMs = useMemo(() => {
-    if (videoDisplayMs > 0) {
-      return videoDisplayMs;
-    }
-    return frameClockMs;
-  }, [frameClockMs, videoDisplayMs]);
-
-  const detectionDisplayClockMs = useMemo(() => {
-    if (videoClockMs > 0) {
-      return videoClockMs;
-    }
-    return detectionClockMs;
-  }, [videoClockMs, detectionClockMs]);
-
-  const secondsSinceLastUpdate = useMemo(() => {
-    const saved = detectionClockRef.current[activeTabId];
-    if (!saved) {
-      return 0;
-    }
-    return Math.max(0, (clockTickMs - saved.perfMs) / 1000);
-  }, [activeTabId, clockTickMs]);
-
-  const latencyStats = useMemo(() => {
-    if (displayLatencySamples.length === 0) {
-      return { p50: null as number | null, p95: null as number | null };
-    }
-    const sorted = [...displayLatencySamples].sort((a, b) => a - b);
-    const percentile = (q: number) =>
-      sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q))];
-    return {
-      p50: percentile(0.5),
-      p95: percentile(0.95),
-    };
-  }, [displayLatencySamples]);
-
-  const formatClock = (ms: number) =>
-    `${String(Math.floor(ms / 60000)).padStart(2, "0")}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 
   const handleVideoStatusChange = useCallback(
     (next: VideoPlayerState) => {
@@ -467,15 +323,9 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                 {error && <div className="status-overlay status-error">Error: {error}</div>}
                 {!isLoading && !error && (
                   <div className="status-overlay status-info">
-                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} | Video
-                    Time: {formatClock(videoClockMs)} | Detection Time:{" "}
-                    {formatClock(detectionDisplayClockMs)}{" "}
-                    {`(+${secondsSinceLastUpdate.toFixed(1)}s)`} | Video:{" "}
-                    {videoState.transport.toUpperCase()} {videoState.status}
-                    {lastDisplayLatencyMs !== null
-                      ? ` | Display latency: ${Math.round(lastDisplayLatencyMs)}ms${latencyStats.p50 !== null && latencyStats.p95 !== null ? ` (p50 ${Math.round(latencyStats.p50)} / p95 ${Math.round(latencyStats.p95)})` : ""}`
-                      : ""}
-                    | Vessels: {vessels.length}
+                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
+                    {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
+                    {vessels.length}
                     {videoState.error ? ` | Video error: ${videoState.error}` : ""}
                     {displayError ? ` | Control: ${displayError}` : ""}
                   </div>

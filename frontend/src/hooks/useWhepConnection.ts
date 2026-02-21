@@ -57,7 +57,7 @@ const waitForIceGathering = (pc: RTCPeerConnection): Promise<void> => {
     const timeout = window.setTimeout(() => {
       cleanup();
       resolve();
-    }, 2000);
+    }, 500);
 
     const onChange = () => {
       if (pc.iceGatheringState !== "complete") {

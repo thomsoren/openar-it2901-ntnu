@@ -32,7 +32,7 @@ FFMPEG_CODEC = os.getenv("FFMPEG_CODEC", "libx264").strip().lower()
 FFMPEG_LIBX264_PRESET = os.getenv("FFMPEG_LIBX264_PRESET", "ultrafast").strip()
 FFMPEG_NVENC_PRESET = os.getenv("FFMPEG_NVENC_PRESET", "p1").strip()
 FFMPEG_VIDEO_BITRATE = os.getenv("FFMPEG_VIDEO_BITRATE", "4M").strip()
-FFMPEG_GOP = int(os.getenv("FFMPEG_GOP", "30"))
+FFMPEG_GOP = int(os.getenv("FFMPEG_GOP", "15"))
 FFMPEG_SCALE_WIDTH = int(os.getenv("FFMPEG_SCALE_WIDTH", "0"))
 FFMPEG_SCALE_HEIGHT = int(os.getenv("FFMPEG_SCALE_HEIGHT", "0"))
 

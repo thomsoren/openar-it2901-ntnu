@@ -5,8 +5,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Queue
-from types import SimpleNamespace
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -57,7 +55,6 @@ def fake_worker(monkeypatch):
         return FakeProcess(), Queue(maxsize=10)
 
     monkeypatch.setattr("orchestrator.orchestrator.worker.start", _fake_start)
-    monkeypatch.setattr(api, "get_video_info", lambda _source: SimpleNamespace(width=1920, height=1080, fps=25))
 
 
 def test_concurrent_stream_starts(fake_worker):
@@ -111,9 +108,6 @@ def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker):
 
         try:
             with client.websocket_connect(f"/api/detections/ws/{stream_id}") as websocket:
-                ready = websocket.receive_json()
-                assert ready["type"] == "ready"
-
                 message = websocket.receive_json()
                 assert message["type"] == "detections"
                 assert message["frame_index"] == payload["frame_index"]

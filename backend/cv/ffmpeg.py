@@ -145,9 +145,16 @@ class FFmpegDirectPublisher:
         if not is_remote:
             cmd.append("-re")
 
+        # Low-latency input flags for remote streams
+        if is_remote:
+            cmd.extend(["-fflags", "nobuffer", "-flags", "low_delay"])
+
         # RTSP input transport
         if self.source_url.lower().startswith("rtsp"):
             cmd.extend(["-rtsp_transport", "tcp"])
+
+        # Reduce probe overhead for faster startup
+        cmd.extend(["-probesize", "512000", "-analyzeduration", "500000"])
 
         cmd.extend(["-i", self.source_url])
 
@@ -165,8 +172,13 @@ class FFmpegDirectPublisher:
                 )
             cmd.extend(_transcode_args(codec))
 
-        # Output to MediaMTX RTSP
-        cmd.extend(["-rtsp_transport", "tcp", "-f", "rtsp", build_rtsp_publish_url(self.stream_id)])
+        # Output to MediaMTX RTSP with minimal buffering
+        cmd.extend([
+            "-fflags", "+nobuffer",
+            "-rtsp_transport", "tcp",
+            "-f", "rtsp",
+            build_rtsp_publish_url(self.stream_id),
+        ])
         return cmd
 
     def start(self) -> bool:
