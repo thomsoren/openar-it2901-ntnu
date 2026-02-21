@@ -7,6 +7,7 @@ that combines AIS vessel info with visual detections.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import List
 
@@ -19,6 +20,8 @@ from common.config import (
 )
 from common.types import Detection, DetectedVessel
 from storage import s3
+
+logger = logging.getLogger(__name__)
 
 # Sample timing state (module-level for this fusion feature)
 _SAMPLE_START_MONO = time.monotonic()
@@ -61,13 +64,13 @@ def _load_fusion_data() -> dict[int, list[dict]]:
     try:
         text = s3.read_text_from_sources(GT_FUSION_S3_KEY, GT_FUSION_PATH)
         if not text:
-            print("[INFO] Fusion data not available - fusion features disabled")
+            logger.info("Fusion data not available - fusion features disabled")
             return {}
         result = _load_fusion_by_second(text.splitlines())
-        print(f"[INFO] Fusion data loaded: {len(result)} seconds of data")
+        logger.info(f"Fusion data loaded: {len(result)} seconds of data")
         return result
     except Exception as e:
-        print(f"[WARN] Failed to load fusion data: {e} - fusion features disabled")
+        logger.warning(f"Failed to load fusion data: {e} - fusion features disabled")
         return {}
 
 
@@ -160,7 +163,7 @@ async def handle_fusion_ws(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        print(f"Fusion WS Error: {e}")
+        logger.error(f"Fusion WS Error: {e}")
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:

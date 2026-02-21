@@ -1,4 +1,5 @@
 import os
+import logging
 import aiohttp
 import asyncio
 import json
@@ -8,6 +9,8 @@ from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
 from ais_mapping_service.pixel_projection.camera_config import CameraConfig
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 AIS_CLIENT_ID = os.getenv("AIS_CLIENT_ID", "").strip()
 AIS_CLIENT_SECRET = os.getenv("AIS_CLIENT_SECRET", "").strip()
@@ -38,9 +41,9 @@ async def _fetch_token(session: aiohttp.ClientSession) -> str:
 # Fetch AIS data with automatic API key refresh
 async def fetch_ais():
   if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
-      print("Error: AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment. Make sure it matches .env.example")
+      logger.warning("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment. Make sure it matches .env.example")
       return
-  
+
   async with aiohttp.ClientSession() as session:
     token = await _fetch_token(session)
     async with session.get(
@@ -50,10 +53,10 @@ async def fetch_ais():
         "Accept": "application/json"
       }
     ) as response:
-      
+
       if response.status != 200:
         raise ValueError(f"HTTP error {response.status}")
-      
+
       return await response.json()
 
 
@@ -61,26 +64,26 @@ async def fetch_vessel_position_by_mmsi(mmsi: str) -> dict | None:
     """
     Fetch a specific vessel's current live position and heading from Barentswatch live AIS API.
     Uses MMSI filter to query only the specific vessel, no geographic constraint needed.
-    
+
     Args:
         mmsi: Maritime Mobile Service Identity (vessel ID)
-    
+
     Returns:
         Dictionary with keys: latitude, longitude, trueHeading
         Returns None if vessel not found
     """
     if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
         raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
-    
+
     try:
         mmsi_int = int(mmsi.strip())
     except ValueError:
         raise ValueError(f"Invalid MMSI: {mmsi} (must be numeric)")
-    
+
     try:
         async with aiohttp.ClientSession() as session:
             token = await _fetch_token(session)
-            
+
             # Query using MMSI filter with a valid polygon geometry
             # API requires geometry even when filtering by MMSI
             # Using a large bounding box covering Atlantic/Arctic area where ships commonly transmit
@@ -100,7 +103,7 @@ async def fetch_vessel_position_by_mmsi(mmsi: str) -> dict | None:
                 "mmsi": [mmsi_int],
                 "downsample": True
             }
-            
+
             async with session.post(
                 "https://live.ais.barentswatch.no/live/v1/combined",
                 headers={
@@ -112,50 +115,50 @@ async def fetch_vessel_position_by_mmsi(mmsi: str) -> dict | None:
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    print(f"[fetch_vessel_position_by_mmsi] HTTP error {response.status}: {error_text}")
+                    logger.error(f"HTTP error {response.status}: {error_text}")
                     raise ValueError(f"HTTP {response.status}: {error_text}")
-                
-                print(f"[fetch_vessel_position_by_mmsi] Connected to stream, looking for MMSI {mmsi}")
-                
+
+                logger.info(f"Connected to stream, looking for MMSI {mmsi}")
+
                 # Stream the response and get the first matching vessel
                 async for line in response.content:
                     line = line.decode("utf-8").strip()
                     if not line:
                         continue
-                    
-                    print(f"[fetch_vessel_position_by_mmsi] Received line: {line[:100]}")
-                    
+
+                    logger.debug(f"Received line: {line[:100]}")
+
                     try:
                         data = json.loads(line)
                         vessel_mmsi = data.get("mmsi")
-                        print(f"[fetch_vessel_position_by_mmsi] Parsed vessel MMSI {vessel_mmsi}")
-                        print(f"[fetch_vessel_position_by_mmsi] Raw data: {data}")
-                        
+                        logger.debug(f"Parsed vessel MMSI {vessel_mmsi}")
+                        logger.debug(f"Raw data: {data}")
+
                         # Validate required fields for projection
                         latitude = data.get("latitude")
                         longitude = data.get("longitude")
                         heading = data.get("trueHeading")
-                        
+
                         if latitude is None or longitude is None:
-                            print(f"[fetch_vessel_position_by_mmsi] Missing lat/lon in data")
+                            logger.warning(f"Missing lat/lon in data")
                             continue
-                        
+
                         # Return the vessel position (heading can default to 0 if missing)
                         result = {
                             "longitude": longitude,
                             "latitude": latitude,
                             "trueHeading": heading if heading is not None else 0
                         }
-                        print(f"[fetch_vessel_position_by_mmsi] Returning vessel position: {result}")
+                        logger.info(f"Returning vessel position: {result}")
                         return result
                     except json.JSONDecodeError as e:
-                        print(f"[fetch_vessel_position_by_mmsi] JSON decode error: {e}")
+                        logger.warning(f"JSON decode error: {e}")
                         continue
-                
+
                 # Vessel not found in live data
-                print(f"[fetch_vessel_position_by_mmsi] No data returned for MMSI {mmsi}")
+                logger.warning(f"No data returned for MMSI {mmsi}")
                 return None
-                
+
     except asyncio.TimeoutError:
         raise ValueError(f"Timeout while searching for vessel {mmsi}")
     except Exception as e:
@@ -171,7 +174,7 @@ async def fetch_ais_stream_geojson(
 ):
     """
     Fetch AIS data stream in a triangular field of view from ship's position.
-    
+
     Args:
         timeout: Connection timeout in seconds
         ship_lat: Ship latitude (default: Trondheim harbor)
@@ -179,10 +182,10 @@ async def fetch_ais_stream_geojson(
         heading: Ship heading in degrees (0 = North, 90 = East)
         offset_meters: Distance from ship to triangle base in meters
         fov_degrees: Field of view angle in degrees
-    
+
     Yields:
         AIS data objects from the stream.
-        
+
         Example:
             {
                 'courseOverGround': 223.4,
@@ -208,24 +211,24 @@ async def fetch_ais_stream_geojson(
 
     # Calculate triangle coordinates for FOV
     half_fov = fov_degrees / 2
-    
+
     # Convert offset to degrees (approximate)
     meters_per_degree_lat = 111320
     meters_per_degree_lon = 111320 * math.cos(math.radians(ship_lat))
-    
+
     offset_lat = offset_meters / meters_per_degree_lat
     offset_lon = offset_meters / meters_per_degree_lon
-    
+
     # Calculate left and right points
     left_angle = heading - half_fov
     right_angle = heading + half_fov
-    
+
     left_lat = ship_lat + offset_lat * math.cos(math.radians(left_angle))
     left_lon = ship_lon + offset_lon * math.sin(math.radians(left_angle))
-    
+
     right_lat = ship_lat + offset_lat * math.cos(math.radians(right_angle))
     right_lon = ship_lon + offset_lon * math.sin(math.radians(right_angle))
-    
+
     # Triangle: ship position + left point + right point + close triangle
     coordinates = [
         [ship_lon, ship_lat],
@@ -246,7 +249,7 @@ async def fetch_ais_stream_geojson(
     try:
         async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
             token = await _fetch_token(session)
-            
+
             for attempt in range(2):
                 async with session.post(
                     "https://live.ais.barentswatch.no/live/v1/combined",
@@ -282,20 +285,20 @@ async def fetch_ais_stream_projections(
     """
     Fetch AIS data stream and project vessel positions to camera pixel coordinates.
     Offset and FOV define the area around the ship to fetch AIS data from.
-    
+
     Args:
         ship_lat: Observer latitude
         ship_lon: Observer longitude
         heading: Observer heading in degrees
         offset_meters: How far from the observer to fetch AIS data (in meters)
         fov_degrees: Field of view angle in degrees
-    
+
     Yields:
         AIS features enriched with projection field containing pixel coordinates
     """
-    
+
     cam_cfg = CameraConfig(h_fov_deg=fov_degrees)
-    
+
     async for feature in fetch_ais_stream_geojson(
         ship_lat=ship_lat,
         ship_lon=ship_lon,
@@ -332,32 +335,32 @@ async def fetch_ais_stream_projections_by_mmsi(
     """
     Fetch a specific vessel by MMSI, then stream AIS data of nearby vessels
     within that vessel's field of view, enriched with camera pixel projections.
-    
+
     Args:
         mmsi: Maritime Mobile Service Identity (vessel ID)
         offset_meters: Distance to triangle base in meters
         fov_degrees: Field of view angle in degrees
-    
+
     Yields:
         AIS features enriched with projection field containing pixel coordinates
-        
+
     Raises:
         ValueError: If vessel with MMSI not found
     """
     from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
     from ais_mapping_service.pixel_projection.camera_config import CameraConfig
-    
+
     # Fetch vessel position and heading by MMSI
     vessel_info = await fetch_vessel_position_by_mmsi(mmsi)
     if not vessel_info:
         raise ValueError(f"Vessel with MMSI {mmsi} not found in Barentswatch AIS data")
-    
+
     ship_lat = vessel_info["latitude"]
     ship_lon = vessel_info["longitude"]
     heading = vessel_info["trueHeading"]
-    
+
     cam_cfg = CameraConfig(h_fov_deg=fov_degrees)
-    
+
     async for feature in fetch_ais_stream_geojson(
         ship_lat=ship_lat,
         ship_lon=ship_lon,
@@ -387,15 +390,15 @@ async def fetch_ais_stream_projections_by_mmsi(
 
 def main():
     if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
-      print("Warning: AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment")
+      logger.warning("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment")
       return
     try:
       ais_data = asyncio.run(fetch_ais())
       with open("ais_data.json", "w") as f:
         json.dump(ais_data, f, indent=2)
-      print("AIS data fetched and saved to ais_data.json")
+      logger.info("AIS data fetched and saved to ais_data.json")
     except Exception as e:
-      print(f"\nError fetching AIS data: {e}")
+      logger.error(f"Error fetching AIS data: {e}")
 
 if __name__ == "__main__":
     main()

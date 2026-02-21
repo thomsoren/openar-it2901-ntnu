@@ -368,7 +368,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
         if (id === configureTabIdRef.current) continue;
         apiFetch(`/api/streams/${encodeURIComponent(id)}/heartbeat`, {
           method: "POST",
-        }).catch(() => {});
+        }).catch((err) => console.warn("stream heartbeat failed", err));
       }
     }, 60_000);
     return () => window.clearInterval(interval);
@@ -397,7 +397,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   useEffect(() => {
     if (externalStreamId && externalStreamId !== prevExternalStreamIdRef.current) {
       dispatch({ type: "JOIN_EXTERNAL_STREAM", streamId: externalStreamId });
-      refreshStreams().catch(() => {});
+      refreshStreams().catch((err) => console.warn("stream refresh failed", err));
     }
     prevExternalStreamIdRef.current = externalStreamId;
   }, [externalStreamId, refreshStreams]);
@@ -429,7 +429,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   const handleStreamReady = useCallback(
     (streamId: string) => {
       dispatch({ type: "CONFIGURE_COMPLETE", streamId });
-      refreshStreams().catch(() => {});
+      refreshStreams().catch((err) => console.warn("stream refresh failed", err));
     },
     [refreshStreams]
   );

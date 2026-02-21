@@ -112,7 +112,6 @@ function createWebSocketStore(
 
           switch (data.type) {
             case "ready":
-              console.log("Video stream ready:", data);
               if (data.width && data.height) {
                 setState({
                   videoInfo: {
@@ -134,22 +133,19 @@ function createWebSocketStore(
               });
               break;
             case "complete":
-              console.log("Video stream complete");
               setState({ isComplete: true });
               break;
 
             case "error":
-              console.error("Stream error:", data.message);
               setState({ error: data.message });
               break;
           }
-        } catch (parseError) {
-          console.error("Failed to parse WebSocket message:", parseError);
+        } catch {
+          // Malformed message — skip
         }
       };
 
-      ws.onerror = (event) => {
-        console.error("WebSocket error:", event);
+      ws.onerror = () => {
         setState({ error: "WebSocket connection error", isLoading: false });
       };
 
@@ -158,7 +154,6 @@ function createWebSocketStore(
         ws = null;
 
         if (!event.wasClean && autoReconnect && !state.isComplete) {
-          console.log(`WebSocket closed unexpectedly. Reconnecting in ${reconnectDelay}ms...`);
           reconnectTimeout = window.setTimeout(connect, reconnectDelay);
         }
       };

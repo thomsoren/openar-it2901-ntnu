@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from redis.exceptions import RedisError
 
 from common.config import create_redis_client, detections_channel
+
+logger = logging.getLogger(__name__)
 
 
 class DetectionPublisher:
@@ -19,7 +22,7 @@ class DetectionPublisher:
             self._redis.publish(detections_channel(stream_id), json.dumps(payload))
             return True
         except RedisError as exc:
-            print(f"[WARN] Redis publish failed for stream '{stream_id}': {exc}")
+            logger.warning(f"Redis publish failed for stream '{stream_id}': {exc}")
             return False
 
     def close(self):
