@@ -9,6 +9,10 @@ import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-r
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
 import { AISGeoJsonMap } from "./AISGeoJsonMap/AISGeoJsonMap";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
+import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/input/input";
+import { StatusIndicatorStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/status-indicator/status-indicator";
+import { TagColor } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/tag/tag";
+import { ObcElevatedCardSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
 
 export const AISGeographicalDataDisplay: React.FC = () => {
   const [shouldStream, setShouldStream] = useState(false);
@@ -56,26 +60,33 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         <div className="ais-stream-title">
           <h2>Live AIS Data Stream</h2>
           <div className="ais-stream-meta">
-            {/* @ts-expect-error - OpenBridge component type mismatch */}
-            <ObcStatusIndicator status={isStreaming ? "running" : "inactive"}>
+            <ObcStatusIndicator
+              status={isStreaming ? StatusIndicatorStatus.running : StatusIndicatorStatus.inactive}
+            >
               {isStreaming ? "Streaming" : "Idle"}
             </ObcStatusIndicator>
             {error && (
-              /* @ts-expect-error - OpenBridge component type mismatch */
-              <ObcStatusIndicator status="alarm">Error: {error}</ObcStatusIndicator>
+              <ObcStatusIndicator status={StatusIndicatorStatus.alarm}>
+                Error: {error}
+              </ObcStatusIndicator>
             )}
-            {/* @ts-expect-error - OpenBridge component type mismatch */}
-            <ObcTag label={`Vessels received: ${features.length}`} color="blue" />
+            <ObcTag label={`Vessels received: ${features.length}`} color={TagColor.blue} />
           </div>
         </div>
 
         <div className="ais-stream-controls">
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
-          <ObcButton variant="raised" onClick={() => setShouldStream(true)} disabled={isStreaming}>
+          <ObcButton
+            variant={ButtonVariant.raised}
+            onClick={() => setShouldStream(true)}
+            disabled={isStreaming}
+          >
             Start Stream
           </ObcButton>
-          {/* @ts-expect-error - OpenBridge component type mismatch */}
-          <ObcButton variant="flat" onClick={() => setShouldStream(false)} disabled={!isStreaming}>
+          <ObcButton
+            variant={ButtonVariant.flat}
+            onClick={() => setShouldStream(false)}
+            disabled={!isStreaming}
+          >
             Stop
           </ObcButton>
         </div>
@@ -85,8 +96,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Ship Latitude</span>
           <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Number}
             value={String(shipLat)}
             placeholder="63.4365"
             disabled={isStreaming}
@@ -97,8 +107,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Ship Longitude</span>
           <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Number}
             value={String(shipLon)}
             placeholder="10.3835"
             disabled={isStreaming}
@@ -109,8 +118,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Heading (°)</span>
           <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Number}
             value={String(heading)}
             placeholder="0"
             disabled={isStreaming}
@@ -121,8 +129,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Range (m)</span>
           <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Number}
             value={String(offsetMeters)}
             placeholder="1000"
             disabled={isStreaming}
@@ -133,8 +140,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         <div className="param-group">
           <span className="param-label">FOV (°)</span>
           <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Number}
             value={String(fovDegrees)}
             placeholder="60"
             disabled={isStreaming}
@@ -180,8 +186,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
               <ObcElevatedCard
                 key={`${feature.mmsi}-${feature.msgtime}`}
                 className="feature-card"
-                /* @ts-expect-error - OpenBridge component type mismatch */
-                size="multi-line"
+                size={ObcElevatedCardSize.MultiLine}
                 notClickable
               >
                 <div slot="label" className="feature-label">
@@ -190,8 +195,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
                   </span>
                   <ObcTag
                     label={feature?.mmsi ? `MMSI ${feature.mmsi}` : "MMSI N/A"}
-                    /* @ts-expect-error - OpenBridge component type mismatch */
-                    color="blue"
+                    color={TagColor.blue}
                   />
                 </div>
                 <div slot="description" className="feature-details">

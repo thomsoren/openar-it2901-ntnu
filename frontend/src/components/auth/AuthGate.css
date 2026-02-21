@@ -1,0 +1,40 @@
+.auth-gate {
+  width: 100%;
+  min-height: calc(100vh - 48px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  box-sizing: border-box;
+  background: var(--obc-color-black-100, #c8c8c8);
+}
+
+.auth-gate__card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.auth-gate__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 16px;
+}
+
+.auth-gate__inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-gate__actions {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 640px) {
+  .auth-gate {
+    padding: 1rem;
+  }
+}

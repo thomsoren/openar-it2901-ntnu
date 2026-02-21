@@ -27,7 +27,7 @@ export const FUSION_VIDEO_CONFIG = {
 export const DETECTION_CONFIG = {
   URL: `${API_CONFIG.BASE_URL}/api/detections`,
   /** WebSocket URL for real-time streaming detections */
-  WS_URL: `${API_CONFIG.WS_BASE_URL}/api/detections/ws`,
+  WS_URL: (streamId: string) => `${API_CONFIG.WS_BASE_URL}/api/detections/ws/${streamId}`,
   FILE_URL: `${API_CONFIG.BASE_URL}/api/detections/file`,
   POLL_INTERVAL: 1000, // ms (1 FPS - adjust as needed for real-time detection)
 } as const;

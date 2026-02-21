@@ -217,7 +217,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     rangeRef.current?.setLatLng([rLat, rLon]);
 
     if (followMode) centerMap();
-  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap]);
+  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap, followMode]);
 
   // Sync vessel markers when vessels data changes
   useEffect(() => {

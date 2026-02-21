@@ -1,0 +1,47 @@
+.stream-workspace {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 28;
+  display: flex;
+  justify-content: stretch;
+  padding: 0;
+  pointer-events: none;
+}
+
+.stream-tabs-shell {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.stream-tab-row {
+  display: block;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.stream-card-content {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #06090f;
+}
+
+.stream-card-content--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c8d2e0;
+  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
+  font-size: 14px;
+}
