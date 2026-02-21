@@ -32,8 +32,8 @@ function Fusion() {
     const resetFusionTimer = async () => {
       try {
         await apiFetchPublic(`${API_CONFIG.BASE_URL}/api/fusion/reset`, { method: "POST" });
-      } catch (err) {
-        console.warn("Failed to reset fusion timer", err);
+      } catch {
+        // Reset failed — continue anyway
       } finally {
         if (!cancelled) {
           setDetectionsEnabled(true);

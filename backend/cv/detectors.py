@@ -1,6 +1,7 @@
 """
 RT-DETR boat detector.
 """
+import logging
 from pathlib import Path
 from typing import List
 
@@ -11,6 +12,8 @@ from ultralytics import RTDETR
 from common.config import MODELS_DIR
 from common.types import Detection
 from cv.config import CONFIDENCE, IOU_THRESHOLD, AGNOSTIC_NMS, BYTETRACK_YAML
+
+logger = logging.getLogger(__name__)
 
 
 class RTDETRDetector:
@@ -32,27 +35,27 @@ class RTDETRDetector:
     def _load_model(self, model_path: str | None) -> RTDETR:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self._use_half = device == "cuda"
-        print(f"[Detector] PyTorch device: {device}")
+        logger.info(f"PyTorch device: {device}")
         if device == "cuda":
-            print(f"[Detector] CUDA device: {torch.cuda.get_device_name(0)}")
+            logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
 
         if model_path:
             path = Path(model_path)
             if path.exists():
-                print(f"[Detector] Loading model from: {path}")
+                logger.info(f"Loading model from: {path}")
                 return RTDETR(str(path))
 
             models_path = MODELS_DIR / model_path
             if models_path.exists():
-                print(f"[Detector] Loading model from: {models_path}")
+                logger.info(f"Loading model from: {models_path}")
                 return RTDETR(str(models_path))
 
         default_path = MODELS_DIR / self.DEFAULT_MODEL
         if default_path.exists():
-            print(f"[Detector] Loading model from: {default_path}")
+            logger.info(f"Loading model from: {default_path}")
             return RTDETR(str(default_path))
 
-        print(f"[Detector] Loading default model: {self.DEFAULT_MODEL}")
+        logger.info(f"Loading default model: {self.DEFAULT_MODEL}")
         return RTDETR(self.DEFAULT_MODEL)
 
     def detect(self, frame: np.ndarray, track: bool = False) -> List[Detection]:

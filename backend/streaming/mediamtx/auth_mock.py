@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+logger = logging.getLogger(__name__)
 
 HOST = "0.0.0.0"
 PORT = 10080
@@ -21,7 +24,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(body.decode("utf-8"))
         except Exception:
             payload = {}
-        print("[auth-mock] payload:", json.dumps(payload, separators=(",", ":")), flush=True)
+        logger.debug("payload: %s", json.dumps(payload, separators=(",", ":")))
 
         action = payload.get("action", "")
         path = payload.get("path", "")
@@ -46,10 +49,11 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, fmt, *args):
-        print("[auth-mock]", fmt % args, flush=True)
+        logger.info(fmt % args)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     server = HTTPServer((HOST, PORT), Handler)
-    print(f"Auth mock listening on http://{HOST}:{PORT}")
+    logger.info(f"Auth mock listening on http://{HOST}:{PORT}")
     server.serve_forever()
