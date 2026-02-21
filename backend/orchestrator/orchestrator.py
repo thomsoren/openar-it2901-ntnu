@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import threading
 import time
 
 from cv import worker
+from cv.ffmpeg import FFmpegDirectPublisher
 from orchestrator.exceptions import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -40,16 +42,30 @@ class WorkerOrchestrator:
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
+    @staticmethod
+    def _start_ffmpeg(config: StreamConfig) -> "subprocess.Popen | None":
+        """Start an FFmpeg direct publisher for the given stream config."""
+        pub = FFmpegDirectPublisher(
+            source_url=config.source_url,
+            stream_id=config.stream_id,
+            loop=config.loop,
+        )
+        if pub.start():
+            return pub.process
+        return None
+
     def _spawn_handle(self, config: StreamConfig, viewer_count: int = 0) -> WorkerHandle:
         process, inference_queue = worker.start(
             source_url=config.source_url,
             stream_id=config.stream_id,
             loop=config.loop,
         )
+        ffmpeg_proc = self._start_ffmpeg(config)
         return WorkerHandle(
             process=process,
             inference_queue=inference_queue,
             config=config,
+            ffmpeg_process=ffmpeg_proc,
             backoff_seconds=self._initial_backoff_seconds,
             viewer_count=max(0, viewer_count),
             no_viewer_since=0.0 if viewer_count > 0 else time.monotonic(),
@@ -232,6 +248,16 @@ class WorkerOrchestrator:
                         # Stream was intentionally removed (for example no-viewer stop).
                         continue
 
+                # --- FFmpeg health check (independent of worker) ---
+                if handle.ffmpeg_process is not None and handle.ffmpeg_process.poll() is not None:
+                    exit_code = handle.ffmpeg_process.returncode
+                    logger.warning(
+                        "FFmpeg died for stream '%s' (exit=%s), restarting",
+                        stream_id, exit_code,
+                    )
+                    handle.ffmpeg_process = self._start_ffmpeg(handle.config)
+
+                # --- Worker health check ---
                 if handle.is_alive:
                     handle.next_restart_at = 0.0
                     # Reset backoff so a future crash starts from the initial delay,

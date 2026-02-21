@@ -7,7 +7,7 @@ metrics: yes
 metricsAddress: :9998
 
 rtsp: yes
-rtspAddress: :8554
+rtspAddress: :8854
 rtspTransports: [tcp]
 
 hls: yes

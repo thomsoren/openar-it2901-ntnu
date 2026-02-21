@@ -11,12 +11,6 @@ from urllib.parse import urlparse
 
 import cv2
 
-from common.config.mediamtx import (
-    FFMPEG_SCALE_HEIGHT,
-    FFMPEG_SCALE_WIDTH,
-)
-from cv.ffmpeg import FFmpegPublisher
-
 logger = logging.getLogger(__name__)
 
 
@@ -35,17 +29,6 @@ def _offer_latest(queue_obj: Queue, item) -> None:
 def _is_remote_stream_url(source_url: str) -> bool:
     scheme = urlparse(source_url).scheme.lower()
     return scheme in {"rtsp", "http", "https", "rtmp", "udp", "tcp"}
-
-
-def _scale_detection(detection: dict, scale_x: float, scale_y: float) -> dict:
-    if scale_x == 1.0 and scale_y == 1.0:
-        return detection
-    scaled = dict(detection)
-    scaled["x"] = float(detection.get("x", 0.0)) * scale_x
-    scaled["y"] = float(detection.get("y", 0.0)) * scale_y
-    scaled["width"] = float(detection.get("width", 0.0)) * scale_x
-    scaled["height"] = float(detection.get("height", 0.0)) * scale_y
-    return scaled
 
 
 def run(
@@ -73,23 +56,16 @@ def run(
         source_fps = 25.0
     else:
         source_fps = float(source_fps_raw)
-    # Keep output pacing tied to source timeline; throughput adapts by frame dropping under load.
     fps = source_fps
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    output_width = FFMPEG_SCALE_WIDTH if FFMPEG_SCALE_WIDTH > 0 else width
-    output_height = FFMPEG_SCALE_HEIGHT if FFMPEG_SCALE_HEIGHT > 0 else height
-    det_scale_x = (output_width / width) if width > 0 else 1.0
-    det_scale_y = (output_height / height) if height > 0 else 1.0
-    ffmpeg_publisher = FFmpegPublisher(stream_id=stream_id, width=width, height=height, fps=fps)
-    ffmpeg_publisher.start()
 
-    ready_payload = {"type": "ready", "width": output_width, "height": output_height, "fps": fps}
+    ready_payload = {"type": "ready", "width": width, "height": height, "fps": fps}
     _offer_latest(detection_queue, ready_payload)
     publisher.publish(stream_id, ready_payload)
 
     lock = threading.Lock()
-    latest = {"frame": None, "idx": 0, "ts": 0.0, "frame_sent_at_ms": 0.0}
+    latest: dict = {"frame": None, "idx": 0, "ts": 0.0}
     stopped = threading.Event()
     is_remote_source = _is_remote_stream_url(source_url)
     allow_catchup_skips = not is_remote_source
@@ -194,19 +170,6 @@ def run(
                 latest["idx"] = frame_idx
                 latest["ts"] = ts
 
-            ffmpeg_publisher.push(frame)
-            frame_sent_at_ms = time.time() * 1000.0
-            publisher.publish(
-                stream_id,
-                {
-                    "type": "frame_meta",
-                    "frame_index": frame_idx,
-                    "timestamp_ms": ts,
-                    "frame_sent_at_ms": frame_sent_at_ms,
-                    "fps": fps,
-                },
-            )
-
             # For file playback, keep reader paced by source FPS.
             # For live/RTSP sources, let source cadence drive timing.
             if not is_remote_source:
@@ -217,9 +180,6 @@ def run(
                 elif sleep < -(read_interval * 3):
                     # Reset schedule if heavily behind to avoid unbounded drift accumulation.
                     next_read_time = time.monotonic()
-
-            with lock:
-                latest["frame_sent_at_ms"] = frame_sent_at_ms
 
         stopped.set()
 
@@ -237,7 +197,6 @@ def run(
             latest_frame = latest["frame"]
             frame_idx = latest["idx"]
             ts = latest["ts"]
-            frame_sent_at_ms = latest["frame_sent_at_ms"]
 
         if latest_frame is None or frame_idx == last_processed_idx:
             time.sleep(0.005)
@@ -251,6 +210,7 @@ def run(
         inf_fps = 1.0 / (now - last_time) if now > last_time else 0.0
         last_time = now
 
+        frame_sent_at_ms = time.time() * 1000.0
         payload = {
             "type": "detections",
             "frame_index": frame_idx,
@@ -259,7 +219,7 @@ def run(
             "fps": fps,
             "inference_fps": round(inf_fps, 1),
             "vessels": [
-                {"detection": _scale_detection(d.model_dump(), det_scale_x, det_scale_y), "vessel": None}
+                {"detection": d.model_dump(), "vessel": None}
                 for d in detections
             ],
         }
@@ -268,7 +228,6 @@ def run(
 
     reader_thread.join(timeout=1)
     cap.release()
-    ffmpeg_publisher.close()
     publisher.close()
     _offer_latest(detection_queue, None)
 

@@ -12,7 +12,7 @@ def _truthy(value: str | None, default: bool = False) -> bool:
 
 
 MEDIAMTX_ENABLED = _truthy(os.getenv("MEDIAMTX_ENABLED"), default=True)
-MEDIAMTX_RTSP_BASE = os.getenv("MEDIAMTX_RTSP_BASE", "rtsp://localhost:8554").rstrip("/")
+MEDIAMTX_RTSP_BASE = os.getenv("MEDIAMTX_RTSP_BASE", "rtsp://localhost:8854").rstrip("/")
 MEDIAMTX_WHEP_BASE = os.getenv("MEDIAMTX_WHEP_BASE", "http://localhost:8889").rstrip("/")
 MEDIAMTX_HLS_BASE = os.getenv("MEDIAMTX_HLS_BASE", "http://localhost:8888").rstrip("/")
 

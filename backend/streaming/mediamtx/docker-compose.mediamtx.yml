@@ -3,7 +3,7 @@ services:
     image: bluenviron/mediamtx:latest
     container_name: mediamtx
     ports:
-      - "8554:8554"       # RTSP ingest
+      - "8854:8854"       # RTSP ingest
       - "8888:8888"       # HLS egress
       - "8889:8889"       # WHEP/WebRTC egress
       - "8189:8189/udp"   # ICE/UDP
