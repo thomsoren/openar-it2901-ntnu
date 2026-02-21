@@ -144,14 +144,13 @@ function streamReducer(state: StreamState, action: StreamAction): StreamState {
 
     case "STREAM_READY": {
       const { streamId } = action;
-      // Replace the setup tab's joined entry with the real stream ID
-      const nextJoined = state.setupTabId
-        ? state.joinedStreamIds
-            .filter((id) => id !== state.setupTabId)
-            .concat(state.joinedStreamIds.includes(streamId) ? [] : [streamId])
-        : state.joinedStreamIds.includes(streamId)
-          ? state.joinedStreamIds
-          : [...state.joinedStreamIds, streamId];
+      // Replace the setup tab's joined entry with the real stream ID.
+      // Important: check the *filtered* list, not the original, to avoid
+      // dropping the stream when setupTabId === streamId.
+      const filtered = state.setupTabId
+        ? state.joinedStreamIds.filter((id) => id !== state.setupTabId)
+        : state.joinedStreamIds;
+      const nextJoined = filtered.includes(streamId) ? filtered : [...filtered, streamId];
       return {
         ...state,
         setupTabId: null,
@@ -169,20 +168,32 @@ function streamReducer(state: StreamState, action: StreamAction): StreamState {
         streams.every((s) => prev.has(`${s.stream_id}:${s.status}`));
       if (streamsUnchanged && state.hasLoadedStreamList) return state;
 
-      // Inline sync: prune joined list against new running streams
+      // Inline sync: prune joined list against new running streams.
+      // Keep the active stream even if not yet in the running list
+      // (it may still be starting up after upload).
       const available = new Set(streams.map((s) => s.stream_id));
       const nextJoined = state.joinedStreamIds.filter(
-        (id) => id === state.setupTabId || available.has(id)
+        (id) => id === state.setupTabId || id === state.activeStreamId || available.has(id)
       );
       const withDefault =
         nextJoined.length > 0 || !available.has("default") ? nextJoined : ["default"];
 
+      // On first load, if all user-configured streams were pruned
+      // (only "default" left) and there's no setup tab, create one so
+      // the user can configure a new stream without having to refresh.
+      let nextSetup = state.setupTabId;
+      if (!state.hasLoadedStreamList && !nextSetup && !withDefault.some((id) => id !== "default")) {
+        const newTabId = nextAvailableStreamId(streams, withDefault);
+        nextSetup = newTabId;
+        withDefault.push(newTabId);
+      }
+
       // Fix active stream if it's no longer in the joined list
       let nextActive = state.activeStreamId;
       let nextWs = state.wsEnabled;
-      if (!withDefault.includes(nextActive) && state.setupTabId !== nextActive) {
+      if (!withDefault.includes(nextActive) && nextSetup !== nextActive) {
         nextActive = withDefault[0] ?? "default";
-        nextWs = state.setupTabId !== nextActive;
+        nextWs = nextSetup !== nextActive;
         if (!withDefault.includes(nextActive)) {
           withDefault.push(nextActive);
         }
@@ -193,6 +204,7 @@ function streamReducer(state: StreamState, action: StreamAction): StreamState {
         runningStreams: streams,
         hasLoadedStreamList: true,
         joinedStreamIds: withDefault,
+        setupTabId: nextSetup,
         activeStreamId: nextActive,
         wsEnabled: nextWs,
       };
@@ -420,11 +432,20 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
       visible = fallbackDefault ? [fallbackDefault] : [];
     }
 
-    // Tabs
+    // Tabs for running streams
     const streamEntries: TabData[] = visible.map((stream) => ({
       id: stream.stream_id,
       title: stream.stream_id === "default" ? "Example" : stream.stream_id,
     }));
+
+    // Add tabs for joined streams that aren't running yet (still starting)
+    const visibleIds = new Set(visible.map((s) => s.stream_id));
+    for (const id of joinedStreamIds) {
+      if (id !== setupTabId && !visibleIds.has(id)) {
+        streamEntries.push({ id, title: `${id} (starting...)` });
+      }
+    }
+
     let tabs: TabData[];
     if (setupTabId) {
       const setupTab: TabData = { id: setupTabId, title: "Configure" };

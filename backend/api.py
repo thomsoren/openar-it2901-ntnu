@@ -13,7 +13,9 @@ from typing import List
 from urllib.parse import urlparse
 
 import cv2
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
+import shutil
+
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -102,12 +104,45 @@ def resolve_default_source() -> str | None:
     return None
 
 
+def _download_s3_to_cache(s3_key: str) -> str:
+    """Download an S3 object to a local cache directory and return the local path."""
+    cache_dir = BASE_DIR / "data" / "cache" / "s3"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use the filename from the S3 key
+    filename = Path(s3_key).name
+    local_path = cache_dir / filename
+
+    if local_path.exists():
+        logger.info("[s3] Using cached file: %s", local_path)
+        return str(local_path)
+
+    logger.info("[s3] Downloading s3://%s to %s", s3_key, local_path)
+    try:
+        client = s3._client()
+        full_key, _ = s3._normalize_key(s3_key)
+        client.download_file(s3.S3_BUCKET, full_key, str(local_path))
+        logger.info("[s3] Download complete: %s", local_path)
+        return str(local_path)
+    except Exception as exc:
+        # Clean up partial download
+        if local_path.exists():
+            local_path.unlink(missing_ok=True)
+        raise RuntimeError(f"Failed to download s3://{s3_key}: {exc}") from exc
+
+
 def resolve_stream_source(source_url: str | None) -> str | None:
     """Resolve local paths robustly while preserving remote stream URLs."""
     if not source_url or not source_url.strip():
         return resolve_default_source()
 
     raw = source_url.strip()
+
+    # Handle s3:// references — download to local cache for OpenCV
+    if raw.startswith("s3://"):
+        s3_key = raw[5:]  # strip "s3://"
+        return _download_s3_to_cache(s3_key)
+
     if _is_remote_stream(raw):
         return raw
 
@@ -461,11 +496,47 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
     if not orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 
-    source_url = resolve_stream_source(request.source_url)
+    try:
+        source_url = resolve_stream_source(request.source_url)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     if not source_url:
         raise HTTPException(status_code=400, detail="source_url is required for this stream")
 
     config = StreamConfig(stream_id=stream_id, source_url=source_url, loop=request.loop)
+    try:
+        handle = orchestrator.start_stream(config)
+    except StreamAlreadyRunningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ResourceLimitExceededError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {"status": "started", **handle.to_dict()}
+
+
+@app.post("/api/streams/{stream_id}/upload", status_code=201)
+async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool = True):
+    """Accept a video file upload, save locally, and start a stream from it."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    upload_dir = BASE_DIR / "data" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    local_path = upload_dir / file.filename
+
+    try:
+        with open(local_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {exc}")
+
+    config = StreamConfig(
+        stream_id=stream_id, source_url=str(local_path), loop=loop
+    )
     try:
         handle = orchestrator.start_stream(config)
     except StreamAlreadyRunningError as exc:
