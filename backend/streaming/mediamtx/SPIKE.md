@@ -16,7 +16,7 @@ Validate stdin -> FFmpeg -> RTSP(MediaMTX) -> WebRTC/HLS viability and auth hook
 - `backend/streaming/mediamtx/mediamtx.auth.yml`
 - `backend/streaming/mediamtx/mediamtx.auth.docker.yml`
 - `backend/streaming/mediamtx/auth_mock.py`
-- `backend/streaming/mediamtx/docker-compose.spike.yml`
+- `backend/streaming/mediamtx/docker-compose.mediamtx.yml`
 
 ## Validation results
 

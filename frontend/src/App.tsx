@@ -324,6 +324,7 @@ function App() {
                   <ObcInput
                     value={streamSearch}
                     placeholder="Search by stream id"
+                    aria-label="Search Running Streams"
                     onInput={(event: Event) =>
                       setStreamSearch(getTextInputValue(event, streamSearch))
                     }
@@ -349,6 +350,7 @@ function App() {
                   <ObcInput
                     value={streamIdInput}
                     placeholder="stream"
+                    aria-label="Stream ID"
                     onInput={(event: Event) =>
                       setStreamIdInput(getTextInputValue(event, streamIdInput))
                     }
@@ -357,6 +359,7 @@ function App() {
                   <ObcInput
                     value={sourceUrlInput}
                     placeholder="Leave empty to use default video"
+                    aria-label="Source URL"
                     onInput={(event: Event) =>
                       setSourceUrlInput(getTextInputValue(event, sourceUrlInput))
                     }

@@ -176,7 +176,7 @@ You should see `whep_url` and `hls_url`.
 ### Stop MediaMTX
 
 ```bash
-docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml down
+docker compose -f backend/streaming/mediamtx/docker-compose.mediamtx.yml down
 ```
 
 ### Starting the API Server

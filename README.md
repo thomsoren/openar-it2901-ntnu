@@ -58,7 +58,7 @@ If you get `Cannot connect to the Docker daemon...`, start Docker Desktop first.
 From repo root:
 
 ```bash
-docker compose -f backend/streaming/mediamtx/docker-compose.spike.yml up -d
+docker compose -f backend/streaming/mediamtx/docker-compose.mediamtx.yml up -d
 ```
 
 | Field | Value |

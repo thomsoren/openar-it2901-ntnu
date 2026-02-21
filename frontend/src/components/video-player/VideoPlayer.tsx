@@ -48,6 +48,7 @@ function VideoPlayer({
   const [transport, setTransport] = useState<VideoTransport>("webrtc");
   const [hlsState, setHlsState] = useState<VideoConnectionStatus>("idle");
   const [hlsError, setHlsError] = useState<string | null>(null);
+  const whepRetryCount = useRef(0);
 
   const resolvedWhepUrl = useMemo(() => {
     if (whepUrl) {
@@ -101,19 +102,25 @@ function VideoPlayer({
   }, [onStatusChange, resolvedHlsUrl, transport, whepError, whepStatus]);
 
   // Always prefer WebRTC: if we are on HLS fallback, periodically retry WHEP.
+  // Stop retrying after 30 attempts to avoid infinite teardown/rebuild of HLS.
   useEffect(() => {
     if (transport !== "hls") {
+      whepRetryCount.current = 0;
       return;
     }
     if (!resolvedWhepUrl) {
       return;
     }
+    if (whepRetryCount.current >= 30) {
+      return;
+    }
 
     const retryTimer = window.setTimeout(() => {
+      whepRetryCount.current += 1;
       setTransport("webrtc");
       setHlsState("idle");
       setHlsError(null);
-    }, 2500);
+    }, 5000);
 
     return () => {
       window.clearTimeout(retryTimer);

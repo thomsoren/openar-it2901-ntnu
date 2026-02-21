@@ -17,6 +17,7 @@ hlsSegmentDuration: 1s
 
 webrtc: yes
 webrtcAddress: :8889
+# DEVELOPMENT ONLY: restrict to specific origins in production
 webrtcAllowOrigins: ['*']
 webrtcLocalUDPAddress: :8189
 webrtcAdditionalHosts: [127.0.0.1, localhost, host.docker.internal]

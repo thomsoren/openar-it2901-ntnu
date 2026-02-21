@@ -20,6 +20,8 @@ MEDIAMTX_PUBLISH_USER = os.getenv("MEDIAMTX_PUBLISH_USER", "").strip()
 MEDIAMTX_PUBLISH_PASS = os.getenv("MEDIAMTX_PUBLISH_PASS", "").strip()
 MEDIAMTX_READ_USER = os.getenv("MEDIAMTX_READ_USER", "").strip()
 MEDIAMTX_READ_PASS = os.getenv("MEDIAMTX_READ_PASS", "").strip()
+# WARNING: When true, read credentials are embedded in playback URLs returned
+# to the browser via the API. Only enable for local development or trusted networks.
 MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS = _truthy(
     os.getenv("MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS"),
     default=False,

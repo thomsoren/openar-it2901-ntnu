@@ -1,7 +1,7 @@
 services:
   mediamtx:
     image: bluenviron/mediamtx:latest
-    container_name: mediamtx-spike
+    container_name: mediamtx
     ports:
       - "8554:8554"       # RTSP ingest
       - "8888:8888"       # HLS egress

@@ -103,14 +103,25 @@ def run(
         next_read_time = time.monotonic()
         last_ts_ms = 0.0
         reconnect_backoff = 0.5
+        reconnect_attempts = 0
+        max_reconnect_attempts = int(os.getenv("STREAM_MAX_RECONNECT_ATTEMPTS", "30"))
 
         while not stopped.is_set():
             if not cap.isOpened():
                 if is_remote_source:
+                    reconnect_attempts += 1
+                    if reconnect_attempts > max_reconnect_attempts:
+                        logger.error(
+                            "[%s] Giving up after %d reconnect attempts",
+                            stream_id, max_reconnect_attempts,
+                        )
+                        break
                     logger.warning(
-                        "[%s] Source disconnected; reconnecting in %.1fs",
+                        "[%s] Source disconnected; reconnecting in %.1fs (attempt %d/%d)",
                         stream_id,
                         reconnect_backoff,
+                        reconnect_attempts,
+                        max_reconnect_attempts,
                     )
                     time.sleep(reconnect_backoff)
                     reconnect_backoff = min(reconnect_backoff * 2.0, 8.0)
@@ -131,17 +142,27 @@ def run(
             ret, frame = cap.read()
             if not ret:
                 if is_remote_source:
+                    cap.release()
+                    reconnect_attempts += 1
+                    if reconnect_attempts > max_reconnect_attempts:
+                        logger.error(
+                            "[%s] Giving up after %d reconnect attempts",
+                            stream_id, max_reconnect_attempts,
+                        )
+                        break
                     logger.warning(
-                        "[%s] Source read failed; reconnecting in %.1fs",
+                        "[%s] Source read failed; reconnecting in %.1fs (attempt %d/%d)",
                         stream_id,
                         reconnect_backoff,
+                        reconnect_attempts,
+                        max_reconnect_attempts,
                     )
-                    cap.release()
                     time.sleep(reconnect_backoff)
                     reconnect_backoff = min(reconnect_backoff * 2.0, 8.0)
                     cap = cv2.VideoCapture(source_url)
                     if cap.isOpened():
                         reconnect_backoff = 0.5
+                        reconnect_attempts = 0
                         start_mono = time.monotonic()
                         next_read_time = time.monotonic()
                         continue

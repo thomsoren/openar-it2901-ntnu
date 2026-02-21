@@ -39,17 +39,16 @@ class WorkerHandle:
 
     def terminate(self):
         # Unblock API consumers waiting on queue.get() before terminating process.
-        for q in (self.inference_queue,):
+        try:
+            self.inference_queue.put_nowait(None)
+        except Full:
             try:
-                q.put_nowait(None)
-            except Full:
-                try:
-                    q.get_nowait()
-                    q.put_nowait(None)
-                except (Empty, Full):
-                    pass
-            except Exception:
+                self.inference_queue.get_nowait()
+                self.inference_queue.put_nowait(None)
+            except (Empty, Full):
                 pass
+        except Exception:
+            pass
 
         if self.process.is_alive():
             self.process.terminate()
