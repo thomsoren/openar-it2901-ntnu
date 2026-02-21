@@ -31,7 +31,8 @@ def get_video_info(source: Union[str, int, Path]) -> VideoInfo | None:
     if isinstance(source, Path):
         source = str(source)
         
-    cap = cv2.VideoCapture(source)
+    backend = cv2.CAP_FFMPEG if isinstance(source, str) and source.startswith("http") else cv2.CAP_ANY
+    cap = cv2.VideoCapture(source, backend)
     if not cap.isOpened():
         return None
         
