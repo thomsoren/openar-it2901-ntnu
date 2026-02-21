@@ -126,7 +126,7 @@ class FFmpegPublisher:
                 self._build_command(codec),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 bufsize=0,
             )
             logger.info("[%s] FFmpeg publisher started (%s)", self.stream_id, codec)
@@ -175,7 +175,9 @@ class FFmpegPublisher:
                 return
 
         payload = frame.tobytes()
-        attempts = len(self._codec_candidates) + 1
+        # Each codec may be tried twice (initial + one restart), so worst case
+        # is 2 iterations per candidate codec.
+        attempts = 2 * len(self._codec_candidates)
         for _ in range(attempts):
             try:
                 if not self.process or not self.process.stdin:
@@ -187,9 +189,23 @@ class FFmpegPublisher:
                     logger.warning("[%s] FFmpeg disabled after repeated pipe failures", self.stream_id)
                     return
 
+    def _drain_stderr(self) -> None:
+        """Read and log any buffered stderr from FFmpeg before closing."""
+        if not self.process or not self.process.stderr:
+            return
+        try:
+            output = self.process.stderr.read()
+            if output:
+                text = output.decode("utf-8", errors="replace").strip()
+                if text:
+                    logger.warning("[%s] FFmpeg stderr:\n%s", self.stream_id, text)
+        except Exception:
+            pass
+
     def close(self) -> None:
         if not self.process:
             return
+        self._drain_stderr()
         try:
             if self.process.stdin:
                 self.process.stdin.close()

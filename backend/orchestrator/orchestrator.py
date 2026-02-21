@@ -161,47 +161,69 @@ class WorkerOrchestrator:
             with self._lock:
                 snapshot = list(self._workers.items())
 
-            if self._idle_timeout_seconds > 0:
-                idle_ids = [
-                    sid for sid, h in snapshot
-                    if sid not in self._protected_stream_ids
-                    and (now - h.last_heartbeat) > self._idle_timeout_seconds
-                ]
-                for sid in idle_ids:
-                    logger.info(
-                        "Stopping idle stream '%s' (no heartbeat for %.0fs)",
-                        sid, self._idle_timeout_seconds,
-                    )
-                    try:
-                        self.stop_stream(sid)
-                    except StreamNotFoundError:
-                        pass
-
-            if self._no_viewer_timeout_seconds > 0:
+                # No-viewer timeout: mutations to no_viewer_since must happen
+                # under the lock to avoid racing with release_stream_viewer().
                 no_viewer_ids: list[str] = []
-                for sid, handle in snapshot:
-                    if sid in self._protected_stream_ids:
+                if self._no_viewer_timeout_seconds > 0:
+                    for sid, handle in snapshot:
+                        if sid in self._protected_stream_ids:
+                            continue
+                        if handle.viewer_count > 0:
+                            handle.no_viewer_since = 0.0
+                            continue
+                        if handle.no_viewer_since == 0.0:
+                            handle.no_viewer_since = now
+                            continue
+                        if (now - handle.no_viewer_since) >= self._no_viewer_timeout_seconds:
+                            no_viewer_ids.append(sid)
+
+                # Idle timeout: computed under lock alongside no-viewer check
+                # so both use the same consistent snapshot.
+                idle_ids: list[str] = []
+                if self._idle_timeout_seconds > 0:
+                    idle_ids = [
+                        sid for sid, h in snapshot
+                        if sid not in self._protected_stream_ids
+                        and (now - h.last_heartbeat) > self._idle_timeout_seconds
+                    ]
+
+            # Stop idle streams. Re-check under lock before each stop to
+            # avoid racing with acquire_stream_viewer / touch_stream.
+            for sid in idle_ids:
+                with self._lock:
+                    handle = self._workers.get(sid)
+                    if not handle:
+                        continue
+                    if (now - handle.last_heartbeat) <= self._idle_timeout_seconds:
+                        continue
+                logger.info(
+                    "Stopping idle stream '%s' (no heartbeat for %.0fs)",
+                    sid, self._idle_timeout_seconds,
+                )
+                try:
+                    self.stop_stream(sid)
+                except StreamNotFoundError:
+                    pass
+
+            # Stop streams with no viewers. Re-check under lock before each
+            # stop to avoid racing with acquire_stream_viewer.
+            for sid in no_viewer_ids:
+                with self._lock:
+                    handle = self._workers.get(sid)
+                    if not handle:
                         continue
                     if handle.viewer_count > 0:
-                        handle.no_viewer_since = 0.0
                         continue
-                    if handle.no_viewer_since == 0.0:
-                        handle.no_viewer_since = now
-                        continue
-                    if (now - handle.no_viewer_since) >= self._no_viewer_timeout_seconds:
-                        no_viewer_ids.append(sid)
-
-                for sid in no_viewer_ids:
-                    logger.info(
-                        "Stopping stream '%s' (no active viewers for %.0fs)",
-                        sid,
-                        self._no_viewer_timeout_seconds,
-                    )
-                    try:
-                        # Keep stream config so a later viewer can auto-restart.
-                        self.stop_stream(sid, remove_config=False)
-                    except StreamNotFoundError:
-                        pass
+                logger.info(
+                    "Stopping stream '%s' (no active viewers for %.0fs)",
+                    sid,
+                    self._no_viewer_timeout_seconds,
+                )
+                try:
+                    # Keep stream config so a later viewer can auto-restart.
+                    self.stop_stream(sid, remove_config=False)
+                except StreamNotFoundError:
+                    pass
 
             for stream_id, handle in snapshot:
                 with self._lock:
