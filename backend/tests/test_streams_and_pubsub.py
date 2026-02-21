@@ -4,37 +4,13 @@ import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Queue
+
 import pytest
 from fastapi.testclient import TestClient
 
 import api
 from common.config import create_redis_client, detections_channel
 from orchestrator import StreamConfig, WorkerOrchestrator
-
-
-class FakeProcess:
-    _next_pid = 20000
-
-    def __init__(self):
-        type(self)._next_pid += 1
-        self.pid = type(self)._next_pid
-        self._alive = True
-        self.exitcode = None
-
-    def is_alive(self):
-        return self._alive
-
-    def terminate(self):
-        self._alive = False
-        self.exitcode = 0
-
-    def join(self, timeout=None):
-        return None
-
-    def kill(self):
-        self._alive = False
-        self.exitcode = -9
 
 
 @pytest.fixture
@@ -48,16 +24,7 @@ def redis_available():
         client.close()
 
 
-@pytest.fixture
-def fake_worker(monkeypatch):
-    def _fake_start(source_url: str, stream_id: str, loop: bool = True):
-        del source_url, stream_id, loop
-        return FakeProcess(), Queue(maxsize=10)
-
-    monkeypatch.setattr("orchestrator.orchestrator.worker.start", _fake_start)
-
-
-def test_concurrent_stream_starts(fake_worker):
+def test_concurrent_stream_starts(fake_worker_start, fake_ffmpeg):
     orchestrator = WorkerOrchestrator(max_workers=8)
     stream_ids = [f"concurrent-{idx}" for idx in range(6)]
 
@@ -77,7 +44,7 @@ def test_concurrent_stream_starts(fake_worker):
     orchestrator.shutdown()
 
 
-def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker):
+def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker_start, fake_ffmpeg):
     stream_id = "pubsub-test"
     payload = {
         "type": "detections",
@@ -118,7 +85,7 @@ def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker):
             publisher.close()
 
 
-def test_streams_include_playback_urls(fake_worker):
+def test_streams_include_playback_urls(fake_worker_start, fake_ffmpeg):
     stream_id = "playback-test"
     with TestClient(api.app) as client:
         start_response = client.post(
