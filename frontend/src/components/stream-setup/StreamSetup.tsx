@@ -3,7 +3,6 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObcRichButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/rich-button/rich-button";
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
 import { ObcAttachmentListItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/attachment-list-item/attachment-list-item";
-import { ObcAlertFrame } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/alert-frame/alert-frame";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
 import { ObiFileDownloadGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-file-download-google";
 import { ObiUpIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-up-iec";
@@ -12,15 +11,10 @@ import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcompo
 import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
 import { RichButtonDirection } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/rich-button/rich-button";
 import {
-  ObcAlertFrameStatus,
-  ObcAlertFrameType,
-} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/alert-frame/alert-frame";
-import {
   ProgressBarMode,
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar";
-import { apiFetch } from "../../lib/api-client";
-import { readApiError } from "../../utils/api-helpers";
+import { apiFetch, getApiAccessToken, getApiBaseUrl } from "../../lib/api-client";
 import "./StreamSetup.css";
 
 type StreamSetupProps = {
@@ -135,25 +129,8 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setMessage(null);
 
     try {
-      const presignResponse = await apiFetch("/api/storage/presign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          key: `video/${file.name}`,
-          method: "PUT",
-          content_type: file.type || "video/mp4",
-          expires_in: 3600,
-        }),
-      });
-
-      if (!presignResponse.ok) {
-        throw new Error(await readApiError(presignResponse, "Failed to generate upload URL"));
-      }
-
-      const payload = (await presignResponse.json()) as {
-        url: string;
-        headers?: Record<string, string>;
-      };
+      const formData = new FormData();
+      formData.append("file", file);
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -168,7 +145,12 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
           } else {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
+            try {
+              const body = JSON.parse(xhr.responseText) as { detail?: string };
+              reject(new Error(body.detail || `Upload failed with status ${xhr.status}`));
+            } catch {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
           }
         });
         xhr.addEventListener("error", () => {
@@ -179,13 +161,16 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
           xhrRef.current = null;
           reject(new Error("Upload aborted"));
         });
-        xhr.open("PUT", payload.url);
-        Object.entries(payload.headers || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
-        xhr.send(file);
+
+        const url = `${getApiBaseUrl()}/api/streams/${encodeURIComponent(tabId)}/upload`;
+        xhr.open("POST", url);
+        const token = getApiAccessToken();
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.send(formData);
       });
 
       setUploadProgress(100);
-      await startStreamWithSource(payload.url);
+      onStreamReady(tabId);
     } catch (err) {
       setStatus("error");
       setMessage(err instanceof Error ? err.message : "Upload failed");
@@ -397,15 +382,9 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
             )}
 
             {message && (
-              <ObcAlertFrame
-                type={ObcAlertFrameType.Regular}
-                status={
-                  status === "error" ? ObcAlertFrameStatus.Alarm : ObcAlertFrameStatus.Caution
-                }
-                className="stream-setup__alert"
-              >
-                <div>{message}</div>
-              </ObcAlertFrame>
+              <div className="stream-setup__message" data-status={status}>
+                {message}
+              </div>
             )}
 
             {status === "starting" && (
@@ -465,13 +444,9 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
         {status === "starting" && <div className="stream-setup__status">Starting stream...</div>}
 
         {message && (
-          <ObcAlertFrame
-            type={ObcAlertFrameType.Regular}
-            status={status === "error" ? ObcAlertFrameStatus.Alarm : ObcAlertFrameStatus.Caution}
-            className="stream-setup__alert"
-          >
-            <div>{message}</div>
-          </ObcAlertFrame>
+          <div className="stream-setup__message" data-status={status}>
+            {message}
+          </div>
         )}
       </div>
     </div>

@@ -128,9 +128,17 @@
   padding: 8px 0;
 }
 
-.stream-setup__alert {
-  width: 100%;
-  box-sizing: border-box;
+.stream-setup__message {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-body-font-size, 16px);
+  line-height: var(--global-typography-ui-body-line-height, 24px);
+  color: var(--element-neutral-color, #535353);
+  text-align: center;
+  padding: 8px 0;
+}
+
+.stream-setup__message[data-status="error"] {
+  color: var(--alert-alarm-color, #c0392b);
 }
 
 /* ── File-selected state: wide preview modal ── */
