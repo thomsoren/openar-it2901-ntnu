@@ -29,7 +29,7 @@ def _offer_latest(queue_obj: Queue, item) -> None:
             queue_obj.get_nowait()
             queue_obj.put_nowait(item)
         except (Empty, Full):
-                pass
+            pass
 
 
 def _is_remote_stream_url(source_url: str) -> bool:
@@ -52,16 +52,8 @@ def run(
     source_url: str,
     stream_id: str,
     detection_queue: Queue,
-    frame_queue_or_loop=None,
-    loop: bool | None = None,
+    loop: bool = True,
 ):
-    # Backward-compatible signature:
-    # old: run(source_url, stream_id, detection_queue, frame_queue, loop)
-    # new: run(source_url, stream_id, detection_queue, loop)
-    if isinstance(frame_queue_or_loop, bool) and loop is None:
-        loop = frame_queue_or_loop
-    if loop is None:
-        loop = True
     from cv.detectors import get_detector
     from cv.publisher import DetectionPublisher
 
