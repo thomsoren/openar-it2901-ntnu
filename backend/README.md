@@ -84,10 +84,6 @@ MEDIAMTX_WHEP_BASE=http://localhost:8889
 MEDIAMTX_HLS_BASE=http://localhost:8888
 ```
 
-Overlay alignment note:
-- Detection coordinates are mapped from detector frame dimensions to rendered video dimensions in the frontend.
-- This means `FFMPEG_SCALE_WIDTH/FFMPEG_SCALE_HEIGHT` can be enabled without breaking POI placement.
-
 ## S3 Storage
 
 When S3 keys are configured, video and detection assets are served from Hetzner S3. The frontend uploads directly via presigned URLs.
