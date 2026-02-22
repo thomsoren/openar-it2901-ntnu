@@ -247,20 +247,20 @@ async def fetch_ais_stream_projections(
     """
     Fetch AIS data stream and project vessel positions to camera pixel coordinates.
     Offset and FOV define the area around the ship to fetch AIS data from.
-    
+
     Args:
         ship_lat: Observer latitude
         ship_lon: Observer longitude
         heading: Observer heading in degrees
         offset_meters: How far from the observer to fetch AIS data (in meters)
         fov_degrees: Field of view angle in degrees
-    
+
     Yields:
         AIS features enriched with projection field containing pixel coordinates
     """
-    
+
     cam_cfg = CameraConfig(h_fov_deg=fov_degrees)
-    
+
     async for feature in fetch_ais_stream_geojson(
         ship_lat=ship_lat,
         ship_lon=ship_lon,
