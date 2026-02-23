@@ -62,3 +62,13 @@
   cursor: pointer;
   box-shadow: 0 0 6px #00d4ff88;
 }
+
+.geojson-map-vessel-icon {
+  width: 10px;
+  height: 10px;
+  background: #ff5722;
+  border: 2px solid #0a0e1a;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #ff572288;
+  cursor: pointer;
+}

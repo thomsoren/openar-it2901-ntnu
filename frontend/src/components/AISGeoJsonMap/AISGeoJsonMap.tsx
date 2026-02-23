@@ -6,6 +6,9 @@ import { useObcPalette } from "../../hooks/useOBCTheme";
 import getTilemapURL from "./AISGeoJsonMapTilemap";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
+import { AISData } from "../../types/aisData";
+import { destinationPoint, headingTo, distanceTo, buildFovPolygon } from "../../utils/geometryMath";
+import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -13,59 +16,16 @@ interface AISGeoJsonMapProps {
   heading: number;
   offsetMeters: number;
   fovDegrees: number;
+  vessels?: AISData[];
   // Called when the user drags adjust-anchor on the map
   onChange?: (
     updates: Partial<{ shipLat: number; shipLon: number; heading: number; offsetMeters: number }>
   ) => void;
 }
 
-// Geo helpers
-const METERS_PER_LAT_DEGREE = 111_320;
-const metersPerLonDegree = (lat: number) => METERS_PER_LAT_DEGREE * Math.cos(lat * (Math.PI / 180));
-
-// Return the destination point from current origin, based on heading (degrees) and distance (metres)
-function destinationPoint(
-  lat: number,
-  lon: number,
-  headingDeg: number,
-  distanceM: number
-): [number, number] {
-  const headingRad = headingDeg * (Math.PI / 180);
-  const destLat = lat + (distanceM * Math.cos(headingRad)) / METERS_PER_LAT_DEGREE;
-  const destLon = lon + (distanceM * Math.sin(headingRad)) / metersPerLonDegree(lat);
-  return [destLat, destLon];
-}
-
-// Return the compass heading (0-360 degrees) from point A to point B
-function headingTo(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const deltaY = (lat2 - lat1) * METERS_PER_LAT_DEGREE;
-  const deltaX = (lon2 - lon1) * metersPerLonDegree(lat1);
-  return (Math.atan2(deltaX, deltaY) * (180 / Math.PI) + 360) % 360;
-}
-
-// Return the straight-line distance in metres between two points
-function distanceTo(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const deltaY = (lat2 - lat1) * METERS_PER_LAT_DEGREE;
-  const deltaX = (lon2 - lon1) * metersPerLonDegree(lat1);
-  return Math.sqrt(deltaX ** 2 + deltaY ** 2);
-}
-
-// Helper to build the geojson shape
-// param: steps controls how smooth the arc is - more steps means smoother but more processing
-function buildWedge(
-  lat: number,
-  lon: number,
-  headingDeg: number,
-  rangeMetre: number,
-  fovDeg: number,
-  steps = 32
-): [number, number][] {
-  const half = fovDeg / 2;
-  const arc: [number, number][] = [];
-  for (let i = 0; i <= steps; i++) {
-    arc.push(destinationPoint(lat, lon, headingDeg - half + (fovDeg * i) / steps, rangeMetre));
-  }
-  return [[lat, lon], ...arc, [lat, lon]];
+// Convert GeoJSON [lon, lat] polygon to Leaflet [lat, lon] format for rendering.
+function toLeafletLatLngs(geoJsonCoords: [number, number][]): [number, number][] {
+  return geoJsonCoords.map(([lon, lat]) => [lat, lon]);
 }
 
 /**  Leaflet CDN loader  **/
@@ -99,6 +59,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   heading,
   offsetMeters,
   fovDegrees,
+  vessels,
   onChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -106,9 +67,11 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const wedgeRef = useRef<Polygon | null>(null);
   const originRef = useRef<Marker | null>(null);
   const rangeRef = useRef<Marker | null>(null);
+  const vesselMarkersRef = useRef<Marker[]>([]);
   const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
   const theme = useObcPalette();
   const [followMode, setFollowMode] = useState(true);
+  const [selectedVessel, setSelectedVessel] = useState<AISData | null>(null);
 
   const centerMap = useCallback(() => {
     if (!mapRef.current) return;
@@ -142,7 +105,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       // Build wedge polygon
       wedgeRef.current = L.polygon(
-        buildWedge(shipLat, shipLon, heading, offsetMeters, fovDegrees),
+        toLeafletLatLngs(buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees)),
         {
           color: "#00d4ff",
           fillColor: "#00d4ff",
@@ -169,7 +132,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       originMarker.on("drag", (e: LeafletEvent) => {
         const { lat, lng } = (e.target as Marker).getLatLng();
-        wedgeRef.current?.setLatLngs(buildWedge(lat, lng, heading, offsetMeters, fovDegrees));
+        wedgeRef.current?.setLatLngs(
+          toLeafletLatLngs(buildFovPolygon(lat, lng, heading, offsetMeters, fovDegrees))
+        );
         const [rLat, rLon] = destinationPoint(lat, lng, heading, offsetMeters);
         rangeRef.current?.setLatLng([rLat, rLon]);
       });
@@ -200,12 +165,14 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         const origin = originRef.current?.getLatLng();
         if (!origin) return;
         wedgeRef.current?.setLatLngs(
-          buildWedge(
-            origin.lat,
-            origin.lng,
-            headingTo(origin.lat, origin.lng, lat, lng),
-            distanceTo(origin.lat, origin.lng, lat, lng),
-            fovDegrees
+          toLeafletLatLngs(
+            buildFovPolygon(
+              origin.lat,
+              origin.lng,
+              headingTo(origin.lat, origin.lng, lat, lng),
+              distanceTo(origin.lat, origin.lng, lat, lng),
+              fovDegrees
+            )
           )
         );
       });
@@ -242,13 +209,56 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   useEffect(() => {
     if (!mapRef.current) return;
 
-    wedgeRef.current?.setLatLngs(buildWedge(shipLat, shipLon, heading, offsetMeters, fovDegrees));
+    wedgeRef.current?.setLatLngs(
+      toLeafletLatLngs(buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees))
+    );
     originRef.current?.setLatLng([shipLat, shipLon]);
     const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
     rangeRef.current?.setLatLng([rLat, rLon]);
 
     if (followMode) centerMap();
   }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap, followMode]);
+
+  // Sync vessel markers when vessels data changes
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Remove all existing vessel markers
+    vesselMarkersRef.current.forEach((marker) => marker.remove());
+    vesselMarkersRef.current = [];
+
+    // Add new vessel markers
+    loadLeaflet().then((L) => {
+      if (!mapRef.current || !vessels) return;
+
+      vessels.forEach((vessel) => {
+        if (!vessel.latitude || !vessel.longitude) return;
+
+        const vesselMarker = L.marker([vessel.latitude, vessel.longitude], {
+          icon: L.divIcon({
+            html: `<div class="geojson-map-vessel-icon"></div>`,
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
+            className: "",
+          }),
+          interactive: true,
+        })
+          .addTo(mapRef.current!)
+          .bindTooltip(`MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`, {
+            direction: "top",
+            offset: [0, -10],
+          })
+          .on("click", () => {
+            setSelectedVessel(vessel);
+            mapRef.current?.panTo([vessel.latitude!, vessel.longitude!], {
+              animate: true,
+              duration: 0.5,
+            });
+          });
+        vesselMarkersRef.current.push(vesselMarker);
+      });
+    });
+  }, [vessels]);
 
   // Refresh tile layer when theme changes
   useEffect(() => {
@@ -263,6 +273,14 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       tileLayerRef.current = L.tileLayer(newUrl, { maxZoom: 19 }).addTo(mapRef.current);
     });
   }, [theme]);
+
+  // Keep selected vessel data in sync when AIS updates arrive
+  useEffect(() => {
+    if (!selectedVessel || !vessels) return;
+
+    const updated = vessels.find((v) => v.mmsi === selectedVessel.mmsi);
+    if (updated) setSelectedVessel(updated);
+  }, [vessels, selectedVessel]);
 
   return (
     <div className="geojson-map-container">
@@ -281,6 +299,19 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       >
         {followMode ? "Following" : "Follow"}
       </ObcButton>
+
+      {/* 
+          Selected vessel card 
+          TODO: Change with OBC-Poi-Card component
+      */}
+      {selectedVessel && (
+        <AISDataPanel
+          vessel={selectedVessel}
+          onClose={() => {
+            setSelectedVessel(null);
+          }}
+        />
+      )}
     </div>
   );
 };

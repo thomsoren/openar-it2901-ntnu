@@ -1,6 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { AISData } from "../types/aisData";
 import { API_CONFIG } from "../config/video";
+import { isPointInPolygon, buildFovPolygon } from "../utils/geometryMath";
+
+const isVesselInFov = (vessel: AISData, polygon: [number, number][]): boolean => {
+  if (!vessel.latitude || !vessel.longitude) return false;
+  return isPointInPolygon(vessel.longitude, vessel.latitude, polygon);
+};
+
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,
   shipLat: number = 63.4365,
@@ -9,50 +16,100 @@ export const useFetchAISGeographicalData = (
   offsetMeters: number = 1000,
   fovDegrees: number = 60
 ) => {
+  // All received vessels unfiltered
+  const vesselCacheRef = useRef<Map<number, AISData>>(new Map());
+
   const [features, setFeatures] = useState<AISData[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Re-filter cached vessels whenever parameters change or vessels are out of bounds
+  useEffect(() => {
+    const polygon = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+    const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
+      isVesselInFov(vessel, polygon)
+    );
+    setFeatures(inFov.slice(0, 50));
+  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees]);
 
   useEffect(() => {
     if (!shouldStream) {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-      // Defer state update to avoid cascading renders
-      setTimeout(() => setIsStreaming(false), 0);
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setIsStreaming(false);
       return;
     }
 
-    // Clear error state when starting a new stream (deferred to avoid cascading renders)
-    setTimeout(() => setError(null), 0);
+    const polygon = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
 
-    const url = `${API_CONFIG.BASE_URL}/api/ais/stream?ship_lat=${shipLat}&ship_lon=${shipLon}&heading=${heading}&offset_meters=${offsetMeters}&fov_degrees=${fovDegrees}`;
-    const eventSource = new EventSource(url);
-    eventSourceRef.current = eventSource;
+    setError(null);
+    setIsStreaming(true);
 
-    // Set streaming state after creating EventSource (avoids cascading renders)
-    setTimeout(() => setIsStreaming(true), 0);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setFeatures((prev) => [data, ...prev].slice(0, 50));
+    const runStream = async () => {
+      try {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/ais/stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ coordinates: polygon }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop()!;
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data: AISData = JSON.parse(line.slice(6));
+              if (!data.latitude || !data.longitude || !data.mmsi) continue;
+
+              vesselCacheRef.current.set(data.mmsi, data);
+
+              const currentPolygon = buildFovPolygon(
+                shipLat,
+                shipLon,
+                heading,
+                offsetMeters,
+                fovDegrees
+              );
+              const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
+                isVesselInFov(vessel, currentPolygon)
+              );
+              setFeatures(inFov.slice(0, 50));
+            } catch {
+              // Ignore JSON parse errors or invalid data entries
+            }
+          }
+        }
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        setError("Connection lost");
+      } finally {
+        // Only clear streaming state if the stream ended naturally or errored out.
+        if (!controller.signal.aborted) {
+          setIsStreaming(false);
+        }
+      }
     };
 
-    eventSource.onerror = () => {
-      eventSource.close();
-      eventSourceRef.current = null;
-      setTimeout(() => setIsStreaming(false), 0);
-      setError("Connection lost");
-    };
+    runStream();
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
-        eventSourceRef.current = null;
-      }
-      setTimeout(() => setIsStreaming(false), 0);
+      controller.abort();
+      abortRef.current = null;
     };
   }, [shouldStream, shipLat, shipLon, heading, offsetMeters, fovDegrees]);
 
