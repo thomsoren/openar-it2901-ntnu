@@ -1,11 +1,13 @@
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
 import { ObcDropdownButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/dropdown-button/dropdown-button";
 import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
-import { ObiRangeRingsIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-range-rings-iec";
+import { DropdownButtonType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/dropdown-button/dropdown-button";
 import { ObiBuoySparEast } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-buoy-spar-east";
+import { ObiRadarRangeProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-radar-range-proposal";
 import { ObiVesselTypeGenericOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-generic-outlined";
 import { ObiAisProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-proposal";
 import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
+import { ObiTargetSettingsProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-target-settings-proposal";
 import { useARControls } from "./useARControls";
 import type { PoiDropdownValue, RangeValue } from "./ar-control-context";
 import "./ARControlPanel.css";
@@ -40,13 +42,18 @@ export function ARControlPanel() {
 
   return (
     <div className="ar-control-bar">
-      <ObcDropdownButton
-        className="ar-control-bar__range"
-        title="Range selection"
-        options={RANGE_OPTIONS}
-        value={state.rangeValue}
-        onChange={(event) => setRangeValue(event.detail.value as RangeValue)}
-      />
+      <div className="obc-component-size-regular">
+        <ObcDropdownButton
+          className="ar-control-bar__range"
+          title="Range selection"
+          type={DropdownButtonType.labelIcon}
+          options={RANGE_OPTIONS}
+          value={state.rangeValue}
+          onChange={(event) => setRangeValue(event.detail.value as RangeValue)}
+        >
+          <ObiRadarRangeProposal slot="icon" />
+        </ObcDropdownButton>
+      </div>
 
       <ObcIconButton
         variant={IconButtonVariant.flat}
@@ -54,7 +61,7 @@ export function ARControlPanel() {
         title="Ruler"
         onClick={() => toggle("rulerVisible")}
       >
-        <ObiRangeRingsIec />
+        <ObiRadarRangeProposal />
       </ObcIconButton>
       <ObcIconButton
         variant={IconButtonVariant.flat}
@@ -90,18 +97,23 @@ export function ARControlPanel() {
         <ObiCamera />
       </ObcIconButton>
 
-      <ObcDropdownButton
-        className="ar-control-bar__poi-dropdown"
-        title="POI settings"
-        options={POI_OPTIONS}
-        value={state.poiDropdownValue}
-        onChange={(event) => {
-          const value = event.detail.value as PoiDropdownValue;
-          setPoiDropdownValue(value);
-          if (value === "poi-show" && !state.poiVisible) toggle("poiVisible");
-          if (value === "poi-hide" && state.poiVisible) toggle("poiVisible");
-        }}
-      />
+      <div className="obc-component-size-regular">
+        <ObcDropdownButton
+          className="ar-control-bar__poi-dropdown"
+          title="POI settings"
+          type={DropdownButtonType.labelIcon}
+          options={POI_OPTIONS}
+          value={state.poiDropdownValue}
+          onChange={(event) => {
+            const value = event.detail.value as PoiDropdownValue;
+            setPoiDropdownValue(value);
+            if (value === "poi-show" && !state.poiVisible) toggle("poiVisible");
+            if (value === "poi-hide" && state.poiVisible) toggle("poiVisible");
+          }}
+        >
+          <ObiTargetSettingsProposal slot="icon" />
+        </ObcDropdownButton>
+      </div>
     </div>
   );
 }
