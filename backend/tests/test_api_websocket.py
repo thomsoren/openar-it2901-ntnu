@@ -97,7 +97,11 @@ class TestWebSocketDetectionDelivery:
 
         try:
             with stream_app_client.websocket_connect(f"/api/detections/ws/{stream_id}") as ws:
-                msg = ws.receive_json()
+                # Skip any non-detection messages (e.g. "ready" from inference thread)
+                for _ in range(10):
+                    msg = ws.receive_json()
+                    if msg.get("type") == "detections":
+                        break
                 assert msg["type"] == "detections"
                 assert msg["frame_index"] == 7
         finally:

@@ -32,12 +32,12 @@ class TestStartStop:
         orch.start_stream(_cfg("s1"))
         assert "s1" in orch._stream_configs
 
-    def test_stop_terminates_process(self, orchestrator_factory):
+    def test_stop_terminates_decode_thread(self, orchestrator_factory):
         orch = orchestrator_factory()
         handle = orch.start_stream(_cfg("s1"))
-        process = handle.process
+        decode_thread = handle.decode_thread
         orch.stop_stream("s1")
-        assert not process.is_alive()
+        assert not decode_thread.is_alive
 
     def test_stop_nonexistent_raises(self, orchestrator_factory):
         orch = orchestrator_factory()
@@ -90,7 +90,7 @@ class TestListStreams:
         orch = orchestrator_factory()
         orch.start_stream(_cfg("s1"))
         item = orch.list_streams()[0]
-        for key in ("stream_id", "status", "pid", "viewer_count", "restart_count", "source_url"):
+        for key in ("stream_id", "status", "viewer_count", "restart_count", "source_url"):
             assert key in item, f"Missing key: {key}"
 
 
@@ -101,7 +101,7 @@ class TestHeartbeat:
         orch = orchestrator_factory()
         handle = orch.start_stream(_cfg("s1"))
         old_hb = handle.last_heartbeat
-        time.sleep(0.01)
+        time.sleep(0.02)
         orch.touch_stream("s1")
         assert handle.last_heartbeat > old_hb
 
@@ -129,7 +129,7 @@ class TestViewerLifecycle:
         orch = orchestrator_factory()
         handle = orch.start_stream(_cfg("s1"))
         old_hb = handle.last_heartbeat
-        time.sleep(0.01)
+        time.sleep(0.02)
         orch.acquire_stream_viewer("s1")
         assert handle.last_heartbeat > old_hb
 
@@ -204,10 +204,10 @@ class TestShutdown:
     def test_terminates_all(self, orchestrator_factory):
         orch = orchestrator_factory()
         handles = [orch.start_stream(_cfg(f"s{i}")) for i in range(3)]
-        processes = [h.process for h in handles]
+        decode_threads = [h.decode_thread for h in handles]
         orch.shutdown()
-        for p in processes:
-            assert not p.is_alive()
+        for dt in decode_threads:
+            assert not dt.is_alive
         assert orch.list_streams() == []
 
     def test_stops_monitor(self, orchestrator_factory):

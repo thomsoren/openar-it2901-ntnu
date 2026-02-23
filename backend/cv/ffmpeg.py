@@ -77,12 +77,14 @@ def _transcode_args(codec: str) -> list[str]:
             "-preset", FFMPEG_NVENC_PRESET,
             "-tune", "ull",
             "-b:v", FFMPEG_VIDEO_BITRATE,
+            "-g", str(FFMPEG_GOP),
         ]
     if codec == "h264_videotoolbox":
         return [
             "-c:v", "h264_videotoolbox",
             "-realtime", "true",
             "-b:v", FFMPEG_VIDEO_BITRATE,
+            "-g", str(FFMPEG_GOP),
         ]
     keyint_min = max(1, FFMPEG_GOP // 2)
     return [

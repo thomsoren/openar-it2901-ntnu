@@ -7,7 +7,7 @@ from .exceptions import (
     StreamNotFoundError,
 )
 from .orchestrator import WorkerOrchestrator
-from .types import StreamConfig, WorkerHandle
+from .types import StreamConfig, StreamHandle
 
 __all__ = [
     "OrchestratorError",
@@ -15,6 +15,6 @@ __all__ = [
     "StreamAlreadyRunningError",
     "StreamNotFoundError",
     "StreamConfig",
-    "WorkerHandle",
+    "StreamHandle",
     "WorkerOrchestrator",
 ]
