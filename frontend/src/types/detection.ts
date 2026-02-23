@@ -8,6 +8,7 @@ export interface Detection {
   width: number; // Bounding box width (pixels)
   height: number; // Bounding box height (pixels)
   confidence: number; // Detection confidence (0-1)
+  class_name?: string; // Detection class (e.g. "boat", "buoy", "flotsam", "mob")
   track_id?: number; // Persistent ID for tracking same boat across frames
 }
 

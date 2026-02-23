@@ -21,10 +21,17 @@
   position: relative;
 }
 
+.stream-tabs-bar {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  position: relative;
+}
+
 .stream-tab-row {
   display: block;
-  width: 100%;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .stream-card-content {

@@ -1,0 +1,31 @@
+.ar-control-bar {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: var(--background-2-color, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-subtle-color, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+.ar-control-bar__range {
+  min-width: 120px;
+}
+
+.ar-control-bar__range-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ar-control-bar__poi-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ar-control-bar__poi-dropdown {
+  min-width: 132px;
+}

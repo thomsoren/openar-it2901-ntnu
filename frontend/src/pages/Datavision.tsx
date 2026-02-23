@@ -8,6 +8,8 @@ import {
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import VideoPlayer, { type VideoPlayerState } from "../components/video-player/VideoPlayer";
+import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
+import { ARControlPanel } from "../components/ar-control-panel/ARControlPanel";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
@@ -241,111 +243,118 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
   const displayError = controlError || streamError;
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <section className="stream-workspace">
-        <div className="stream-tabs-shell">
-          <ObcTabRow
-            className="stream-tab-row"
-            tabs={tabs}
-            selectedTabId={activeTabId}
-            hasAddNewTab={showAddButton}
-            hasClose={showCloseButtons}
-            onTabSelected={handleTabSelected}
-            onTabClosed={onTabClosed}
-            onAddNewTab={handleAddTab}
-          />
+    <ARControlProvider>
+      <div style={{ position: "relative", width: "100%", height: "100%" }}>
+        <section className="stream-workspace">
+          <div className="stream-tabs-shell">
+            <div className="stream-tabs-bar">
+              <ObcTabRow
+                className="stream-tab-row"
+                tabs={tabs}
+                selectedTabId={activeTabId}
+                hasAddNewTab={showAddButton}
+                hasClose={showCloseButtons}
+                onTabSelected={handleTabSelected}
+                onTabClosed={onTabClosed}
+                onAddNewTab={handleAddTab}
+              />
+              <ARControlPanel />
+            </div>
 
-          <div
-            ref={containerRef}
-            className={[
-              "stream-card-content",
-              activeIsSetup ? "" : !activeStream ? "stream-card-content--empty" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            {activeIsSetup && (
-              <>
-                {!auth.session ? (
-                  <div className="stream-setup-auth">
-                    <AuthGate initialMode="login" onAuthenticated={auth.handleAuthenticated} />
-                  </div>
-                ) : (
-                  <StreamSetup tabId={activeTabId} onStreamReady={handleStreamReady} />
-                )}
-              </>
-            )}
-
-            {!activeIsSetup &&
-              !activeStream &&
-              "No running streams. Join or create one from the sidebar."}
-
-            {!activeIsSetup && activeStream && (
-              <>
-                <VideoPlayer
-                  key={`${activeTabId}-${videoSession}`}
-                  streamId={activeStream.stream_id}
-                  whepUrl={activeStreamPlayback?.whep_url}
-                  hlsUrl={activeStreamPlayback?.hls_url}
-                  sessionToken={videoSession}
-                  className="background-video"
-                  style={{ objectFit: videoFitMode, backgroundColor: "#e5e9ef" }}
-                  onVideoReady={(videoEl) => {
-                    videoRef.current = videoEl;
-                  }}
-                  onStatusChange={handleVideoStatusChange}
-                />
-
-                {showVideoLoader && (
-                  <div className="video-loading-center">
-                    <ObcProgressBar
-                      className="video-loading-center__progress"
-                      type={ProgressBarType.circular}
-                      mode={ProgressBarMode.indeterminate}
-                      circularState={CircularProgressState.indeterminate}
-                      style={
-                        {
-                          "--instrument-enhanced-secondary-color": "#4ea9dd",
-                          "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
-                        } as CSSProperties
-                      }
-                    >
-                      <span slot="icon"></span>
-                    </ObcProgressBar>
-                    <div className="video-loading-center__label">
-                      {!imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."}
+            <div
+              ref={containerRef}
+              className={[
+                "stream-card-content",
+                activeIsSetup ? "" : !activeStream ? "stream-card-content--empty" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {activeIsSetup && (
+                <>
+                  {!auth.session ? (
+                    <div className="stream-setup-auth">
+                      <AuthGate initialMode="login" onAuthenticated={auth.handleAuthenticated} />
                     </div>
-                  </div>
-                )}
-                {isLoading && imageLoaded && (
-                  <div className="status-overlay">Connecting to detection stream...</div>
-                )}
-                {error && <div className="status-overlay status-error">Error: {error}</div>}
-                {!isLoading && !error && (
-                  <div className="status-overlay status-info">
-                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
-                    {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
-                    {vessels.length}
-                    {videoState.error ? ` | Video error: ${videoState.error}` : ""}
-                    {displayError ? ` | Control: ${displayError}` : ""}
-                  </div>
-                )}
+                  ) : (
+                    <StreamSetup tabId={activeTabId} onStreamReady={handleStreamReady} />
+                  )}
+                </>
+              )}
 
-                {detectionVisible && (
-                  <PoiOverlay
-                    vessels={vessels}
-                    videoTransform={videoTransform}
-                    detectionFrame={
-                      videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
-                    }
+              {!activeIsSetup &&
+                !activeStream &&
+                "No running streams. Join or create one from the sidebar."}
+
+              {!activeIsSetup && activeStream && (
+                <>
+                  <VideoPlayer
+                    key={`${activeTabId}-${videoSession}`}
+                    streamId={activeStream.stream_id}
+                    whepUrl={activeStreamPlayback?.whep_url}
+                    hlsUrl={activeStreamPlayback?.hls_url}
+                    sessionToken={videoSession}
+                    className="background-video"
+                    style={{ objectFit: videoFitMode, backgroundColor: "#e5e9ef" }}
+                    onVideoReady={(videoEl) => {
+                      videoRef.current = videoEl;
+                    }}
+                    onStatusChange={handleVideoStatusChange}
                   />
-                )}
-              </>
-            )}
+
+                  {showVideoLoader && (
+                    <div className="video-loading-center">
+                      <ObcProgressBar
+                        className="video-loading-center__progress"
+                        type={ProgressBarType.circular}
+                        mode={ProgressBarMode.indeterminate}
+                        circularState={CircularProgressState.indeterminate}
+                        style={
+                          {
+                            "--instrument-enhanced-secondary-color": "#4ea9dd",
+                            "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+                          } as CSSProperties
+                        }
+                      >
+                        <span slot="icon"></span>
+                      </ObcProgressBar>
+                      <div className="video-loading-center__label">
+                        {!imageLoaded
+                          ? "Connecting to video stream..."
+                          : "Waiting for detections..."}
+                      </div>
+                    </div>
+                  )}
+                  {isLoading && imageLoaded && (
+                    <div className="status-overlay">Connecting to detection stream...</div>
+                  )}
+                  {error && <div className="status-overlay status-error">Error: {error}</div>}
+                  {!isLoading && !error && (
+                    <div className="status-overlay status-info">
+                      {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
+                      {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
+                      {vessels.length}
+                      {videoState.error ? ` | Video error: ${videoState.error}` : ""}
+                      {displayError ? ` | Control: ${displayError}` : ""}
+                    </div>
+                  )}
+
+                  {detectionVisible && (
+                    <PoiOverlay
+                      vessels={vessels}
+                      videoTransform={videoTransform}
+                      detectionFrame={
+                        videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
+                      }
+                    />
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </section>
-    </div>
+        </section>
+      </div>
+    </ARControlProvider>
   );
 }
 
