@@ -71,13 +71,6 @@ export const useFetchAISProjections = (
     eventSource.onmessage = (event) => {
       const feature = JSON.parse(event.data);
       const projection = feature.projection;
-      console.log("Received projection:", projection);
-      console.log(
-        "Feature MMSI field:",
-        feature.mmsi,
-        "Properties MMSI:",
-        feature.properties?.mmsi
-      );
 
       if (projection && projection.x_px !== undefined && projection.y_px !== undefined) {
         // Extract MMSI from different possible locations in the feature object
@@ -87,8 +80,6 @@ export const useFetchAISProjections = (
           feature.properties?.name ||
           feature.properties?.shipname ||
           `MMSI ${mmsi}`;
-
-        console.log("Using MMSI:", mmsi, "Name:", name);
 
         const projected: ProjectedCoordinate = {
           mmsi: mmsi,

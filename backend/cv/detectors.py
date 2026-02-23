@@ -1,15 +1,19 @@
 """
 RT-DETR boat detector.
 """
+import logging
 from pathlib import Path
 from typing import List
 
 import numpy as np
+import torch
 from ultralytics import RTDETR
 
 from common.config import MODELS_DIR
 from common.types import Detection
 from cv.config import CONFIDENCE, IOU_THRESHOLD, AGNOSTIC_NMS, BYTETRACK_YAML
+
+logger = logging.getLogger(__name__)
 
 
 class RTDETRDetector:
@@ -25,81 +29,94 @@ class RTDETRDetector:
     ):
         self.confidence = confidence
         self.filter_boats = filter_boats
+        self._use_half = False
         self.model = self._load_model(model_path)
 
     def _load_model(self, model_path: str | None) -> RTDETR:
-        try:
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            print(f"[Detector] PyTorch device: {device}")
-            if device == "cuda":
-                print(f"[Detector] CUDA device: {torch.cuda.get_device_name(0)}")
-        except ImportError:
-            print("[Detector] PyTorch not available for device check")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._use_half = device == "cuda"
+        logger.info(f"PyTorch device: {device}")
+        if device == "cuda":
+            logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
 
         if model_path:
             path = Path(model_path)
             if path.exists():
-                print(f"[Detector] Loading model from: {path}")
+                logger.info(f"Loading model from: {path}")
                 return RTDETR(str(path))
 
             models_path = MODELS_DIR / model_path
             if models_path.exists():
-                print(f"[Detector] Loading model from: {models_path}")
+                logger.info(f"Loading model from: {models_path}")
                 return RTDETR(str(models_path))
 
         default_path = MODELS_DIR / self.DEFAULT_MODEL
         if default_path.exists():
-            print(f"[Detector] Loading model from: {default_path}")
+            logger.info(f"Loading model from: {default_path}")
             return RTDETR(str(default_path))
 
-        print(f"[Detector] Loading default model: {self.DEFAULT_MODEL}")
+        logger.info(f"Loading default model: {self.DEFAULT_MODEL}")
         return RTDETR(self.DEFAULT_MODEL)
 
     def detect(self, frame: np.ndarray, track: bool = False) -> List[Detection]:
+        half = self._use_half
         if track:
             results = self.model.track(
                 frame,
                 conf=self.confidence,
                 iou=IOU_THRESHOLD,
+                imgsz=640,
+                half=half,
                 persist=True,
                 tracker=str(BYTETRACK_YAML),
                 agnostic_nms=AGNOSTIC_NMS,
-                verbose=False
+                verbose=False,
             )[0]
         else:
-            results = self.model(frame, conf=self.confidence, iou=IOU_THRESHOLD, agnostic_nms=AGNOSTIC_NMS, verbose=False)[0]
+            results = self.model(
+                frame,
+                conf=self.confidence,
+                iou=IOU_THRESHOLD,
+                imgsz=640,
+                half=half,
+                agnostic_nms=AGNOSTIC_NMS,
+                verbose=False,
+            )[0]
 
         detections = []
-
-        if results.boxes is None:
+        boxes = results.boxes
+        if boxes is None or len(boxes) == 0:
             return detections
 
-        for box in results.boxes:
-            class_id = int(box.cls[0])
+        # Batch GPU→CPU transfer: one PCIe round-trip instead of per-box
+        xyxy_all = boxes.xyxy.cpu().numpy()
+        conf_all = boxes.conf.cpu().numpy()
+        cls_all = boxes.cls.cpu().numpy().astype(int)
+        ids_all = (
+            boxes.id.cpu().numpy().astype(int)
+            if track and boxes.id is not None
+            else None
+        )
 
-            # Skip non-boat classes if filtering enabled
+        for i in range(len(xyxy_all)):
+            class_id = int(cls_all[i])
+
             if self.filter_boats and class_id not in self.BOAT_CLASSES:
                 continue
 
-            xyxy = box.xyxy[0].cpu().numpy()
-            conf = float(box.conf[0])
-
-            track_id = None
-            if track and box.id is not None:
-                track_id = int(box.id[0])
-
-            class_name = results.names.get(class_id, "boat")
-
+            xyxy = xyxy_all[i]
             w = xyxy[2] - xyxy[0]
             h = xyxy[3] - xyxy[1]
+
+            track_id = int(ids_all[i]) if ids_all is not None else None
+            class_name = results.names.get(class_id, "boat")
 
             detections.append(Detection(
                 x=float(xyxy[0] + w / 2),
                 y=float(xyxy[1] + h / 2),
                 width=float(w),
                 height=float(h),
-                confidence=conf,
+                confidence=float(conf_all[i]),
                 class_id=class_id,
                 class_name=class_name,
                 track_id=track_id,

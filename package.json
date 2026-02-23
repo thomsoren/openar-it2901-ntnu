@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm run dev:infra && concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\" \"pnpm run dev:auth\"",
-    "dev:infra": "docker compose -f infra/docker-compose.postgres.yml up -d",
+    "dev:infra": "docker compose -f infra/docker-compose.postgres.yml up -d && docker compose -f backend/streaming/mediamtx/docker-compose.mediamtx.yml up -d",
     "dev:frontend": "cd frontend && pnpm dev",
     "dev:backend": "cd backend && uv run main.py",
     "dev:auth": "cd auth-service && pnpm dev",

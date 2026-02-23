@@ -1,0 +1,36 @@
+logLevel: info
+logDestinations: [stdout]
+
+api: yes
+apiAddress: :9997
+
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: lowLatency
+hlsPartDuration: 200ms
+hlsSegmentDuration: 1s
+
+webrtc: yes
+webrtcAddress: :8889
+# DEVELOPMENT ONLY: restrict to specific origins in production
+webrtcAllowOrigins: ['*']
+webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts: [127.0.0.1, localhost, host.docker.internal]
+
+authMethod: http
+authHTTPAddress: http://host.docker.internal:10080/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+pathDefaults:
+  source: publisher
+
+paths:
+  all_others:

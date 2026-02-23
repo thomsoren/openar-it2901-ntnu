@@ -1,6 +1,8 @@
-"""Shared test fixtures for backend auth tests.
+"""Shared test fixtures for backend tests.
 
 Uses an in-memory SQLite database so tests run without Postgres.
+Provides streaming fixtures (fake workers, fake FFmpeg) so tests
+run without GPU, FFmpeg binary, or MediaMTX.
 """
 from __future__ import annotations
 
@@ -95,4 +97,75 @@ def client(db_session: Session):
     app.dependency_overrides[get_db] = _override_get_db
 
     with TestClient(app) as c:
+        yield c
+
+
+# ---------- Streaming test fixtures ----------
+
+@pytest.fixture()
+def fake_worker_start(monkeypatch):
+    """Patch worker.start to return FakeProcess + Queue without spawning."""
+    from multiprocessing import Queue
+    from tests.fakes import FakeProcess
+
+    processes: list[FakeProcess] = []
+
+    def _fake_start(source_url: str, stream_id: str, loop: bool = True):
+        proc = FakeProcess()
+        processes.append(proc)
+        return proc, Queue(maxsize=10)
+
+    monkeypatch.setattr("orchestrator.orchestrator.worker.start", _fake_start)
+    return processes
+
+
+@pytest.fixture()
+def fake_ffmpeg(monkeypatch):
+    """Patch _start_ffmpeg so no real FFmpeg subprocess is spawned."""
+    from tests.fakes import FakePopen
+
+    popens: list[FakePopen] = []
+
+    def _fake_start_ffmpeg(config):
+        popen = FakePopen()
+        popens.append(popen)
+        return popen
+
+    monkeypatch.setattr(
+        "orchestrator.orchestrator.WorkerOrchestrator._start_ffmpeg",
+        staticmethod(_fake_start_ffmpeg),
+    )
+    return popens
+
+
+@pytest.fixture()
+def orchestrator_factory(fake_worker_start, fake_ffmpeg):
+    """Create a WorkerOrchestrator with all external deps mocked.
+
+    Returns a factory function that accepts keyword overrides.
+    Automatically shuts down all created orchestrators on teardown.
+    """
+    from orchestrator import WorkerOrchestrator
+
+    created: list[WorkerOrchestrator] = []
+
+    def _factory(**kwargs) -> WorkerOrchestrator:
+        defaults = dict(max_workers=8, monitor_interval_seconds=0.02)
+        defaults.update(kwargs)
+        orch = WorkerOrchestrator(**defaults)
+        created.append(orch)
+        return orch
+
+    yield _factory
+
+    for orch in created:
+        orch.shutdown()
+
+
+@pytest.fixture()
+def stream_app_client(fake_worker_start, fake_ffmpeg):
+    """TestClient for the full api.app with worker + FFmpeg deps mocked."""
+    import api
+
+    with TestClient(api.app) as c:
         yield c

@@ -8,7 +8,7 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 - **ByteTrack Tracking** - Multi-object tracking for stable detection IDs
 - **AIS Integration** - Automatic vessel identification with Barentswatch API
 - **AR Overlay** - OpenBridge POI markers with vessel information
-- **Video Streaming** - MP4 with range requests + MJPEG live stream
+- **Video Streaming** - WebRTC (WHEP) via MediaMTX with HLS fallback
 - **S3 Storage** - Cloud storage integration for assets and data
 - **Data Fusion** - Ground truth detection matching with AIS data
 
@@ -23,6 +23,7 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 - **Docker:** Required for PostgreSQL and Redis
 - **CUDA:** For GPU-accelerated inference (optional but recommended)
 - Access to GitHub Packages for `@ocean-industries-concept-lab` components
+- **MediaMTX:** required for streaming, setup described below
 
 ### Quick Start
 
@@ -38,6 +39,27 @@ pnpm seed-admin
 ```
 
 This creates a default admin account you can log in with immediately:
+
+## MediaMTX Setup (Docker)
+
+This project uses MediaMTX for stream fan-out:
+- backend worker publishes H.264 via RTSP to MediaMTX
+- frontend consumes WebRTC (WHEP), with HLS as fallback
+
+### Prerequisites
+
+- Docker Desktop running
+- Docker context working (`docker version` should show both Client and Server)
+
+If you get `Cannot connect to the Docker daemon...`, start Docker Desktop first.
+
+### Start MediaMTX
+
+From repo root:
+
+```bash
+docker compose -f backend/streaming/mediamtx/docker-compose.mediamtx.yml up -d
+```
 
 | Field | Value |
 |-------|-------|
@@ -181,7 +203,7 @@ Python FastAPI backend with real-time detection streaming and AIS integration.
 - WebSocket streaming for real-time detections
 - RT-DETR object detection with ByteTrack tracking
 - Multiprocess inference worker (GPU-accelerated)
-- MJPEG video streaming synced with detections
+- WebRTC/HLS video streaming via MediaMTX
 - AIS vessel data integration
 - S3-compatible storage with local fallback
 - RESTful API with automatic documentation
@@ -237,7 +259,7 @@ Next.js landing page showcasing the project.
 
 ### Video Streaming
 - `GET /api/video` - Main video file (MP4)
-- `GET /api/video/mjpeg` - MJPEG stream synced with detections
+- `GET /api/streams/{stream_id}/playback` - Stream playback URLs (WebRTC/HLS)
 - `GET /api/video/fusion` - Fusion video stream
 - `GET /api/video/stream` - Video with range request support
 
@@ -319,7 +341,7 @@ The project uses:
 - Video transform calculation for overlay positioning
 
 **Pages:**
-- **Datavision** - Live inference with MJPEG stream
+- **Datavision** - Live inference with WebRTC stream
 - **Fusion** - Ground truth data with AIS overlay
 - **AIS** - Live AIS vessel data display
 

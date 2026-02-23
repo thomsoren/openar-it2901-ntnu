@@ -2,6 +2,8 @@ import { useEffect, useState, RefObject } from "react";
 import { VideoFitMode } from "../contexts/settings-context";
 
 export interface VideoTransform {
+  sourceWidth: number;
+  sourceHeight: number;
   videoWidth: number;
   videoHeight: number;
   offsetX: number;
@@ -23,13 +25,18 @@ export function useVideoTransform(
   videoRef: RefObject<HTMLElement | null>,
   containerRef: RefObject<HTMLDivElement | null>,
   fitMode: VideoFitMode,
-  nativeWidth: number,
-  nativeHeight: number,
+  nativeWidth?: number,
+  nativeHeight?: number,
   recalcTrigger?: unknown
 ): VideoTransform {
+  const fallbackWidth = nativeWidth && nativeWidth > 0 ? nativeWidth : 1920;
+  const fallbackHeight = nativeHeight && nativeHeight > 0 ? nativeHeight : 1080;
+
   const [transform, setTransform] = useState<VideoTransform>({
-    videoWidth: nativeWidth,
-    videoHeight: nativeHeight,
+    sourceWidth: fallbackWidth,
+    sourceHeight: fallbackHeight,
+    videoWidth: fallbackWidth,
+    videoHeight: fallbackHeight,
     offsetX: 0,
     offsetY: 0,
     scaleX: 1,
@@ -45,12 +52,30 @@ export function useVideoTransform(
         return;
       }
 
+      let sourceWidth = fallbackWidth;
+      let sourceHeight = fallbackHeight;
+
+      if (video instanceof HTMLVideoElement) {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          sourceWidth = video.videoWidth;
+          sourceHeight = video.videoHeight;
+        }
+      } else if (video instanceof HTMLImageElement) {
+        if (video.naturalWidth > 0 && video.naturalHeight > 0) {
+          sourceWidth = video.naturalWidth;
+          sourceHeight = video.naturalHeight;
+        }
+      }
+
       // Get the container dimensions
       const containerWidth = container.clientWidth;
       const containerHeight = container.clientHeight;
+      if (containerWidth <= 0 || containerHeight <= 0) {
+        return;
+      }
 
       // Calculate aspect ratios
-      const videoAspectRatio = nativeWidth / nativeHeight;
+      const videoAspectRatio = sourceWidth / sourceHeight;
       const containerAspectRatio = containerWidth / containerHeight;
 
       let videoWidth: number;
@@ -91,10 +116,12 @@ export function useVideoTransform(
       }
 
       // Calculate scale factors (rendered size / native size)
-      const scaleX = videoWidth / nativeWidth;
-      const scaleY = videoHeight / nativeHeight;
+      const scaleX = videoWidth / sourceWidth;
+      const scaleY = videoHeight / sourceHeight;
 
       setTransform({
+        sourceWidth,
+        sourceHeight,
         videoWidth,
         videoHeight,
         offsetX,
@@ -111,11 +138,22 @@ export function useVideoTransform(
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
+    if (videoRef.current) {
+      resizeObserver.observe(videoRef.current);
+    }
+
+    const mediaEl = videoRef.current;
+    mediaEl?.addEventListener("loadedmetadata", calculateTransform);
+    mediaEl?.addEventListener("loadeddata", calculateTransform);
+    mediaEl?.addEventListener("load", calculateTransform);
 
     return () => {
+      mediaEl?.removeEventListener("loadedmetadata", calculateTransform);
+      mediaEl?.removeEventListener("loadeddata", calculateTransform);
+      mediaEl?.removeEventListener("load", calculateTransform);
       resizeObserver.disconnect();
     };
-  }, [videoRef, containerRef, fitMode, nativeWidth, nativeHeight, recalcTrigger]);
+  }, [videoRef, containerRef, fallbackWidth, fallbackHeight, fitMode, recalcTrigger]);
 
   return transform;
 }

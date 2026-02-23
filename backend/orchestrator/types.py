@@ -1,6 +1,7 @@
 """Types for stream worker orchestration."""
 from __future__ import annotations
 
+import subprocess
 import time
 from dataclasses import dataclass, field
 from multiprocessing import Process, Queue
@@ -23,32 +24,45 @@ class WorkerHandle:
 
     process: Process
     inference_queue: Queue
-    frame_queue: Queue
     config: StreamConfig
+    ffmpeg_process: subprocess.Popen | None = None
     started_at: float = field(default_factory=time.monotonic)
     last_heartbeat: float = field(default_factory=time.monotonic)
     restart_count: int = 0
     backoff_seconds: float = 1.0
     next_restart_at: float = 0.0
     last_exitcode: int | None = None
+    viewer_count: int = 0
+    no_viewer_since: float = 0.0
 
     @property
     def is_alive(self) -> bool:
         return self.process.is_alive()
 
     def terminate(self):
-        # Unblock API consumers waiting on queue.get() before terminating process.
-        for q in (self.inference_queue, self.frame_queue):
+        # Stop FFmpeg direct publisher first
+        if self.ffmpeg_process:
             try:
-                q.put_nowait(None)
-            except Full:
-                try:
-                    q.get_nowait()
-                    q.put_nowait(None)
-                except (Empty, Full):
-                    pass
+                self.ffmpeg_process.terminate()
+                self.ffmpeg_process.wait(timeout=2)
             except Exception:
+                try:
+                    self.ffmpeg_process.kill()
+                except Exception:
+                    pass
+            self.ffmpeg_process = None
+
+        # Unblock API consumers waiting on queue.get() before terminating process.
+        try:
+            self.inference_queue.put_nowait(None)
+        except Full:
+            try:
+                self.inference_queue.get_nowait()
+                self.inference_queue.put_nowait(None)
+            except (Empty, Full):
                 pass
+        except Exception:
+            pass
 
         if self.process.is_alive():
             self.process.terminate()
@@ -58,15 +72,19 @@ class WorkerHandle:
                 self.process.join(timeout=1)
 
     def to_dict(self) -> dict:
+        ffmpeg_alive = self.ffmpeg_process is not None and self.ffmpeg_process.poll() is None
         return {
             "stream_id": self.config.stream_id,
             "source_url": self.config.source_url,
             "loop": self.config.loop,
             "status": "running" if self.is_alive else "stopped",
             "pid": self.process.pid,
+            "ffmpeg_pid": self.ffmpeg_process.pid if self.ffmpeg_process else None,
+            "ffmpeg_alive": ffmpeg_alive,
             "started_at_monotonic": self.started_at,
             "restart_count": self.restart_count,
             "backoff_seconds": self.backoff_seconds,
             "next_restart_at_monotonic": self.next_restart_at,
             "last_exitcode": self.last_exitcode,
+            "viewer_count": self.viewer_count,
         }

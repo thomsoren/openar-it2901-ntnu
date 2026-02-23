@@ -2,22 +2,11 @@ import { useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
 import { DETECTION_CONFIG } from "../config/video";
 import { DetectedVessel } from "../types/detection";
 
-interface WebSocketConfig {
-  /** Video source - file path, camera index, or RTSP URL */
-  source?: string;
-  /** Enable object tracking (default: true) */
-  track?: boolean;
-  /** Loop video when it ends (default: true) */
-  loop?: boolean;
-}
-
 interface UseDetectionsWebSocketOptions {
   /** WebSocket endpoint URL (ws:// or wss://) */
   url?: string;
   /** Detection stream identifier used with the default detections WS endpoint */
   streamId?: string;
-  /** Configuration to send on connection */
-  config?: WebSocketConfig;
   /** Whether to connect automatically (default: true) */
   enabled?: boolean;
   /** Reconnect on disconnect (default: true) */
@@ -39,7 +28,8 @@ interface WebSocketState {
   vessels: DetectedVessel[];
   frameIndex: number;
   fps: number;
-  timestampMs: number;
+  detectionTimestampMs: number;
+  detectionFrameSentAtMs: number;
   videoInfo: VideoInfo | null;
   isConnected: boolean;
   isLoading: boolean;
@@ -67,7 +57,6 @@ interface WebSocketStore {
  */
 function createWebSocketStore(
   url: string,
-  config: WebSocketConfig | undefined,
   autoReconnect: boolean,
   reconnectDelay: number
 ): WebSocketStore {
@@ -75,7 +64,8 @@ function createWebSocketStore(
     vessels: [],
     frameIndex: 0,
     fps: 0,
-    timestampMs: 0,
+    detectionTimestampMs: 0,
+    detectionFrameSentAtMs: 0,
     videoInfo: null,
     isConnected: false,
     isLoading: true,
@@ -114,8 +104,6 @@ function createWebSocketStore(
 
       ws.onopen = () => {
         setState({ isConnected: true, isLoading: false, error: null });
-        const defaultConfig: WebSocketConfig = { track: true, loop: true };
-        ws?.send(JSON.stringify(config ? { ...defaultConfig, ...config } : defaultConfig));
       };
 
       ws.onmessage = (event) => {
@@ -124,7 +112,6 @@ function createWebSocketStore(
 
           switch (data.type) {
             case "ready":
-              console.log("Video stream ready:", data);
               if (data.width && data.height) {
                 setState({
                   videoInfo: {
@@ -139,29 +126,26 @@ function createWebSocketStore(
             case "detections":
               setState({
                 frameIndex: data.frame_index,
-                timestampMs: data.timestamp_ms,
+                detectionTimestampMs: data.timestamp_ms || 0,
+                detectionFrameSentAtMs: data.frame_sent_at_ms || 0,
                 fps: data.fps,
                 vessels: data.vessels || [],
               });
               break;
-
             case "complete":
-              console.log("Video stream complete");
               setState({ isComplete: true });
               break;
 
             case "error":
-              console.error("Stream error:", data.message);
               setState({ error: data.message });
               break;
           }
-        } catch (parseError) {
-          console.error("Failed to parse WebSocket message:", parseError);
+        } catch {
+          // Malformed message — skip
         }
       };
 
-      ws.onerror = (event) => {
-        console.error("WebSocket error:", event);
+      ws.onerror = () => {
         setState({ error: "WebSocket connection error", isLoading: false });
       };
 
@@ -170,7 +154,6 @@ function createWebSocketStore(
         ws = null;
 
         if (!event.wasClean && autoReconnect && !state.isComplete) {
-          console.log(`WebSocket closed unexpectedly. Reconnecting in ${reconnectDelay}ms...`);
           reconnectTimeout = window.setTimeout(connect, reconnectDelay);
         }
       };
@@ -208,7 +191,6 @@ function createWebSocketStore(
  * ```tsx
  * const { vessels, fps, isConnected } = useDetectionsWebSocket({
  *   streamId: "default",
- *   config: { track: true, loop: true },
  * });
  *
  * return <PoiOverlay vessels={vessels} />;
@@ -217,20 +199,15 @@ function createWebSocketStore(
 export const useDetectionsWebSocket = ({
   url,
   streamId = "default",
-  config,
   enabled = true,
   autoReconnect = true,
   reconnectDelay = 3000,
 }: UseDetectionsWebSocketOptions): UseDetectionsWebSocketResult => {
   const wsUrl = useMemo(() => url ?? DETECTION_CONFIG.WS_URL(streamId), [url, streamId]);
 
-  // Recreate the store when endpoint or connection policy changes.
-  // IMPORTANT: `config` must be referentially stable across renders — wrap it in
-  // useMemo at the call site. An inline object literal `config={{ track: true }}`
-  // produces a new reference every render, causing infinite reconnect loops.
   const store = useMemo(
-    () => createWebSocketStore(wsUrl, config, autoReconnect, reconnectDelay),
-    [wsUrl, config, autoReconnect, reconnectDelay]
+    () => createWebSocketStore(wsUrl, autoReconnect, reconnectDelay),
+    [wsUrl, autoReconnect, reconnectDelay]
   );
 
   const state = useSyncExternalStore(store.subscribe, store.getState);
