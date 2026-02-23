@@ -104,7 +104,7 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
 
   const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
-  const { vessels, isLoading, error, isConnected } = useDetectionsWebSocket({
+  const { vessels, isLoading, error, isConnected, videoInfo } = useDetectionsWebSocket({
     url: wsUrl,
     enabled: wsEnabled,
   });
@@ -332,7 +332,13 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                 )}
 
                 {detectionVisible && (
-                  <PoiOverlay vessels={vessels} videoTransform={videoTransform} />
+                  <PoiOverlay
+                    vessels={vessels}
+                    videoTransform={videoTransform}
+                    detectionFrame={
+                      videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
+                    }
+                  />
                 )}
               </>
             )}

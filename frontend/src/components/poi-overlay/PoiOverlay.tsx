@@ -9,12 +9,25 @@ import "./PoiOverlay.css";
 interface PoiOverlayProps {
   vessels?: DetectedVessel[];
   videoTransform: VideoTransform;
+  detectionFrame?: {
+    width: number;
+    height: number;
+  } | null;
 }
 
-function PoiOverlay({ vessels = [], videoTransform }: PoiOverlayProps) {
+function PoiOverlay({ vessels = [], videoTransform, detectionFrame = null }: PoiOverlayProps) {
   if (vessels.length === 0) {
     return null;
   }
+
+  const sourceWidth = videoTransform.sourceWidth;
+  const sourceHeight = videoTransform.sourceHeight;
+  const detectionWidth =
+    detectionFrame?.width && detectionFrame.width > 0 ? detectionFrame.width : sourceWidth;
+  const detectionHeight =
+    detectionFrame?.height && detectionFrame.height > 0 ? detectionFrame.height : sourceHeight;
+  const mapX = detectionWidth > 0 ? sourceWidth / detectionWidth : 1;
+  const mapY = detectionHeight > 0 ? sourceHeight / detectionHeight : 1;
 
   return (
     <div className="poi-overlay">
@@ -22,8 +35,8 @@ function PoiOverlay({ vessels = [], videoTransform }: PoiOverlayProps) {
         const trackId = item.detection.track_id ?? index;
 
         // Scale coordinates from native resolution to rendered size
-        const scaledX = item.detection.x * videoTransform.scaleX;
-        const scaledY = item.detection.y * videoTransform.scaleY;
+        const scaledX = item.detection.x * mapX * videoTransform.scaleX;
+        const scaledY = item.detection.y * mapY * videoTransform.scaleY;
 
         // Add offset for letterbox/pillarbox
         const screenX = scaledX + videoTransform.offsetX;

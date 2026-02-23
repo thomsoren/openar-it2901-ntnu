@@ -2,6 +2,8 @@ import { useEffect, useState, RefObject } from "react";
 import { VideoFitMode } from "../contexts/settings-context";
 
 export interface VideoTransform {
+  sourceWidth: number;
+  sourceHeight: number;
   videoWidth: number;
   videoHeight: number;
   offsetX: number;
@@ -31,6 +33,8 @@ export function useVideoTransform(
   const fallbackHeight = nativeHeight && nativeHeight > 0 ? nativeHeight : 1080;
 
   const [transform, setTransform] = useState<VideoTransform>({
+    sourceWidth: fallbackWidth,
+    sourceHeight: fallbackHeight,
     videoWidth: fallbackWidth,
     videoHeight: fallbackHeight,
     offsetX: 0,
@@ -116,6 +120,8 @@ export function useVideoTransform(
       const scaleY = videoHeight / sourceHeight;
 
       setTransform({
+        sourceWidth,
+        sourceHeight,
         videoWidth,
         videoHeight,
         offsetX,
