@@ -14,18 +14,6 @@
   min-width: 120px;
 }
 
-.ar-control-bar__range-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.ar-control-bar__poi-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .ar-control-bar__poi-dropdown {
   min-width: 132px;
 }

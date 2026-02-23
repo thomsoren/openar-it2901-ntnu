@@ -1,41 +1,34 @@
-import { useState } from "react";
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
 import { ObcDropdownButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/dropdown-button/dropdown-button";
 import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
-import { ObiRadarRangeProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-radar-range-proposal";
 import { ObiRangeRingsIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-range-rings-iec";
 import { ObiBuoySparEast } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-buoy-spar-east";
 import { ObiVesselTypeGenericOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-generic-outlined";
 import { ObiAisProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-proposal";
 import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
-import { ObiTargetSettingsProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-target-settings-proposal";
 import { useARControls } from "./useARControls";
+import type { PoiDropdownValue, RangeValue } from "./ar-control-context";
 import "./ARControlPanel.css";
 
-const RANGE_OPTIONS = [
-  { value: "off", label: "OFF" },
+const RANGE_OPTIONS: { value: RangeValue; label: string }[] = [
+  { value: "off", label: "Range: OFF" },
   { value: "3", label: "3 NM" },
   { value: "5", label: "5 NM" },
   { value: "10.5", label: "10,5 NM" },
   { value: "24", label: "24 NM" },
 ];
-const POI_OPTIONS = [
-  { value: "poi-visible", label: "Toggle POI data" },
-  { value: "poi-display", label: "Data display" },
-  { value: "poi-icon", label: "Icon type" },
+const POI_OPTIONS: { value: PoiDropdownValue; label: string }[] = [
+  { value: "poi-show", label: "Show POI data" },
+  { value: "poi-hide", label: "Hide POI data" },
+  { value: "poi-display", label: "POI data display" },
+  { value: "poi-icon", label: "POI icon type" },
 ];
 
 export function ARControlPanel() {
-  const { state, toggle } = useARControls();
-  const [rangeValue, setRangeValue] = useState(state.rangeVisible ? "10.5" : "off");
+  const { state, toggle, setRangeValue, setPoiDropdownValue } = useARControls();
 
   const buoyAndLightOn = state.buoyLayerVisible && state.flotsamLayerVisible;
   const aisDataOn = state.aisCardsVisible && state.mobLayerVisible;
-  const setRange = (value: string) => {
-    setRangeValue(value);
-    const enabled = value !== "off";
-    if (state.rangeVisible !== enabled) toggle("rangeVisible");
-  };
   const setPair = (
     first: "buoyLayerVisible" | "aisCardsVisible",
     second: "flotsamLayerVisible" | "mobLayerVisible",
@@ -47,22 +40,13 @@ export function ARControlPanel() {
 
   return (
     <div className="ar-control-bar">
-      <div className="ar-control-bar__range-group">
-        <ObcIconButton
-          variant={IconButtonVariant.flat}
-          activated={state.rangeVisible}
-          title="Range"
-          onClick={() => setRange(state.rangeVisible ? "off" : "10.5")}
-        >
-          <ObiRadarRangeProposal />
-        </ObcIconButton>
-        <ObcDropdownButton
-          className="ar-control-bar__range"
-          options={RANGE_OPTIONS}
-          value={rangeValue}
-          onChange={(event) => setRange(event.detail.value)}
-        />
-      </div>
+      <ObcDropdownButton
+        className="ar-control-bar__range"
+        title="Range selection"
+        options={RANGE_OPTIONS}
+        value={state.rangeValue}
+        onChange={(event) => setRangeValue(event.detail.value as RangeValue)}
+      />
 
       <ObcIconButton
         variant={IconButtonVariant.flat}
@@ -106,25 +90,18 @@ export function ARControlPanel() {
         <ObiCamera />
       </ObcIconButton>
 
-      <div className="ar-control-bar__poi-group">
-        <ObcIconButton
-          variant={IconButtonVariant.flat}
-          activated={state.poiVisible}
-          title="POI"
-          onClick={() => toggle("poiVisible")}
-        >
-          <ObiTargetSettingsProposal />
-        </ObcIconButton>
-        <ObcDropdownButton
-          className="ar-control-bar__poi-dropdown"
-          options={POI_OPTIONS}
-          onChange={(event) => {
-            if (event.detail.value === "poi-visible") {
-              toggle("poiVisible");
-            }
-          }}
-        />
-      </div>
+      <ObcDropdownButton
+        className="ar-control-bar__poi-dropdown"
+        title="POI settings"
+        options={POI_OPTIONS}
+        value={state.poiDropdownValue}
+        onChange={(event) => {
+          const value = event.detail.value as PoiDropdownValue;
+          setPoiDropdownValue(value);
+          if (value === "poi-show" && !state.poiVisible) toggle("poiVisible");
+          if (value === "poi-hide" && state.poiVisible) toggle("poiVisible");
+        }}
+      />
     </div>
   );
 }
