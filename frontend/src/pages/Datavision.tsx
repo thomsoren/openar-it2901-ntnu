@@ -35,6 +35,9 @@ interface DatavisionProps {
 function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1440 : window.innerWidth
+  );
   const { videoFitMode, detectionVisible, multiStreamTestingEnabled } = useSettings();
   const auth = useAuth();
 
@@ -76,6 +79,12 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
   useEffect(() => {
     onAuthGateVisibleChange?.(showingAuthGate);
   }, [showingAuthGate, onAuthGateVisibleChange]);
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const clearReconnectTimers = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -241,13 +250,20 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
 
   // Merge stream errors from the hook into controlError
   const displayError = controlError || streamError;
+  const estimatedTabWidth = tabs.length > 4 ? 190 : 210;
+  const panelMinWidth = 640;
+  const layoutPadding = 80;
+  const requiredWidth = tabs.length * estimatedTabWidth + panelMinWidth + layoutPadding;
+  const shouldStackTabsBar = viewportWidth < requiredWidth;
 
   return (
     <ARControlProvider>
       <div style={{ position: "relative", width: "100%", height: "100%" }}>
         <section className="stream-workspace">
           <div className="stream-tabs-shell">
-            <div className="stream-tabs-bar">
+            <div
+              className={`stream-tabs-bar${shouldStackTabsBar ? " stream-tabs-bar--stacked" : ""}`}
+            >
               <ObcTabRow
                 className="stream-tab-row"
                 tabs={tabs}

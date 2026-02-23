@@ -24,14 +24,27 @@
 .stream-tabs-bar {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   flex: 0 0 auto;
   position: relative;
+  column-gap: 8px;
+  row-gap: 0;
 }
 
 .stream-tab-row {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.stream-tabs-bar--stacked {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.stream-tabs-bar--stacked .stream-tab-row {
+  flex: 1 1 100%;
+  min-width: 100%;
 }
 
 .stream-card-content {
