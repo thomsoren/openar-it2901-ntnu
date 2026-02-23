@@ -24,8 +24,11 @@ def redis_available():
         client.close()
 
 
-def test_concurrent_stream_starts(fake_worker_start, fake_ffmpeg):
-    orchestrator = WorkerOrchestrator(max_workers=8)
+def test_concurrent_stream_starts(fake_decode_thread, fake_ffmpeg, fake_inference_thread):
+    orchestrator = WorkerOrchestrator(
+        max_workers=8,
+        inference_thread=fake_inference_thread,
+    )
     stream_ids = [f"concurrent-{idx}" for idx in range(6)]
 
     def _start_stream(stream_id: str):
@@ -44,7 +47,9 @@ def test_concurrent_stream_starts(fake_worker_start, fake_ffmpeg):
     orchestrator.shutdown()
 
 
-def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker_start, fake_ffmpeg):
+def test_detections_websocket_uses_redis_pubsub(
+    redis_available, fake_decode_thread, fake_ffmpeg
+):
     stream_id = "pubsub-test"
     payload = {
         "type": "detections",
@@ -75,7 +80,11 @@ def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker_sta
 
         try:
             with client.websocket_connect(f"/api/detections/ws/{stream_id}") as websocket:
-                message = websocket.receive_json()
+                # Skip any non-detection messages (e.g. "ready" from inference thread)
+                for _ in range(10):
+                    message = websocket.receive_json()
+                    if message.get("type") == "detections":
+                        break
                 assert message["type"] == "detections"
                 assert message["frame_index"] == payload["frame_index"]
                 assert message["timestamp_ms"] == payload["timestamp_ms"]
@@ -85,7 +94,7 @@ def test_detections_websocket_uses_redis_pubsub(redis_available, fake_worker_sta
             publisher.close()
 
 
-def test_streams_include_playback_urls(fake_worker_start, fake_ffmpeg):
+def test_streams_include_playback_urls(fake_decode_thread, fake_ffmpeg):
     stream_id = "playback-test"
     with TestClient(api.app) as client:
         start_response = client.post(

@@ -31,7 +31,6 @@ class TestStartStream:
         )
         body = resp.json()
         assert "stream_id" in body
-        assert "pid" in body
         assert body["stream_id"] == "test-3"
 
     def test_invalid_id_returns_400(self, stream_app_client):

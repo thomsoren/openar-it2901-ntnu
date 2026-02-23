@@ -1,7 +1,7 @@
 """Shared test fixtures for backend tests.
 
 Uses an in-memory SQLite database so tests run without Postgres.
-Provides streaming fixtures (fake workers, fake FFmpeg) so tests
+Provides streaming fixtures (fake decode threads, fake FFmpeg) so tests
 run without GPU, FFmpeg binary, or MediaMTX.
 """
 from __future__ import annotations
@@ -103,20 +103,46 @@ def client(db_session: Session):
 # ---------- Streaming test fixtures ----------
 
 @pytest.fixture()
-def fake_worker_start(monkeypatch):
-    """Patch worker.start to return FakeProcess + Queue without spawning."""
-    from multiprocessing import Queue
-    from tests.fakes import FakeProcess
+def fake_decode_thread(monkeypatch):
+    """Patch DecodeThread so no real video source is opened."""
+    from tests.fakes import FakeDecodeThread
 
-    processes: list[FakeProcess] = []
+    threads: list[FakeDecodeThread] = []
 
-    def _fake_start(source_url: str, stream_id: str, loop: bool = True):
-        proc = FakeProcess()
-        processes.append(proc)
-        return proc, Queue(maxsize=10)
+    def _fake_init(self, source_url: str, stream_id: str, loop: bool = True):
+        fake = FakeDecodeThread()
+        # Copy fake attributes onto the real instance
+        self._alive = fake._alive
+        self._fps = fake._fps
+        self._width = fake._width
+        self._height = fake._height
+        self.source_url = source_url
+        self.stream_id = stream_id
+        self.loop = loop
+        threads.append(self)
 
-    monkeypatch.setattr("orchestrator.orchestrator.worker.start", _fake_start)
-    return processes
+    def _fake_start(self) -> bool:
+        return True
+
+    def _fake_stop(self) -> None:
+        self._alive = False
+
+    def _fake_get_latest(self):
+        import numpy as np
+        return np.zeros((480, 640, 3), dtype=np.uint8), 0, 0.0
+
+    def _fake_is_alive(self) -> bool:
+        return self._alive
+
+    monkeypatch.setattr("cv.decode_thread.DecodeThread.__init__", _fake_init)
+    monkeypatch.setattr("cv.decode_thread.DecodeThread.start", _fake_start)
+    monkeypatch.setattr("cv.decode_thread.DecodeThread.stop", _fake_stop)
+    monkeypatch.setattr("cv.decode_thread.DecodeThread.get_latest", _fake_get_latest)
+    monkeypatch.setattr(
+        "cv.decode_thread.DecodeThread.is_alive",
+        property(_fake_is_alive),
+    )
+    return threads
 
 
 @pytest.fixture()
@@ -139,7 +165,20 @@ def fake_ffmpeg(monkeypatch):
 
 
 @pytest.fixture()
-def orchestrator_factory(fake_worker_start, fake_ffmpeg):
+def fake_inference_thread(monkeypatch):
+    """Inject a FakeInferenceThread so no real model is loaded."""
+    from tests.fakes import FakeInferenceThread
+
+    fake = FakeInferenceThread()
+    monkeypatch.setattr(
+        "orchestrator.orchestrator.get_shared_detector",
+        lambda: None,  # Never called because inference_thread is injected
+    )
+    return fake
+
+
+@pytest.fixture()
+def orchestrator_factory(fake_decode_thread, fake_ffmpeg, fake_inference_thread):
     """Create a WorkerOrchestrator with all external deps mocked.
 
     Returns a factory function that accepts keyword overrides.
@@ -150,7 +189,11 @@ def orchestrator_factory(fake_worker_start, fake_ffmpeg):
     created: list[WorkerOrchestrator] = []
 
     def _factory(**kwargs) -> WorkerOrchestrator:
-        defaults = dict(max_workers=8, monitor_interval_seconds=0.02)
+        defaults = dict(
+            max_workers=8,
+            monitor_interval_seconds=0.02,
+            inference_thread=fake_inference_thread,
+        )
         defaults.update(kwargs)
         orch = WorkerOrchestrator(**defaults)
         created.append(orch)
@@ -163,9 +206,22 @@ def orchestrator_factory(fake_worker_start, fake_ffmpeg):
 
 
 @pytest.fixture()
-def stream_app_client(fake_worker_start, fake_ffmpeg):
-    """TestClient for the full api.app with worker + FFmpeg deps mocked."""
+def stream_app_client(fake_decode_thread, fake_ffmpeg, monkeypatch):
+    """TestClient for the full api.app with decode thread + FFmpeg deps mocked."""
+    from tests.fakes import FakeInferenceThread
+
     import api
+
+    # Patch InferenceThread so the orchestrator created in api.py's lifespan
+    # uses a no-op fake instead of a real one (which would need a real detector).
+    monkeypatch.setattr(
+        "orchestrator.orchestrator.InferenceThread",
+        FakeInferenceThread,
+    )
+    monkeypatch.setattr(
+        "orchestrator.orchestrator.get_shared_detector",
+        lambda: None,
+    )
 
     with TestClient(api.app) as c:
         yield c

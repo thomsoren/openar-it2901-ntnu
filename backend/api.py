@@ -208,8 +208,11 @@ async def lifespan(_: FastAPI):
             orchestrator.start_stream(
                 StreamConfig(stream_id=DEFAULT_STREAM_ID, source_url=source_url, loop=True)
             )
+            logger.info("Default stream '%s' started from %s", DEFAULT_STREAM_ID, source_url)
         except (StreamAlreadyRunningError, ResourceLimitExceededError):
             pass
+    else:
+        logger.warning("No default video source found; skipping default stream")
 
     yield
 

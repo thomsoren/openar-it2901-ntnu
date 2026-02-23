@@ -1,7 +1,7 @@
 """Tests for _is_remote_stream_url — classifies source URLs as remote or local."""
 from __future__ import annotations
 
-from cv.worker import _is_remote_stream_url
+from cv.decode_thread import _is_remote_stream_url
 
 
 class TestRemoteUrls:

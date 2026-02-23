@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 
-from orchestrator import StreamConfig, WorkerOrchestrator
+from orchestrator import StreamConfig
 
 
 def _cfg(stream_id: str = "mon") -> StreamConfig:
@@ -79,7 +79,7 @@ class TestNoViewerTimeout:
         orch.start_stream(_cfg("nv3"))
         orch.start_monitoring()
         time.sleep(0.3)
-        # Worker stopped but config retained for hot restart
+        # Stream stopped but config retained for hot restart
         assert orch.list_streams() == []
         assert "nv3" in orch._stream_configs
 
@@ -117,14 +117,13 @@ class TestFFmpegHealth:
         # FFmpeg should have been replaced
         assert current.ffmpeg_process is not original_ffmpeg
 
-    def test_independent_of_worker(self, orchestrator_factory, fake_ffmpeg):
+    def test_independent_of_decode_thread(self, orchestrator_factory, fake_ffmpeg):
         orch = orchestrator_factory(
             monitor_interval_seconds=0.02,
             idle_timeout_seconds=999,
             no_viewer_timeout_seconds=0,
         )
         handle = orch.start_stream(_cfg("ff2"))
-        worker_pid = handle.process.pid
         orch.start_monitoring()
 
         # Kill FFmpeg only
@@ -132,14 +131,13 @@ class TestFFmpegHealth:
         time.sleep(0.15)
 
         current = orch.get_stream("ff2")
-        # Worker should be untouched
-        assert current.process.pid == worker_pid
-        assert current.process.is_alive()
+        # Decode thread should be untouched
+        assert current.decode_thread.is_alive
 
 
-# ---------- Worker crash detection ----------
+# ---------- Decode thread crash detection ----------
 
-class TestWorkerCrashDetection:
+class TestDecodeThreadCrashDetection:
     def test_crash_detected(self, orchestrator_factory):
         orch = orchestrator_factory(
             monitor_interval_seconds=0.02,
@@ -150,11 +148,11 @@ class TestWorkerCrashDetection:
         handle = orch.start_stream(_cfg("wc"))
         orch.start_monitoring()
 
-        handle.process.die(exitcode=1)
+        handle.decode_thread._alive = False
         time.sleep(0.2)
 
         current = orch.get_stream("wc")
-        # Should have been restarted (new process)
+        # Should have been restarted (new decode thread)
         assert current.restart_count >= 1
 
 

@@ -6,14 +6,17 @@ import subprocess
 import threading
 import time
 
-from cv import worker
+from cv.decode_thread import DecodeThread
+from cv.detectors import get_shared_detector
 from cv.ffmpeg import FFmpegDirectPublisher
+from cv.inference_thread import InferenceThread
+from cv.publisher import DetectionPublisher
 from orchestrator.exceptions import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
     StreamNotFoundError,
 )
-from orchestrator.types import StreamConfig, WorkerHandle
+from orchestrator.types import StreamConfig, StreamHandle
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +31,9 @@ class WorkerOrchestrator:
         idle_timeout_seconds: float = 300.0,
         no_viewer_timeout_seconds: float = 15.0,
         protected_stream_ids: set[str] | None = None,
+        inference_thread: InferenceThread | None = None,
     ):
-        self._workers: dict[str, WorkerHandle] = {}
+        self._workers: dict[str, StreamHandle] = {}
         self._stream_configs: dict[str, StreamConfig] = {}
         self._lock = threading.Lock()
         self._max_workers = max_workers
@@ -42,8 +46,21 @@ class WorkerOrchestrator:
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
+        # Inference thread: shared across all streams, injected or created.
+        self._inference_thread = inference_thread
+        self._owns_inference_thread = inference_thread is None
+
+    def _ensure_inference_thread(self) -> InferenceThread:
+        """Lazily create and start the inference thread if not injected."""
+        if self._inference_thread is None:
+            detector = get_shared_detector()
+            publisher = DetectionPublisher()
+            self._inference_thread = InferenceThread(detector, publisher)
+            self._inference_thread.start()
+        return self._inference_thread
+
     @staticmethod
-    def _start_ffmpeg(config: StreamConfig) -> "subprocess.Popen | None":
+    def _start_ffmpeg(config: StreamConfig) -> subprocess.Popen | None:
         """Start an FFmpeg direct publisher for the given stream config."""
         pub = FFmpegDirectPublisher(
             source_url=config.source_url,
@@ -54,16 +71,20 @@ class WorkerOrchestrator:
             return pub.process
         return None
 
-    def _spawn_handle(self, config: StreamConfig, viewer_count: int = 0) -> WorkerHandle:
-        process, inference_queue = worker.start(
+    def _spawn_handle(self, config: StreamConfig, viewer_count: int = 0) -> StreamHandle:
+        decode_thread = DecodeThread(
             source_url=config.source_url,
             stream_id=config.stream_id,
             loop=config.loop,
         )
+        decode_thread.start()
+
+        inf = self._ensure_inference_thread()
+        inf.register_stream(config.stream_id, decode_thread)
+
         ffmpeg_proc = self._start_ffmpeg(config)
-        return WorkerHandle(
-            process=process,
-            inference_queue=inference_queue,
+        return StreamHandle(
+            decode_thread=decode_thread,
             config=config,
             ffmpeg_process=ffmpeg_proc,
             backoff_seconds=self._initial_backoff_seconds,
@@ -71,7 +92,7 @@ class WorkerOrchestrator:
             no_viewer_since=0.0 if viewer_count > 0 else time.monotonic(),
         )
 
-    def start_stream(self, config: StreamConfig) -> WorkerHandle:
+    def start_stream(self, config: StreamConfig) -> StreamHandle:
         with self._lock:
             if config.stream_id in self._workers:
                 raise StreamAlreadyRunningError(f"Stream '{config.stream_id}' is already running")
@@ -80,10 +101,10 @@ class WorkerOrchestrator:
             self._stream_configs[config.stream_id] = config
             handle = self._spawn_handle(config=config, viewer_count=0)
             self._workers[config.stream_id] = handle
-            logger.info("Started stream '%s' with pid=%s", config.stream_id, handle.process.pid)
+            logger.info("Started stream '%s'", config.stream_id)
             return handle
 
-    def stop_stream(self, stream_id: str, remove_config: bool = True):
+    def stop_stream(self, stream_id: str, remove_config: bool = True) -> None:
         with self._lock:
             handle = self._workers.pop(stream_id, None)
             if remove_config:
@@ -91,29 +112,33 @@ class WorkerOrchestrator:
         if not handle:
             raise StreamNotFoundError(f"Stream '{stream_id}' not found")
 
+        if self._inference_thread:
+            self._inference_thread.unregister_stream(stream_id)
         handle.terminate()
         logger.info("Stopped stream '%s'", stream_id)
 
-    def get_stream(self, stream_id: str) -> WorkerHandle:
+    def get_stream(self, stream_id: str) -> StreamHandle:
         with self._lock:
             handle = self._workers.get(stream_id)
             if not handle:
                 raise StreamNotFoundError(f"Stream '{stream_id}' not found")
             return handle
 
-    def touch_stream(self, stream_id: str):
+    def touch_stream(self, stream_id: str) -> None:
         with self._lock:
             handle = self._workers.get(stream_id)
             if handle:
                 handle.last_heartbeat = time.monotonic()
 
-    def acquire_stream_viewer(self, stream_id: str) -> WorkerHandle:
+    def acquire_stream_viewer(self, stream_id: str) -> StreamHandle:
         with self._lock:
             handle = self._workers.get(stream_id)
             if handle:
                 handle.viewer_count += 1
                 handle.no_viewer_since = 0.0
                 handle.last_heartbeat = time.monotonic()
+                inf = self._ensure_inference_thread()
+                inf.set_active_stream(stream_id)
                 return handle
 
             config = self._stream_configs.get(stream_id)
@@ -124,14 +149,12 @@ class WorkerOrchestrator:
 
             handle = self._spawn_handle(config=config, viewer_count=1)
             self._workers[stream_id] = handle
-            logger.info(
-                "Started stream '%s' with pid=%s for active viewer",
-                stream_id,
-                handle.process.pid,
-            )
+            inf = self._ensure_inference_thread()
+            inf.set_active_stream(stream_id)
+            logger.info("Started stream '%s' for active viewer", stream_id)
             return handle
 
-    def release_stream_viewer(self, stream_id: str):
+    def release_stream_viewer(self, stream_id: str) -> None:
         with self._lock:
             handle = self._workers.get(stream_id)
             if not handle:
@@ -140,12 +163,14 @@ class WorkerOrchestrator:
                 handle.viewer_count -= 1
             if handle.viewer_count == 0 and handle.no_viewer_since == 0.0:
                 handle.no_viewer_since = time.monotonic()
+            if handle.viewer_count == 0 and self._inference_thread:
+                self._inference_thread.set_active_stream(None)
 
     def list_streams(self) -> list[dict]:
         with self._lock:
             return [h.to_dict() for h in self._workers.values()]
 
-    def start_monitoring(self):
+    def start_monitoring(self) -> None:
         if self._monitor_thread and self._monitor_thread.is_alive():
             return
         self._stop_event.clear()
@@ -153,23 +178,27 @@ class WorkerOrchestrator:
         self._monitor_thread.start()
         logger.info("Worker monitor started")
 
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> None:
         self._stop_event.set()
         if self._monitor_thread:
             self._monitor_thread.join(timeout=5)
             self._monitor_thread = None
         logger.info("Worker monitor stopped")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.stop_monitoring()
+        if self._inference_thread and self._owns_inference_thread:
+            self._inference_thread.stop()
         with self._lock:
             handles = list(self._workers.values())
             self._workers.clear()
         for handle in handles:
+            if self._inference_thread:
+                self._inference_thread.unregister_stream(handle.config.stream_id)
             handle.terminate()
         logger.info("Worker orchestrator shutdown complete")
 
-    def _monitor_loop(self):
+    def _monitor_loop(self) -> None:
         while not self._stop_event.is_set():
             time.sleep(self._monitor_interval_seconds)
             now = time.monotonic()
@@ -248,7 +277,7 @@ class WorkerOrchestrator:
                         # Stream was intentionally removed (for example no-viewer stop).
                         continue
 
-                # --- FFmpeg health check (independent of worker) ---
+                # --- FFmpeg health check (independent of decode thread) ---
                 if handle.ffmpeg_process is not None and handle.ffmpeg_process.poll() is not None:
                     exit_code = handle.ffmpeg_process.returncode
                     logger.warning(
@@ -257,20 +286,17 @@ class WorkerOrchestrator:
                     )
                     handle.ffmpeg_process = self._start_ffmpeg(handle.config)
 
-                # --- Worker health check ---
+                # --- Decode thread health check ---
                 if handle.is_alive:
                     handle.next_restart_at = 0.0
-                    # Reset backoff so a future crash starts from the initial delay,
-                    # not an exponentially grown one from a long-ago crash cycle.
                     handle.backoff_seconds = self._initial_backoff_seconds
                     continue
 
                 if handle.next_restart_at == 0.0:
                     handle.next_restart_at = now + handle.backoff_seconds
                     logger.warning(
-                        "Worker dead for stream '%s' (exit=%s). Scheduling restart in %.1fs",
+                        "Decode thread dead for stream '%s'. Scheduling restart in %.1fs",
                         stream_id,
-                        handle.process.exitcode,
                         handle.backoff_seconds,
                     )
                     continue
@@ -278,15 +304,16 @@ class WorkerOrchestrator:
                 if now < handle.next_restart_at:
                     continue
 
-                logger.warning("Restarting worker for stream '%s' now", stream_id)
+                logger.warning("Restarting decode thread for stream '%s' now", stream_id)
                 try:
-                    process, inference_queue = worker.start(
+                    new_decode = DecodeThread(
                         source_url=handle.config.source_url,
                         stream_id=stream_id,
                         loop=handle.config.loop,
                     )
+                    if not new_decode.start():
+                        raise RuntimeError("DecodeThread.start() returned False")
                 except Exception:
-                    handle.last_exitcode = handle.process.exitcode
                     handle.next_restart_at = now + handle.backoff_seconds
                     handle.backoff_seconds = min(
                         handle.backoff_seconds * 2,
@@ -298,14 +325,9 @@ class WorkerOrchestrator:
                 with self._lock:
                     current = self._workers.get(stream_id)
                     if current is not handle:
-                        process.terminate()
-                        process.join(timeout=1)
-                        if process.is_alive():
-                            process.kill()
+                        new_decode.stop()
                         continue
-                    handle.last_exitcode = handle.process.exitcode
-                    handle.process = process
-                    handle.inference_queue = inference_queue
+                    handle.decode_thread = new_decode
                     handle.restart_count += 1
                     handle.started_at = time.monotonic()
                     handle.backoff_seconds = min(
@@ -314,4 +336,8 @@ class WorkerOrchestrator:
                     )
                     handle.next_restart_at = 0.0
 
-                logger.info("Restarted stream '%s' with pid=%s", stream_id, process.pid)
+                # Re-register the new decode thread with the inference thread
+                if self._inference_thread:
+                    self._inference_thread.register_stream(stream_id, new_decode)
+
+                logger.info("Restarted decode thread for stream '%s'", stream_id)

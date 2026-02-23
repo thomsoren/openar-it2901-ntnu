@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from orchestrator import StreamConfig, WorkerOrchestrator
+from orchestrator import StreamConfig
 from orchestrator.exceptions import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -116,13 +116,13 @@ class TestCrashRecovery:
         orch.start_monitoring()
 
         # First crash → wait for restart
-        handle.process.die(exitcode=1)
+        handle.decode_thread._alive = False
         time.sleep(0.2)
         current = orch.get_stream("crash")
         assert current.restart_count >= 1
 
         # Second crash → wait for restart
-        current.process.die(exitcode=1)
+        current.decode_thread._alive = False
         time.sleep(0.4)
         final = orch.get_stream("crash")
         assert final.restart_count >= 2
@@ -139,7 +139,7 @@ class TestCrashRecovery:
         # Simulate multiple crashes
         for _ in range(5):
             handle = orch.get_stream("cap")
-            handle.process.die(exitcode=1)
+            handle.decode_thread._alive = False
             time.sleep(0.3)
 
         handle = orch.get_stream("cap")
@@ -168,26 +168,26 @@ class TestCrashRecovery:
         assert handle.restart_count == 0
         orch.start_monitoring()
 
-        handle.process.die(exitcode=1)
+        handle.decode_thread._alive = False
         time.sleep(0.2)
 
         current = orch.get_stream("rc")
         assert current.restart_count >= 1
 
-    def test_restart_replaces_process(self, orchestrator_factory):
+    def test_restart_replaces_decode_thread(self, orchestrator_factory):
         orch = orchestrator_factory(
             monitor_interval_seconds=0.02,
             initial_backoff_seconds=0.02,
         )
         handle = orch.start_stream(_cfg("rp"))
-        old_pid = handle.process.pid
+        old_decode_thread = handle.decode_thread
         orch.start_monitoring()
 
-        handle.process.die(exitcode=1)
+        handle.decode_thread._alive = False
         time.sleep(0.2)
 
         current = orch.get_stream("rp")
-        assert current.process.pid != old_pid
+        assert current.decode_thread is not old_decode_thread
 
 
 # ---------- Protected streams ----------

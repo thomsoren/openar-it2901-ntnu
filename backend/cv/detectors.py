@@ -2,6 +2,7 @@
 RT-DETR boat detector.
 """
 import logging
+import threading
 from pathlib import Path
 from typing import List
 
@@ -127,3 +128,22 @@ class RTDETRDetector:
 
 def get_detector(confidence: float = CONFIDENCE, model_path: str | None = None) -> RTDETRDetector:
     return RTDETRDetector(model_path=model_path, confidence=confidence)
+
+
+_shared_detector_lock = threading.Lock()
+_shared_detector: RTDETRDetector | None = None
+
+
+def get_shared_detector() -> RTDETRDetector:
+    """Return a process-wide singleton RTDETRDetector.
+
+    Thread-safe via double-checked locking. The model is loaded once on first
+    call and reused for all subsequent calls.
+    """
+    global _shared_detector
+    if _shared_detector is not None:
+        return _shared_detector
+    with _shared_detector_lock:
+        if _shared_detector is None:
+            _shared_detector = RTDETRDetector()
+        return _shared_detector

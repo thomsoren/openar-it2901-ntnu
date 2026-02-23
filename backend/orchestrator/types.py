@@ -4,10 +4,10 @@ from __future__ import annotations
 import subprocess
 import time
 from dataclasses import dataclass, field
-from multiprocessing import Process, Queue
-from queue import Empty, Full
 
 from pydantic import BaseModel, Field
+
+from cv.decode_thread import DecodeThread
 
 
 class StreamConfig(BaseModel):
@@ -19,11 +19,10 @@ class StreamConfig(BaseModel):
 
 
 @dataclass
-class WorkerHandle:
-    """Handle for a managed worker process."""
+class StreamHandle:
+    """Handle for a managed stream — decode thread + FFmpeg subprocess."""
 
-    process: Process
-    inference_queue: Queue
+    decode_thread: DecodeThread
     config: StreamConfig
     ffmpeg_process: subprocess.Popen | None = None
     started_at: float = field(default_factory=time.monotonic)
@@ -37,9 +36,9 @@ class WorkerHandle:
 
     @property
     def is_alive(self) -> bool:
-        return self.process.is_alive()
+        return self.decode_thread.is_alive
 
-    def terminate(self):
+    def terminate(self) -> None:
         # Stop FFmpeg direct publisher first
         if self.ffmpeg_process:
             try:
@@ -52,24 +51,7 @@ class WorkerHandle:
                     pass
             self.ffmpeg_process = None
 
-        # Unblock API consumers waiting on queue.get() before terminating process.
-        try:
-            self.inference_queue.put_nowait(None)
-        except Full:
-            try:
-                self.inference_queue.get_nowait()
-                self.inference_queue.put_nowait(None)
-            except (Empty, Full):
-                pass
-        except Exception:
-            pass
-
-        if self.process.is_alive():
-            self.process.terminate()
-            self.process.join(timeout=5)
-            if self.process.is_alive():
-                self.process.kill()
-                self.process.join(timeout=1)
+        self.decode_thread.stop()
 
     def to_dict(self) -> dict:
         ffmpeg_alive = self.ffmpeg_process is not None and self.ffmpeg_process.poll() is None
@@ -78,7 +60,6 @@ class WorkerHandle:
             "source_url": self.config.source_url,
             "loop": self.config.loop,
             "status": "running" if self.is_alive else "stopped",
-            "pid": self.process.pid,
             "ffmpeg_pid": self.ffmpeg_process.pid if self.ffmpeg_process else None,
             "ffmpeg_alive": ffmpeg_alive,
             "started_at_monotonic": self.started_at,

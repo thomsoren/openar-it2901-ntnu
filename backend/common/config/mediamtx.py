@@ -28,7 +28,7 @@ MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS = _truthy(
 )
 
 FFMPEG_BIN = os.getenv("FFMPEG_BIN", "ffmpeg")
-FFMPEG_CODEC = os.getenv("FFMPEG_CODEC", "libx264").strip().lower()
+FFMPEG_CODEC = os.getenv("FFMPEG_CODEC", "auto").strip().lower()
 FFMPEG_LIBX264_PRESET = os.getenv("FFMPEG_LIBX264_PRESET", "ultrafast").strip()
 FFMPEG_NVENC_PRESET = os.getenv("FFMPEG_NVENC_PRESET", "p1").strip()
 FFMPEG_VIDEO_BITRATE = os.getenv("FFMPEG_VIDEO_BITRATE", "4M").strip()
