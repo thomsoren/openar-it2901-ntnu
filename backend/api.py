@@ -24,11 +24,9 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.websockets import WebSocketDisconnect
 
 from ais import service as ais_service
-from ais.fetch_ais import (
-    fetch_ais_stream_geojson,
-    fetch_ais_stream_projections,
-    fetch_ais_stream_projections_by_mmsi,
-)
+from ais.fetch_ais import fetch_ais_stream_geojson
+from ais_mapping_service.pixel_projection.camera_config import CameraConfig
+from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
 from ais.logger import AISSessionLogger
 from auth.deps import require_admin
 from auth.routes import limiter, router as auth_router
@@ -368,17 +366,36 @@ async def get_ais_data():
 class AISStreamRequest(BaseModel):
     # GeoJSON polygon: [[lon, lat], ...] computed by the frontend
     coordinates: List[List[float]]
-    log: bool = False,
+    ship_lat: float
+    ship_lon: float
+    heading: float
+    fov_degrees: float
+    log: bool = False
 
 @app.post("/api/ais/stream")
 async def stream_ais_geojson(body: AISStreamRequest):
-    """Stream live AIS data inside the polygon pre-computed by the frontend."""
+    """Stream live AIS data inside the polygon, enriched with camera pixel projections."""
     session_logger = AISSessionLogger() if body.log else None
+    cam_cfg = CameraConfig(h_fov_deg=body.fov_degrees)
     async def event_generator():
         try:
             async for feature in fetch_ais_stream_geojson(
                 coordinates=body.coordinates
             ):
+                lat = feature.get("latitude")
+                lon = feature.get("longitude")
+                feature["projection"] = (
+                    project_ais_to_pixel(
+                        ship_lat=body.ship_lat,
+                        ship_lon=body.ship_lon,
+                        ship_heading=body.heading,
+                        target_lat=lat,
+                        target_lon=lon,
+                        cam_cfg=cam_cfg,
+                    )
+                    if lat is not None and lon is not None
+                    else None
+                )
                 if session_logger:
                     session_logger.log(feature)
                 yield f"data: {json.dumps(feature)}\n"
@@ -406,66 +423,6 @@ async def stream_ais_geojson(body: AISStreamRequest):
                         "log_files": metadata.get("log_files", []),
                     }
                     yield f"data: {json.dumps(info)}\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
-
-
-@app.get("/api/ais/projections")
-async def stream_ais_projections(
-    ship_lat: float = 63.4365,
-    ship_lon: float = 10.3835,
-    heading: float = 90,
-    offset_meters: float = 3000,
-    fov_degrees: float = 120,
-):
-    async def event_generator():
-        try:
-            async for feature in fetch_ais_stream_projections(
-                ship_lat=ship_lat,
-                ship_lon=ship_lon,
-                heading=heading,
-                offset_meters=offset_meters,
-                fov_degrees=fov_degrees,
-            ):
-                yield f"data: {json.dumps(feature)}\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
-
-
-@app.get("/api/ais/projections/mmsi")
-async def stream_ais_projections_by_mmsi(
-    mmsi: str,
-    offset_meters: float = 3000,
-    fov_degrees: float = 120,
-):
-    async def event_generator():
-        try:
-            async for feature in fetch_ais_stream_projections_by_mmsi(
-                mmsi=mmsi,
-                offset_meters=offset_meters,
-                fov_degrees=fov_degrees,
-            ):
-                yield f"data: {json.dumps(feature)}\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
 
     return StreamingResponse(
         event_generator(),
