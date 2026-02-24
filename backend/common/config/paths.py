@@ -13,7 +13,7 @@ SAMPLES_CONFIG_PATH = BASE_DIR / "fusion" / "samples.json"
 # Default video paths (local fallback)
 DEFAULT_VIDEO_PATH = (
     BASE_DIR / "data" / "raw" / "video"
-    / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
+    / "GunnerusVideoKlipp1.mp4"
 )
 DEFAULT_FUSION_VIDEO_PATH = (
     BASE_DIR / "data" / "raw" / "fvessel" / "video-01" / "segment-001"
