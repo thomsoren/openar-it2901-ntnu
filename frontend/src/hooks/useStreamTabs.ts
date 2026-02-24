@@ -310,6 +310,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
       }
       const streams = Array.isArray(payload.streams) ? payload.streams : [];
       dispatch({ type: "SET_RUNNING_STREAMS", streams });
+      setStreamError(null);
     } catch (err) {
       setStreamError(explainFetchError(err, "Failed to load streams"));
     }
@@ -327,6 +328,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
         if (!response.ok) throw new Error(payload.detail || "Failed to load streams");
         let streams = Array.isArray(payload.streams) ? payload.streams : [];
         dispatch({ type: "SET_RUNNING_STREAMS", streams });
+        setStreamError(null);
 
         const hasDefault = streams.some((s) => s.stream_id === "default");
         if (!hasDefault) {
@@ -335,7 +337,8 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ loop: true }),
           });
-          if (!startResp.ok && startResp.status !== 409) {
+          // 409 = already running (ok); 400 = no source configured (expected, ignore silently)
+          if (!startResp.ok && startResp.status !== 409 && startResp.status !== 400) {
             const p = (await readJsonSafely(startResp)) as { detail?: string };
             throw new Error(p.detail || "Failed to start default stream");
           }

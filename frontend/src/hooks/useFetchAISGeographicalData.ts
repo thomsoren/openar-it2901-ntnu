@@ -54,7 +54,13 @@ export const useFetchAISGeographicalData = (
         const response = await fetch(`${API_CONFIG.BASE_URL}/api/ais/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ coordinates: polygon }),
+          body: JSON.stringify({
+            coordinates: polygon,
+            ship_lat: shipLat,
+            ship_lon: shipLon,
+            heading,
+            fov_degrees: fovDegrees,
+          }),
           signal: controller.signal,
         });
 
@@ -74,6 +80,7 @@ export const useFetchAISGeographicalData = (
             if (!line.startsWith("data: ")) continue;
             try {
               const data: AISData = JSON.parse(line.slice(6));
+              console.log("Received AIS data:", data);
               if (!data.latitude || !data.longitude || !data.mmsi) continue;
 
               vesselCacheRef.current.set(data.mmsi, data);
