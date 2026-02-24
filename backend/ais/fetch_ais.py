@@ -5,6 +5,9 @@ import asyncio
 import json
 from dotenv import load_dotenv
 from typing import List
+
+from .logger import AISSessionLogger
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -132,6 +135,149 @@ async def fetch_ais_stream_geojson(
             continue
         except Exception as e:
             raise ValueError(f"Stream error: {type(e).__name__}: {str(e)}")
+
+
+async def fetch_historic_ais_data(
+    coordinates: List[List[float]],
+    from_date: str,
+    to_date: str,
+):
+    """
+    Fetch historical AIS tracks within a polygon from the Barentswatch Historic API.
+
+    Args:
+        coordinates: GeoJSON polygon as [[lon, lat], ...]
+        from_date: ISO 8601 start datetime, e.g. "2026-02-19T08:10:00Z"
+        to_date: ISO 8601 end datetime
+
+    Yields:
+        AIS data objects (same shape as live stream)
+    """
+    if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
+        raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
+
+    # Barentswatch Historic API requires WKT: POLYGON((lon lat, lon lat, ...))
+    wkt_coords = ", ".join([f"{c[0]} {c[1]}" for c in coordinates])
+    wkt_polygon = f"POLYGON(({wkt_coords}))"
+
+    request_body = {
+        "fromDate": from_date,
+        "toDate": to_date,
+        "geometry": wkt_polygon,
+        "modelType": "Simple",
+        "modelFormat": "Json",
+    }
+
+    async with aiohttp.ClientSession() as session:
+        token = await _fetch_token(session)
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        async with session.post(
+            "https://historic.ais.barentswatch.no/v1/historic/tracks",
+            headers=headers,
+            json=request_body,
+            timeout=aiohttp.ClientTimeout(total=120),
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise ValueError(f"Historic API HTTP {response.status}: {error_text}")
+
+            async for line in response.content:
+                line = line.decode("utf-8").strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if isinstance(data, list):
+                        for item in data:
+                            yield item
+                    else:
+                        yield data
+                except json.JSONDecodeError:
+                    continue
+
+
+async def fetch_historic_mmsi_in_area(
+    polygon: dict,
+    msg_time_from: str,
+    msg_time_to: str,
+    session_logger: AISSessionLogger | None = None,
+) -> list[int]:
+    """
+    Fetch a list of MMSIs of ships that were in a given area in a given timeframe.
+
+    Calls the Barentswatch Historic API:
+        POST https://historic.ais.barentswatch.no/v1/historic/mmsiinarea
+
+    Constraints (enforced by the upstream API):
+        - Max timeframe: 7 days
+        - Max polygon area: 500 km²
+
+    Args:
+        polygon: GeoJSON geometry object, e.g.
+            {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}
+        msg_time_from: ISO 8601 start datetime, e.g. "2026-02-17T08:00:00Z"
+        msg_time_to:   ISO 8601 end datetime
+
+    Returns:
+        List of integer MMSIs present in the area during the timeframe.
+    """
+    if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
+        raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
+
+    request_body = {
+        "polygon": polygon,
+        "msgTimeFrom": msg_time_from,
+        "msgTimeTo": msg_time_to,
+    }
+
+    logger.info(
+        "[mmsiinarea] Requesting MMSIs in area | from=%s to=%s polygon_type=%s",
+        msg_time_from,
+        msg_time_to,
+        polygon.get("type"),
+    )
+
+    async with aiohttp.ClientSession() as session:
+        token = await _fetch_token(session)
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        async with session.post(
+            "https://historic.ais.barentswatch.no/v1/historic/mmsiinarea",
+            headers=headers,
+            json=request_body,
+            timeout=aiohttp.ClientTimeout(total=60),
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                logger.error(
+                    "[mmsiinarea] API error %s | from=%s to=%s | detail=%s",
+                    response.status,
+                    msg_time_from,
+                    msg_time_to,
+                    error_text,
+                )
+                raise ValueError(f"Historic mmsiinarea API HTTP {response.status}: {error_text}")
+            result: list[int] = await response.json()
+            logger.info(
+                "[mmsiinarea] Received %d MMSI(s) | from=%s to=%s",
+                len(result),
+                msg_time_from,
+                msg_time_to,
+            )
+            if session_logger is not None:
+                for mmsi in result:
+                    session_logger.log({
+                        "mmsi": mmsi,
+                        "timestamp": msg_time_to,
+                        "latitude": 0.0,
+                        "longitude": 0.0,
+                        "speed": -1,
+                        "heading": -1,
+                        "courseOverGround": -1,
+                    })
+                session_logger.end_session()
+            return result
 
 
 def main():

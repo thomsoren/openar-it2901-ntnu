@@ -354,6 +354,26 @@ async def stream_video(request: Request):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error in video stream: {exc}")
 
+class HistoricalMmsiInAreaRequest(BaseModel):
+    polygon: dict
+    msgTimeFrom: str
+    msgTimeTo: str
+    log: bool = False
+
+
+@app.post("/api/ais/historical/mmsi_in_area")
+async def get_historical_mmsi_in_area(body: HistoricalMmsiInAreaRequest):
+    session_logger = AISSessionLogger() if body.log else None
+    try:
+        return await ais_service.get_historical_mmsi_in_area(
+            polygon=body.polygon,
+            msg_time_from=body.msgTimeFrom,
+            msg_time_to=body.msgTimeTo,
+            session_logger=session_logger,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error fetching historical AIS data: {exc}")
+
 
 @app.get("/api/ais")
 async def get_ais_data():

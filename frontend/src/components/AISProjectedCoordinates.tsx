@@ -6,7 +6,8 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
-
+import { useFetchHistoricalMmsiInArea } from "../hooks/useFetchHistoricalMmsiInArea";
+import { buildFovPolygon } from "../utils/geometryMath";
 const CANVAS_WIDTH = 1920;
 const CANVAS_HEIGHT = 1080;
 
@@ -32,6 +33,24 @@ export const AISProjectedCoordinates: React.FC = () => {
     offsetMeters,
     fovDegrees
   );
+
+  const {
+    mmsis: historicalMmsis,
+    isLoading: isHistoricalLoading,
+    error: historicalError,
+    fetch: fetchHistoricalMmsis,
+  } = useFetchHistoricalMmsiInArea();
+
+  const handleHistoricQuery = () => {
+    const polygonCoords = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    fetchHistoricalMmsis({
+      polygon: { type: "Polygon", coordinates: [polygonCoords] },
+      msgTimeFrom: yesterday.toISOString(),
+      msgTimeTo: now.toISOString(),
+    });
+  };
 
   const visibleFeatures = features.filter((f) => f.projection != null);
 
@@ -63,6 +82,18 @@ export const AISProjectedCoordinates: React.FC = () => {
           <ObcButton variant="flat" onClick={() => setShouldStream(false)} disabled={!isStreaming}>
             Stop
           </ObcButton>
+          {/* @ts-expect-error - OpenBridge component type mismatch */}
+          <ObcButton variant="flat" onClick={handleHistoricQuery} disabled={isHistoricalLoading}>
+            {isHistoricalLoading
+              ? "Loading…"
+              : `Historic${historicalMmsis.length ? ` (${historicalMmsis.length})` : ""}`}
+          </ObcButton>
+          {historicalError && (
+            /* @ts-expect-error - OpenBridge component type mismatch */
+            <ObcStatusIndicator status="alarm">
+              Historic error: {historicalError}
+            </ObcStatusIndicator>
+          )}
         </div>
       </div>
 

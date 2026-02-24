@@ -6,6 +6,22 @@ export interface AISProjection {
   rel_bearing_deg: number;
 }
 
+export interface HistoricalMmsiInAreaRequest {
+  /** GeoJSON geometry object (Polygon, MultiPolygon, etc.). Max area: 500 km². */
+  polygon: GeoJSONGeometry;
+  /** ISO 8601 start datetime. Max timeframe is 7 days from msgTimeTo. */
+  msgTimeFrom: string;
+  /** ISO 8601 end datetime. */
+  msgTimeTo: string;
+  /** Whether to write an NDJSON session log on the server. */
+  log?: boolean;
+}
+
+export interface GeoJSONGeometry {
+  type: string;
+  coordinates: unknown;
+}
+
 export interface AISData {
   courseOverGround: number;
   latitude: number;
