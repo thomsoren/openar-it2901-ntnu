@@ -43,12 +43,11 @@ export const AISProjectedCoordinates: React.FC = () => {
 
   const handleHistoricQuery = () => {
     const polygonCoords = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     fetchHistoricalMmsis({
       polygon: { type: "Polygon", coordinates: [polygonCoords] },
-      msgTimeFrom: yesterday.toISOString(),
-      msgTimeTo: now.toISOString(),
+      msgTimeFrom: "2026-02-19T08:10:00Z",
+      msgTimeTo: "2026-02-19T08:15:00Z",
+      log: true,
     });
   };
 

@@ -24,7 +24,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.websockets import WebSocketDisconnect
 
 from ais import service as ais_service
-from ais.fetch_ais import fetch_ais_stream_geojson
+from ais.fetch_ais import fetch_ais_stream_geojson, fetch_historic_ais_data
 from ais_mapping_service.pixel_projection.camera_config import CameraConfig
 from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
 from ais.logger import AISSessionLogger
@@ -365,12 +365,18 @@ class HistoricalMmsiInAreaRequest(BaseModel):
 async def get_historical_mmsi_in_area(body: HistoricalMmsiInAreaRequest):
     session_logger = AISSessionLogger() if body.log else None
     try:
-        return await ais_service.get_historical_mmsi_in_area(
+        results = []
+        async for item in fetch_historic_ais_data(
             polygon=body.polygon,
-            msg_time_from=body.msgTimeFrom,
-            msg_time_to=body.msgTimeTo,
-            session_logger=session_logger,
-        )
+            from_date=body.msgTimeFrom,
+            to_date=body.msgTimeTo,
+        ):
+            results.append(item)
+            if session_logger:
+                session_logger.log(item)
+        if session_logger:
+            session_logger.end_session()
+        return results
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error fetching historical AIS data: {exc}")
 

@@ -3,8 +3,9 @@ import logging
 import aiohttp
 import asyncio
 import json
+from urllib.parse import quote
 from dotenv import load_dotenv
-from typing import List
+from typing import AsyncIterator, List
 
 from .logger import AISSessionLogger
 
@@ -137,66 +138,6 @@ async def fetch_ais_stream_geojson(
             raise ValueError(f"Stream error: {type(e).__name__}: {str(e)}")
 
 
-async def fetch_historic_ais_data(
-    coordinates: List[List[float]],
-    from_date: str,
-    to_date: str,
-):
-    """
-    Fetch historical AIS tracks within a polygon from the Barentswatch Historic API.
-
-    Args:
-        coordinates: GeoJSON polygon as [[lon, lat], ...]
-        from_date: ISO 8601 start datetime, e.g. "2026-02-19T08:10:00Z"
-        to_date: ISO 8601 end datetime
-
-    Yields:
-        AIS data objects (same shape as live stream)
-    """
-    if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
-        raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
-
-    # Barentswatch Historic API requires WKT: POLYGON((lon lat, lon lat, ...))
-    wkt_coords = ", ".join([f"{c[0]} {c[1]}" for c in coordinates])
-    wkt_polygon = f"POLYGON(({wkt_coords}))"
-
-    request_body = {
-        "fromDate": from_date,
-        "toDate": to_date,
-        "geometry": wkt_polygon,
-        "modelType": "Simple",
-        "modelFormat": "Json",
-    }
-
-    async with aiohttp.ClientSession() as session:
-        token = await _fetch_token(session)
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-        async with session.post(
-            "https://historic.ais.barentswatch.no/v1/historic/tracks",
-            headers=headers,
-            json=request_body,
-            timeout=aiohttp.ClientTimeout(total=120),
-        ) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                raise ValueError(f"Historic API HTTP {response.status}: {error_text}")
-
-            async for line in response.content:
-                line = line.decode("utf-8").strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    if isinstance(data, list):
-                        for item in data:
-                            yield item
-                    else:
-                        yield data
-                except json.JSONDecodeError:
-                    continue
-
-
 async def fetch_historic_mmsi_in_area(
     polygon: dict,
     msg_time_from: str,
@@ -278,6 +219,108 @@ async def fetch_historic_mmsi_in_area(
                     })
                 session_logger.end_session()
             return result
+
+
+async def _fetch_tracks_for_mmsi(
+    session: aiohttp.ClientSession,
+    token: str,
+    mmsi: int,
+    from_date: str,
+    to_date: str,
+    filter_satellite: bool = True,
+) -> list[dict]:
+    """
+    Fetch historical AIS tracks for a single MMSI via:
+        GET /v1/historic/tracks/{mmsi}/{fromDate}/{toDate}
+    """
+    from_enc = quote(from_date, safe="")
+    to_enc = quote(to_date, safe="")
+    url = (
+        f"https://historic.ais.barentswatch.no/v1/historic/tracks"
+        f"/{mmsi}/{from_enc}/{to_enc}"
+        f"?modelFormat=Json&filterSatellitePositions={'true' if filter_satellite else 'false'}"
+    )
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)) as response:
+        if response.status == 404:
+            logger.debug("[historic tracks] No data for MMSI %s (%s – %s)", mmsi, from_date, to_date)
+            return []
+        if response.status != 200:
+            error_text = await response.text()
+            logger.warning(
+                "[historic tracks] HTTP %s for MMSI %s: %s", response.status, mmsi, error_text
+            )
+            return []
+
+        raw = await response.json()
+        if isinstance(raw, list):
+            return raw
+        return [raw] if raw else []
+
+
+async def fetch_historic_ais_data(
+    polygon: dict,
+    from_date: str,
+    to_date: str,
+    filter_satellite: bool = True,
+    concurrency: int = 10,
+) -> AsyncIterator[dict]:
+    """
+    Fetch historical AIS tracks for all vessels that were inside *polygon*
+    between *from_date* and *to_date*.
+
+    Strategy:
+        1. POST /v1/historic/mmsiinarea  →  list of MMSIs present in the area
+        2. For each MMSI, GET /v1/historic/tracks/{mmsi}/{fromDate}/{toDate}
+           (requests are batched for concurrency control)
+
+    Args:
+        polygon: GeoJSON geometry object, e.g.
+            {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}
+        from_date: ISO 8601 start datetime, e.g. "2026-02-19T08:10:00Z"
+        to_date:   ISO 8601 end datetime
+        filter_satellite: Pass filterSatellitePositions to the track endpoint.
+        concurrency: Max simultaneous per-MMSI requests.
+
+    Yields:
+        Individual AIS track point dicts.
+    """
+    if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
+        raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
+
+    # ── Step 1: resolve MMSIs in the area ──────────────────────────────────
+    logger.info("[historic] Resolving MMSIs in area | from=%s to=%s", from_date, to_date)
+    mmsis = await fetch_historic_mmsi_in_area(polygon, from_date, to_date)
+    if not mmsis:
+        logger.info("[historic] No MMSIs found in area for the given timeframe.")
+        return
+    logger.info("[historic] Found %d MMSI(s) — fetching tracks", len(mmsis))
+
+    # ── Step 2: fetch tracks concurrently ─────────────────────────────────
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def bounded_fetch(session: aiohttp.ClientSession, token: str, mmsi: int) -> list[dict]:
+        async with semaphore:
+            return await _fetch_tracks_for_mmsi(session, token, mmsi, from_date, to_date, filter_satellite)
+
+    async with aiohttp.ClientSession() as session:
+        token = await _fetch_token(session)
+        results = await asyncio.gather(
+            *[bounded_fetch(session, token, mmsi) for mmsi in mmsis],
+            return_exceptions=True,
+        )
+
+    total = 0
+    for mmsi, result in zip(mmsis, results):
+        if isinstance(result, Exception):
+            logger.warning("[historic] Error fetching tracks for MMSI %s: %s", mmsi, result)
+            continue
+        for item in result:
+            total += 1
+            yield item
+
+    logger.info("[historic] Yielded %d track point(s) across %d vessel(s)", total, len(mmsis))
 
 
 def main():
