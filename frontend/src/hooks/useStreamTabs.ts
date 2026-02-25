@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
-import { apiFetch } from "../lib/api-client";
-import { readJsonSafely, explainFetchError } from "../utils/api-helpers";
 import type { StreamSummary } from "../types/stream";
+import {
+  ensureDefaultStreamRunning,
+  listStreams,
+  sendStreamHeartbeat,
+  toStreamError,
+} from "../services/streams";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -299,18 +303,10 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   // --- Refresh streams from backend ---
   const refreshStreams = useCallback(async () => {
     try {
-      const response = await apiFetch("/api/streams");
-      const payload = (await readJsonSafely(response)) as {
-        detail?: string;
-        streams?: StreamSummary[];
-      };
-      if (!response.ok) {
-        throw new Error(payload.detail || "Failed to load streams");
-      }
-      const streams = Array.isArray(payload.streams) ? payload.streams : [];
+      const streams = await listStreams();
       dispatch({ type: "SET_RUNNING_STREAMS", streams });
     } catch (err) {
-      setStreamError(explainFetchError(err, "Failed to load streams"));
+      setStreamError(toStreamError(err, "Failed to load streams"));
     }
   }, []);
 
@@ -318,38 +314,10 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   useEffect(() => {
     const ensureDefaultStream = async () => {
       try {
-        const response = await apiFetch("/api/streams");
-        const payload = (await readJsonSafely(response)) as {
-          detail?: string;
-          streams?: StreamSummary[];
-        };
-        if (!response.ok) throw new Error(payload.detail || "Failed to load streams");
-        let streams = Array.isArray(payload.streams) ? payload.streams : [];
+        const streams = await ensureDefaultStreamRunning();
         dispatch({ type: "SET_RUNNING_STREAMS", streams });
-
-        const hasDefault = streams.some((s) => s.stream_id === "default");
-        if (!hasDefault) {
-          const startResp = await apiFetch("/api/streams/default/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ loop: true }),
-          });
-          if (!startResp.ok && startResp.status !== 409) {
-            const p = (await readJsonSafely(startResp)) as { detail?: string };
-            throw new Error(p.detail || "Failed to start default stream");
-          }
-          const refetchResp = await apiFetch("/api/streams");
-          const refetchPayload = (await readJsonSafely(refetchResp)) as {
-            detail?: string;
-            streams?: StreamSummary[];
-          };
-          if (refetchResp.ok) {
-            streams = Array.isArray(refetchPayload.streams) ? refetchPayload.streams : [];
-            dispatch({ type: "SET_RUNNING_STREAMS", streams });
-          }
-        }
       } catch (err) {
-        setStreamError(explainFetchError(err, "Failed to initialize streams"));
+        setStreamError(toStreamError(err, "Failed to initialize streams"));
       }
     };
     ensureDefaultStream();
@@ -357,17 +325,18 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
 
   // --- Heartbeats ---
   const joinedIdsRef = useRef(joinedStreamIds);
-  joinedIdsRef.current = joinedStreamIds;
   const configureTabIdRef = useRef(configureTabId);
-  configureTabIdRef.current = configureTabId;
+
+  useEffect(() => {
+    joinedIdsRef.current = joinedStreamIds;
+    configureTabIdRef.current = configureTabId;
+  }, [joinedStreamIds, configureTabId]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       for (const id of joinedIdsRef.current) {
         if (id === configureTabIdRef.current) continue;
-        apiFetch(`/api/streams/${encodeURIComponent(id)}/heartbeat`, {
-          method: "POST",
-        }).catch((err) => console.warn("stream heartbeat failed", err));
+        sendStreamHeartbeat(id).catch((err) => console.warn("stream heartbeat failed", err));
       }
     }, 60_000);
     return () => window.clearInterval(interval);
@@ -396,10 +365,9 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   useEffect(() => {
     if (externalStreamId && externalStreamId !== prevExternalStreamIdRef.current) {
       dispatch({ type: "JOIN_EXTERNAL_STREAM", streamId: externalStreamId });
-      refreshStreams().catch((err) => console.warn("stream refresh failed", err));
     }
     prevExternalStreamIdRef.current = externalStreamId;
-  }, [externalStreamId, refreshStreams]);
+  }, [externalStreamId]);
 
   // --- Handlers ---
   const handleTabSelected = useCallback((event: CustomEvent<TabSelectedDetail>) => {
