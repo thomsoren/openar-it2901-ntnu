@@ -11,6 +11,7 @@ import VideoPlayer, { type VideoPlayerState } from "../components/video-player/V
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { ARControlPanel } from "../components/ar-control-panel/ARControlPanel";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useSettings } from "../contexts/useSettings";
@@ -115,10 +116,25 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
 
   const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
-  const { vessels, isLoading, error, isConnected, videoInfo } = useDetectionsWebSocket({
+  //detections
+  const {
+    vessels,
+    isLoading,
+    error,
+    isConnected,
+    videoInfo,
+    detectionTimestampMs,
+    detectionFrameSentAtMs,
+  } = useDetectionsWebSocket({
     url: wsUrl,
     enabled: wsEnabled,
   });
+  //interpolation of detections
+  const interpolatedVessels = useInterpolatedDetections(
+    vessels,
+    detectionFrameSentAtMs,
+    detectionTimestampMs
+  );
 
   const videoTransform = useVideoTransform(
     videoRef,
@@ -349,7 +365,7 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                     <div className="status-overlay status-info">
                       {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
                       {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
-                      {vessels.length}
+                      {interpolatedVessels.length}
                       {videoState.error ? ` | Video error: ${videoState.error}` : ""}
                       {displayError ? ` | Control: ${displayError}` : ""}
                     </div>
@@ -357,7 +373,7 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
 
                   {detectionVisible && (
                     <PoiOverlay
-                      vessels={vessels}
+                      vessels={interpolatedVessels}
                       videoTransform={videoTransform}
                       detectionFrame={
                         videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
