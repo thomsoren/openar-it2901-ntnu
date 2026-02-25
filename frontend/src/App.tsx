@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import "./App.css";
@@ -21,6 +22,17 @@ const handleBrillianceChange = (event: CustomEvent) => {
 function App() {
   const { clockDate } = useClock();
   const nav = useNavigation();
+  const {
+    currentPage,
+    pageLabels,
+    showNavigationMenu,
+    showUserPanel,
+    showBrillianceMenu,
+    setShowNavigationMenu,
+    setShowUserPanel,
+    setShowBrillianceMenu,
+    handleNavigationItemClick,
+  } = nav;
 
   const [isOnAuthGate, setIsOnAuthGate] = useState(false);
   const userPanelRef = useRef<HTMLDivElement>(null);
@@ -30,10 +42,10 @@ function App() {
     (visible: boolean) => {
       setIsOnAuthGate(visible);
       if (visible) {
-        nav.setShowUserPanel(false);
+        setShowUserPanel(false);
       }
     },
-    [nav]
+    [setShowUserPanel]
   );
 
   // Close user panel and brilliance menu when clicking outside
@@ -44,21 +56,17 @@ function App() {
       const topbar = document.querySelector("obc-top-bar");
       if (topbar?.contains(target)) return;
 
-      if (nav.showUserPanel && userPanelRef.current && !userPanelRef.current.contains(target)) {
-        nav.setShowUserPanel(false);
+      if (showUserPanel && userPanelRef.current && !userPanelRef.current.contains(target)) {
+        setShowUserPanel(false);
       }
-      if (
-        nav.showBrillianceMenu &&
-        brillianceRef.current &&
-        !brillianceRef.current.contains(target)
-      ) {
-        nav.setShowBrillianceMenu(false);
+      if (showBrillianceMenu && brillianceRef.current && !brillianceRef.current.contains(target)) {
+        setShowBrillianceMenu(false);
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [nav, nav.showUserPanel, nav.showBrillianceMenu]);
+  }, [setShowBrillianceMenu, setShowUserPanel, showBrillianceMenu, showUserPanel]);
 
   // When user selects a stream from the nav menu, pass it to Datavision via prop
   const [externalStreamId, setExternalStreamId] = useState<string | null>(null);
@@ -66,9 +74,9 @@ function App() {
   const selectStream = useCallback(
     (streamId: string) => {
       setExternalStreamId(streamId);
-      nav.handleNavigationItemClick("datavision");
+      handleNavigationItemClick("datavision");
     },
-    [nav]
+    [handleNavigationItemClick]
   );
 
   const streamAccess = useStreamAccessPanel({ onStreamSelected: selectStream });
@@ -90,79 +98,60 @@ function App() {
     createStream,
   } = streamAccess;
 
-  const renderPublicPage = () => {
-    switch (nav.currentPage) {
-      case "ais":
-        return <Ais />;
-      case "components":
-        return <Components />;
-      case "fusion":
-        return <Fusion />;
-      case "datavision":
-      default:
-        return (
-          <Datavision
-            externalStreamId={externalStreamId}
-            onAuthGateVisibleChange={handleAuthGateVisibleChange}
-          />
-        );
-    }
-  };
-
   // Refresh stream list when nav menu opens
   useEffect(() => {
-    if (!nav.showNavigationMenu) {
+    if (!showNavigationMenu) {
       return;
     }
     loadStreams().catch((err) => {
       setStreamActionError(toStreamError(err, "Failed to load streams"));
     });
-  }, [loadStreams, nav.showNavigationMenu, setStreamActionError]);
+  }, [loadStreams, setStreamActionError, showNavigationMenu]);
 
   const handleNavigationMenuToggle = () => {
-    nav.setShowNavigationMenu((previous) => !previous);
+    setShowNavigationMenu((previous) => !previous);
   };
 
   const handleBrillianceToggle = () => {
-    nav.setShowUserPanel(false);
-    nav.setShowBrillianceMenu((previous) => !previous);
+    setShowUserPanel(false);
+    setShowBrillianceMenu((previous) => !previous);
   };
 
   const handleUserPanelToggle = () => {
     if (isOnAuthGate) {
       return;
     }
-    nav.setShowBrillianceMenu(false);
-    nav.setShowUserPanel((previous) => !previous);
+    setShowBrillianceMenu(false);
+    setShowUserPanel((previous) => !previous);
   };
 
   const handleUserAuthenticated = async () => {
-    nav.setShowUserPanel(false);
+    setShowUserPanel(false);
   };
 
   return (
     <>
       <AppTopBar
-        pageLabel={nav.pageLabels[nav.currentPage]}
+        pageLabel={pageLabels[currentPage]}
         clockDate={clockDate}
         isOnAuthGate={isOnAuthGate}
-        showNavigationMenu={nav.showNavigationMenu}
-        showUserPanel={nav.showUserPanel}
+        showNavigationMenu={showNavigationMenu}
+        showUserPanel={showUserPanel}
         onToggleNavigationMenu={handleNavigationMenuToggle}
         onToggleBrillianceMenu={handleBrillianceToggle}
         onToggleUserPanel={handleUserPanelToggle}
       />
 
-      {nav.showUserPanel && (
+      {showUserPanel && (
         <div ref={userPanelRef}>
           <UserPanel onSignedIn={handleUserAuthenticated} />
         </div>
       )}
 
-      {nav.showNavigationMenu && (
+      {showNavigationMenu && (
         <NavigationPanel
-          currentPage={nav.currentPage}
-          onNavigate={nav.handleNavigationItemClick}
+          currentPage={currentPage}
+          onNavigate={handleNavigationItemClick}
           streamPanelTab={streamPanelTab}
           onStreamPanelTabChange={setStreamPanelTab}
           streamSearch={streamSearch}
@@ -186,19 +175,34 @@ function App() {
       <main
         className={[
           "main",
-          nav.showNavigationMenu ? "main--with-sidebar" : "",
-          nav.currentPage === "components" ? "main--no-padding" : "",
+          showNavigationMenu ? "main--with-sidebar" : "",
+          currentPage === "components" ? "main--no-padding" : "",
         ]
           .filter(Boolean)
           .join(" ")}
       >
-        {nav.showBrillianceMenu && (
+        {showBrillianceMenu && (
           <div ref={brillianceRef} className="brilliance">
             <ObcBrillianceMenu onPaletteChanged={handleBrillianceChange} show-auto-brightness />
           </div>
         )}
 
-        {renderPublicPage()}
+        <Routes>
+          <Route
+            path="/datavision"
+            element={
+              <Datavision
+                externalStreamId={externalStreamId}
+                onAuthGateVisibleChange={handleAuthGateVisibleChange}
+              />
+            }
+          />
+          <Route path="/ais" element={<Ais />} />
+          <Route path="/components" element={<Components />} />
+          <Route path="/fusion" element={<Fusion />} />
+          <Route path="/" element={<Navigate to="/datavision" replace />} />
+          <Route path="*" element={<Navigate to="/datavision" replace />} />
+        </Routes>
       </main>
     </>
   );

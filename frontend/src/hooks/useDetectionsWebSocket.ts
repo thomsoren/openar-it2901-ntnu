@@ -97,7 +97,18 @@ function createWebSocketStore(
 
   const connect = () => {
     cleanup();
-    setState({ isLoading: true, error: null, isComplete: false });
+    setState({
+      vessels: [],
+      frameIndex: 0,
+      fps: 0,
+      detectionTimestampMs: 0,
+      detectionFrameSentAtMs: 0,
+      videoInfo: null,
+      isConnected: false,
+      isLoading: true,
+      error: null,
+      isComplete: false,
+    });
 
     try {
       ws = new WebSocket(url);
@@ -150,7 +161,15 @@ function createWebSocketStore(
       };
 
       ws.onclose = (event) => {
-        setState({ isConnected: false });
+        setState({
+          isConnected: false,
+          isLoading: false,
+          vessels: [],
+          frameIndex: 0,
+          detectionTimestampMs: 0,
+          detectionFrameSentAtMs: 0,
+          fps: 0,
+        });
         ws = null;
 
         if (!event.wasClean && autoReconnect && !state.isComplete) {
@@ -167,7 +186,15 @@ function createWebSocketStore(
 
   const disconnect = () => {
     cleanup();
-    setState({ isConnected: false, isLoading: false });
+    setState({
+      isConnected: false,
+      isLoading: false,
+      vessels: [],
+      frameIndex: 0,
+      detectionTimestampMs: 0,
+      detectionFrameSentAtMs: 0,
+      fps: 0,
+    });
   };
 
   return {
@@ -186,6 +213,12 @@ function createWebSocketStore(
  * Hook for receiving YOLO detection updates via WebSocket.
  * The backend processes video with YOLO and streams detection data.
  * Video playback is handled separately by the frontend at native speed.
+ *
+ * @param url - Optional explicit websocket URL; overrides streamId-derived default
+ * @param streamId - Detection stream identifier for default URL construction
+ * @param enabled - Whether websocket should be connected
+ * @param autoReconnect - Whether to reconnect after unclean closes
+ * @param reconnectDelay - Delay in ms before reconnect attempts
  *
  * @example
  * ```tsx

@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 
+/**
+ * Hook for exposing the current timestamp as an ISO string, updated every second.
+ *
+ * @example
+ * ```tsx
+ * const { clockDate } = useClock();
+ * ```
+ */
 export function useClock() {
   const [clockDate, setClockDate] = useState(() => new Date().toISOString());
 

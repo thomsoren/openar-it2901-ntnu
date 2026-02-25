@@ -5,6 +5,7 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObcTabbedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tabbed-card/tabbed-card";
 import type { PageId } from "../../hooks/useNavigation";
 import type { StreamSummary } from "../../types/stream";
+import { getInputValue } from "../../utils/dom-input";
 
 interface TabChangeDetail {
   tab: number;
@@ -27,14 +28,6 @@ interface NavigationPanelProps {
   onJoinStream: (streamId?: string) => void;
   onCreateStream: () => void;
 }
-
-const getTextInputValue = (event: Event, fallback: string): string => {
-  const target = event.target as { value?: string } | null;
-  if (target && typeof target.value === "string") {
-    return target.value;
-  }
-  return fallback;
-};
 
 export function NavigationPanel({
   currentPage,
@@ -96,9 +89,7 @@ export function NavigationPanel({
                 value={streamSearch}
                 placeholder="Search by stream id"
                 aria-label="Search Running Streams"
-                onInput={(event: Event) =>
-                  onStreamSearchChange(getTextInputValue(event, streamSearch))
-                }
+                onInput={(event: Event) => onStreamSearchChange(getInputValue(event, streamSearch))}
               />
               <div className="navigation-stream-list">
                 {filteredStreams.length === 0 && (
@@ -121,7 +112,7 @@ export function NavigationPanel({
                 placeholder="stream"
                 aria-label="Stream ID"
                 onInput={(event: Event) =>
-                  onStreamIdInputChange(getTextInputValue(event, streamIdInput))
+                  onStreamIdInputChange(getInputValue(event, streamIdInput))
                 }
               />
               <div className="navigation-stream-controls__hint">Source URL (optional)</div>
@@ -130,7 +121,7 @@ export function NavigationPanel({
                 placeholder="Leave empty to use default video"
                 aria-label="Source URL"
                 onInput={(event: Event) =>
-                  onSourceUrlInputChange(getTextInputValue(event, sourceUrlInput))
+                  onSourceUrlInputChange(getInputValue(event, sourceUrlInput))
                 }
               />
               <ObcButton

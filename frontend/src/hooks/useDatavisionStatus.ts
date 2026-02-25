@@ -9,6 +9,26 @@ interface UseDatavisionStatusOptions {
   videoState: VideoPlayerState;
 }
 
+/**
+ * Hook for generating a single Datavision status line for the overlay.
+ *
+ * @param activeTabId - Currently active stream tab id
+ * @param vesselsCount - Number of currently rendered vessels
+ * @param isConnected - Detection websocket connection state
+ * @param controlError - Control-plane error text to include
+ * @param videoState - Current video transport status
+ *
+ * @example
+ * ```tsx
+ * const { infoLabel } = useDatavisionStatus({
+ *   activeTabId,
+ *   vesselsCount: vessels.length,
+ *   isConnected,
+ *   controlError,
+ *   videoState,
+ * });
+ * ```
+ */
 export function useDatavisionStatus({
   activeTabId,
   vesselsCount,

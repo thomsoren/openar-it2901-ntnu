@@ -142,10 +142,9 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
       setMessage("Please select a valid video file.");
       return;
     }
-    setFiles((prev) => {
-      setActiveIndex(prev.length);
-      return [...prev, { file, addedAt: new Date() }];
-    });
+    const nextIndex = files.length;
+    setFiles((prev) => [...prev, { file, addedAt: new Date() }]);
+    setActiveIndex(nextIndex);
     setPreviewFromFile(file);
     setStatus("idle");
     setMessage(null);
