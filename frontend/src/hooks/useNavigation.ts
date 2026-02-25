@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 const PAGE_STORAGE_KEY = "openar.currentPage";
-const PAGES = ["datavision", "ais", "components", "fusion", "settings"] as const;
+const PAGES = ["datavision", "ais", "components", "fusion"] as const;
 
 export type PageId = (typeof PAGES)[number];
 
@@ -10,7 +10,6 @@ const pageLabels: Record<PageId, string> = {
   ais: "AIS",
   components: "Components",
   fusion: "Fusion",
-  settings: "Settings",
 };
 
 const getStoredPage = (): PageId => {

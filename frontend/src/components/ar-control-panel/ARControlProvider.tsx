@@ -6,6 +6,7 @@ import {
   ARBooleanControlKey,
   RangeValue,
   PoiDropdownValue,
+  VideoFitMode,
 } from "./ar-control-context";
 
 const STORAGE_KEY = "openar.arControls";
@@ -16,6 +17,12 @@ const POI_DROPDOWN_VALUES: ReadonlySet<PoiDropdownValue> = new Set([
   "poi-display",
   "poi-icon",
 ]);
+const VIDEO_FIT_MODES: ReadonlySet<VideoFitMode> = new Set(["contain", "cover"]);
+
+function isMobileDevice(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  return "ontouchstart" in window || navigator.maxTouchPoints > 0 || window.innerWidth < 768;
+}
 
 function asBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
@@ -33,10 +40,17 @@ function asPoiDropdownValue(value: unknown, fallback: PoiDropdownValue): PoiDrop
     : fallback;
 }
 
+function asVideoFitMode(value: unknown, fallback: VideoFitMode): VideoFitMode {
+  return typeof value === "string" && VIDEO_FIT_MODES.has(value as VideoFitMode)
+    ? (value as VideoFitMode)
+    : fallback;
+}
+
 function readStoredState(): ARControlState {
+  const mobileDefault: VideoFitMode = isMobileDevice() ? "contain" : "cover";
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return AR_CONTROL_DEFAULTS;
+    if (!raw) return { ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault };
     const parsed = JSON.parse(raw) as Partial<ARControlState> & { rangeVisible?: boolean };
     const fallbackRange = parsed.rangeVisible ? "10.5" : AR_CONTROL_DEFAULTS.rangeValue;
     return {
@@ -59,9 +73,11 @@ function readStoredState(): ARControlState {
         AR_CONTROL_DEFAULTS.poiDropdownValue
       ),
       aisCardsVisible: asBoolean(parsed.aisCardsVisible, AR_CONTROL_DEFAULTS.aisCardsVisible),
+      detectionVisible: asBoolean(parsed.detectionVisible, AR_CONTROL_DEFAULTS.detectionVisible),
+      videoFitMode: asVideoFitMode(parsed.videoFitMode, mobileDefault),
     };
   } catch {
-    return AR_CONTROL_DEFAULTS;
+    return { ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault };
   }
 }
 
@@ -88,9 +104,13 @@ export function ARControlProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, poiDropdownValue: value }));
   }, []);
 
+  const setVideoFitMode = useCallback((value: VideoFitMode) => {
+    setState((prev) => ({ ...prev, videoFitMode: value }));
+  }, []);
+
   const value = useMemo(
-    () => ({ state, toggle, setRangeValue, setPoiDropdownValue }),
-    [state, toggle, setRangeValue, setPoiDropdownValue]
+    () => ({ state, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode }),
+    [state, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode]
   );
 
   return <ARControlContext.Provider value={value}>{children}</ARControlContext.Provider>;

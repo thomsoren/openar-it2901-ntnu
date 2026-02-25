@@ -15,7 +15,6 @@ import Ais from "./pages/Ais";
 import Fusion from "./pages/Fusion";
 import Components from "./pages/Components";
 import Datavision from "./pages/Datavision";
-import Settings from "./pages/Settings";
 import AuthGate from "./components/auth/AuthGate";
 import { useClock } from "./hooks/useClock";
 import { useNavigation } from "./hooks/useNavigation";
@@ -201,7 +200,12 @@ function App() {
       return <Fusion />;
     }
 
-    return <Settings />;
+    return (
+      <Datavision
+        externalStreamId={externalStreamId}
+        onAuthGateVisibleChange={handleAuthGateVisibleChange}
+      />
+    );
   };
 
   // Refresh stream list when nav menu opens
@@ -302,12 +306,6 @@ function App() {
               checked={nav.currentPage === "components"}
               onClick={() => nav.handleNavigationItemClick("components")}
             />
-            <ObcNavigationItem
-              label="Settings"
-              checked={nav.currentPage === "settings"}
-              onClick={() => nav.handleNavigationItemClick("settings")}
-            />
-
             <div className="navigation-stream-panel">
               <div className="navigation-stream-panel__title">Stream Access</div>
               <ObcTabbedCard
