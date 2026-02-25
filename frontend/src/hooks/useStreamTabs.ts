@@ -230,7 +230,6 @@ interface TabSelectedDetail {
 
 export interface UseStreamTabsOptions {
   externalStreamId?: string | null;
-  multiStreamTestingEnabled?: boolean;
 }
 
 export interface UseStreamTabsReturn {
@@ -253,7 +252,7 @@ export interface UseStreamTabsReturn {
 }
 
 export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabsReturn {
-  const { externalStreamId, multiStreamTestingEnabled } = options;
+  const { externalStreamId } = options;
 
   const [state, dispatch] = useReducer(streamTabReducer, undefined, initStreamTabState);
   const { activeTabId, joinedStreamIds, runningStreams, configureTabId } = state;
@@ -401,15 +400,6 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
     }
     prevExternalStreamIdRef.current = externalStreamId;
   }, [externalStreamId, refreshStreams]);
-
-  // --- Poll stream list when multi-stream testing is enabled ---
-  useEffect(() => {
-    if (!multiStreamTestingEnabled) return;
-    const interval = window.setInterval(() => {
-      refreshStreams();
-    }, 3000);
-    return () => window.clearInterval(interval);
-  }, [multiStreamTestingEnabled, refreshStreams]);
 
   // --- Handlers ---
   const handleTabSelected = useCallback((event: CustomEvent<TabSelectedDetail>) => {
