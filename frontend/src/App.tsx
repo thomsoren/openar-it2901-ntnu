@@ -173,11 +173,7 @@ function App() {
       )}
 
       <main
-        className={[
-          "main",
-          showNavigationMenu ? "main--with-sidebar" : "",
-          currentPage === "components" ? "main--no-padding" : "",
-        ]
+        className={["main", currentPage === "components" ? "main--no-padding" : ""]
           .filter(Boolean)
           .join(" ")}
       >

@@ -127,10 +127,11 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     controlError: displayError,
     videoState,
   });
-  const estimatedTabWidth = tabs.length > 4 ? 190 : 210;
-  const panelMinWidth = 640;
-  const layoutPadding = 80;
-  const requiredWidth = tabs.length * estimatedTabWidth + panelMinWidth + layoutPadding;
+  const tabWidth = 210; // OBC tab row renders uniform tab widths in this layout
+  const requiredTabsWidth = tabs.length * tabWidth;
+  const controlsPanelWidth = 690; // AR controls + spacing
+  const layoutPadding = 140;
+  const requiredWidth = requiredTabsWidth + controlsPanelWidth + layoutPadding;
   const shouldStackTabsBar = viewportWidth < requiredWidth;
 
   return (
