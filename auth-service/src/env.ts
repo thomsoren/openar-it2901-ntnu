@@ -40,7 +40,9 @@ export const env = {
   betterAuthBasePath: getOptional("BETTER_AUTH_BASE_PATH", "/api/auth"),
   betterAuthSecret: getRequired("BETTER_AUTH_SECRET"),
   corsOrigins: getOptionalCsv("CORS_ORIGIN", [
+    "http://localhost:5273",
     "http://localhost:5173",
+    "http://127.0.0.1:5273",
     "http://127.0.0.1:5173",
   ]),
   databaseUrl: getRequired("DATABASE_URL"),

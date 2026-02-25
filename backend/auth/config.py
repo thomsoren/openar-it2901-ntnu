@@ -10,8 +10,10 @@ _JWT_SECRET_DEFAULT = "change-me-in-production"
 
 _DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:5273",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
+    "http://127.0.0.1:5273",
     "http://127.0.0.1:3000",
 ]
 
@@ -27,7 +29,7 @@ def _parse_cors_origins() -> list[str]:
 class Settings:
     database_url: str = os.getenv(
         "DATABASE_URL",
-        "postgresql+psycopg://openar:openar_dev@localhost:5433/openar",
+        "postgresql+psycopg://openar:openar_dev@localhost:5532/openar",
     )
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", _JWT_SECRET_DEFAULT)
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")

@@ -33,12 +33,20 @@ class RTDETRDetector:
         self._use_half = False
         self.model = self._load_model(model_path)
 
+    def _select_device(self) -> str:
+        """Select the best available PyTorch device: CUDA > MPS > CPU."""
+        if torch.cuda.is_available():
+            logger.info("CUDA device: %s", torch.cuda.get_device_name(0))
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            logger.info("Using Apple MPS (Metal Performance Shaders)")
+            return "mps"
+        return "cpu"
+
     def _load_model(self, model_path: str | None) -> RTDETR:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = self._select_device()
         self._use_half = device == "cuda"
-        logger.info(f"PyTorch device: {device}")
-        if device == "cuda":
-            logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
+        logger.info("PyTorch device: %s", device)
 
         if model_path:
             path = Path(model_path)
