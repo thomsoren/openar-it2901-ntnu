@@ -50,18 +50,6 @@ function Fusion() {
 
   return (
     <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-      <video
-        ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="background-video"
-        style={{ objectFit: videoFitMode }}
-      >
-        <source src={FUSION_VIDEO_CONFIG.SOURCE} type="video/mp4" />
-      </video>
-
       {isLoading && <div className="status-overlay">Loading FVessel demo...</div>}
       {error && <div className="status-overlay status-error">Error: {error}</div>}
       {!isLoading && !error && (
@@ -71,7 +59,15 @@ function Fusion() {
         </div>
       )}
 
-      {detectionVisible && <PoiOverlay vessels={vessels} videoTransform={videoTransform} />}
+      {detectionVisible && (
+        <PoiOverlay
+          vessels={vessels}
+          videoTransform={videoTransform}
+          videoRef={videoRef}
+          videoSource={FUSION_VIDEO_CONFIG.SOURCE}
+          videoFitMode={videoFitMode}
+        />
+      )}
     </div>
   );
 }

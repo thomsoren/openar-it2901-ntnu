@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useRef, useState, useLayoutEffect, useCallback } from "react";
+import { ObcPoiController } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-controller/poi-controller";
+import { ObcPoiLayerStack } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer-stack/poi-layer-stack";
+import { ObcPoiLayer } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer/poi-layer";
 import { ObcPoiData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-data/poi-data";
 import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-data/poi-data";
 import { DetectedVessel } from "../../types/detection";
-import { POI_CONFIG } from "../../config/video";
 import { VideoTransform } from "../../hooks/useVideoTransform";
 import { useARControls } from "../ar-control-panel/useARControls";
 import "./PoiOverlay.css";
@@ -14,6 +16,9 @@ interface PoiOverlayProps {
     width: number;
     height: number;
   } | null;
+  videoRef: React.RefObject<HTMLVideoElement>;
+  videoSource: string;
+  videoFitMode: string;
 }
 
 function isLayerVisible(
@@ -28,8 +33,45 @@ function isLayerVisible(
   return arControls.vesselLayerVisible;
 }
 
-function PoiOverlay({ vessels = [], videoTransform, detectionFrame = null }: PoiOverlayProps) {
+function PoiOverlay({
+  vessels = [],
+  videoTransform,
+  detectionFrame = null,
+  videoRef,
+  videoSource,
+  videoFitMode,
+}: PoiOverlayProps) {
   const { state: arControls } = useARControls();
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const layerElRef = useRef<HTMLElement | null>(null);
+  const [layerTopOffset, setLayerTopOffset] = useState(0);
+
+  const layerRefCallback = useCallback((el: unknown) => {
+    layerElRef.current = el instanceof HTMLElement ? el : null;
+  }, []);
+
+  const measureLayerOffset = useCallback(() => {
+    const overlay = overlayRef.current;
+    const layer = layerElRef.current;
+    if (!overlay || !layer) return;
+    const overlayRect = overlay.getBoundingClientRect();
+    const layerRect = layer.getBoundingClientRect();
+    setLayerTopOffset(layerRect.bottom - overlayRect.top);
+  }, []);
+
+  useLayoutEffect(() => {
+    measureLayerOffset();
+
+    const overlay = overlayRef.current;
+    const layer = layerElRef.current;
+    if (!overlay) return;
+
+    const ro = new ResizeObserver(measureLayerOffset);
+    ro.observe(overlay);
+    if (layer) ro.observe(layer);
+
+    return () => ro.disconnect();
+  }, [measureLayerOffset, vessels.length]);
 
   const filteredVessels = vessels.filter((item) =>
     isLayerVisible(item.detection.class_name, arControls)
@@ -49,36 +91,86 @@ function PoiOverlay({ vessels = [], videoTransform, detectionFrame = null }: Poi
   const mapY = detectionHeight > 0 ? sourceHeight / detectionHeight : 1;
 
   return (
-    <div className="poi-overlay">
-      {filteredVessels.map((item, index) => {
-        const trackId = item.detection.track_id ?? index;
+    <div className="poi-overlay" ref={overlayRef}>
+      <ObcPoiController
+        style={
+          {
+            display: "block",
+            width: "100%",
+            height: "100%",
+            "--obc-poi-controller-stack-top": "15%",
+          } as React.CSSProperties
+        }
+      >
+        <video
+          ref={videoRef}
+          slot="media"
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="background-video"
+          style={{ objectFit: videoFitMode === "cover" ? "cover" : "contain" }}
+        >
+          <source src={videoSource} type="video/mp4" />
+        </video>
+        <ObcPoiLayerStack
+          slot="stack"
+          selection-mode="multi"
+          className="poi-layer-stack"
+          style={{ transform: "none", height: "auto" }}
+        >
+          <ObcPoiLayer
+            overlap-mode="crossing"
+            debug
+            label="Second Layer"
+            className="poi-layer"
+            is-selected
+          >
+            {/* Second layer content - can add different POIs here */}
+          </ObcPoiLayer>
+          <ObcPoiLayer
+            ref={layerRefCallback}
+            overlap-mode="crossing"
+            debug
+            label="Vessel Layer"
+            className="poi-layer"
+          >
+            {filteredVessels.map((item, index) => {
+              const trackId = item.detection.track_id ?? index;
 
-        const scaledX = item.detection.x * mapX * videoTransform.scaleX;
-        const scaledY = item.detection.y * mapY * videoTransform.scaleY;
+              const scaledX = item.detection.x * mapX * videoTransform.scaleX;
+              const scaledY = item.detection.y * mapY * videoTransform.scaleY;
 
-        const screenX = scaledX + videoTransform.offsetX;
-        const screenY = scaledY + videoTransform.offsetY;
+              const scaledWidth = item.detection.width * mapX * videoTransform.scaleX;
+              const scaledHeight = item.detection.height * mapY * videoTransform.scaleY;
 
-        const lineHeight = POI_CONFIG.HEIGHT;
-        const buttonY = screenY - lineHeight;
+              const screenX = scaledX + videoTransform.offsetX;
+              const screenY = scaledY + videoTransform.offsetY;
 
-        const vesselData =
-          arControls.aisCardsVisible && item.vessel?.name
-            ? [{ value: item.vessel.name, label: "Vessel", unit: "" }]
-            : [];
+              const lineLength = screenY - layerTopOffset;
 
-        return (
-          <ObcPoiData
-            key={trackId}
-            style={{ position: "absolute" }}
-            x={screenX}
-            y={lineHeight}
-            buttonY={buttonY}
-            value={PoiDataValue.Unchecked}
-            data={vesselData}
-          />
-        );
-      })}
+              const vesselData =
+                arControls.aisCardsVisible && item.vessel?.name
+                  ? [{ value: item.vessel.name, label: "Vessel", unit: "" }]
+                  : [];
+
+              return (
+                <ObcPoiData
+                  key={trackId}
+                  style={{ position: "absolute" }}
+                  x={screenX}
+                  y={lineLength}
+                  boxWidth={scaledWidth}
+                  boxHeight={scaledHeight}
+                  value={PoiDataValue.Unchecked}
+                  data={vesselData}
+                />
+              );
+            })}
+          </ObcPoiLayer>
+        </ObcPoiLayerStack>
+      </ObcPoiController>
     </div>
   );
 }
