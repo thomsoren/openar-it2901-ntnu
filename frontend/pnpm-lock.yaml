@@ -30,9 +30,6 @@ importers:
       '@eslint/js':
         specifier: ^9.30.0
         version: 9.39.2
-      '@ocean-industries-concept-lab/openbridge-webcomponents':
-        specifier: 0.0.20260223174807
-        version: 0.0.20260223174807
       '@ocean-industries-concept-lab/openbridge-webcomponents-react':
         specifier: ^0.0.20260223174807
         version: 0.0.20260223174807(@types/react@19.2.7)(react@19.2.3)
@@ -924,8 +921,8 @@ packages:
   '@lit-labs/observers@2.1.0':
     resolution: {integrity: sha512-oeQ2tvi/ygq7S+VgnXIInMKHHFPFqvIV9j2zBzpCwl33cWviT2ltuxNpbd11etwtUVsM8woKQzfVnrc80PKhKA==}
 
-  '@lit-labs/ssr-dom-shim@1.5.1':
-    resolution: {integrity: sha512-Aou5UdlSpr5whQe8AA/bZG0jMj96CoJIWbGfZ91qieWu5AWUMKw8VR/pAkQkJYvBNhmCcWnZlyyk5oze8JIqYA==}
+  '@lit-labs/ssr-dom-shim@1.5.0':
+    resolution: {integrity: sha512-HLomZXMmrCFHSRKESF5vklAKsDY7/fsT/ZhqCu3V0UoW/Qbv8wxmO4W9bx4KnCCF2Zak4yuk+AGraK/bPmI4kA==}
 
   '@lit/localize@0.12.2':
     resolution: {integrity: sha512-Qv9kvgJKDq/JVSwXOxuWvQnnOBysHA99ti9im9a4fImCmx+fto+XXcUYQbjZHqiueEEc4V20PcRDPO+1g/6seQ==}
@@ -957,9 +954,6 @@ packages:
     peerDependencies:
       '@types/react': ^17 || ^18 || ^19
       react: ^17 || ^18 || ^19
-
-  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260223174807':
-    resolution: {integrity: sha512-vb0zwehH/Mcai1/IJiJPIC+mhZcPFtzR0XeTNzsIE2s7fHFVrC6inrsWz2wx/vZuLRDHt+I11+4hbuMMfcdsng==, tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents/0.0.20260223174807/c0ed6d729a5e7e210681f97f7e6ae8d3e767cabc}
 
   '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260223174807':
     resolution: {integrity: sha512-vb0zwehH/Mcai1/IJiJPIC+mhZcPFtzR0XeTNzsIE2s7fHFVrC6inrsWz2wx/vZuLRDHt+I11+4hbuMMfcdsng==, tarball: https://npm.pkg.github.com/download/@Ocean-Industries-Concept-Lab/openbridge-webcomponents/0.0.20260223174807/c0ed6d729a5e7e210681f97f7e6ae8d3e767cabc}
@@ -3322,7 +3316,7 @@ snapshots:
     dependencies:
       '@lit/reactive-element': 2.1.2
 
-  '@lit-labs/ssr-dom-shim@1.5.1': {}
+  '@lit-labs/ssr-dom-shim@1.5.0': {}
 
   '@lit/localize@0.12.2':
     dependencies:
@@ -3334,7 +3328,7 @@ snapshots:
 
   '@lit/reactive-element@2.1.2':
     dependencies:
-      '@lit-labs/ssr-dom-shim': 1.5.1
+      '@lit-labs/ssr-dom-shim': 1.5.0
 
   '@mediapipe/face_detection@0.4.1646425229': {}
 
@@ -3350,14 +3344,6 @@ snapshots:
       '@ocean-industries-concept-lab/openbridge-webcomponents': 0.0.20260223174807
       '@types/react': 19.2.7
       react: 19.2.3
-
-  '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260223174807':
-    dependencies:
-      '@lit-labs/observers': 2.1.0
-      '@lit/localize': 0.12.2
-      chart.js: 4.5.1
-      lit: 3.3.2
-      uplot: 1.6.32
 
   '@ocean-industries-concept-lab/openbridge-webcomponents@0.0.20260223174807':
     dependencies:
@@ -4330,7 +4316,7 @@ snapshots:
 
   lit-element@4.2.2:
     dependencies:
-      '@lit-labs/ssr-dom-shim': 1.5.1
+      '@lit-labs/ssr-dom-shim': 1.5.0
       '@lit/reactive-element': 2.1.2
       lit-html: 3.3.2
 

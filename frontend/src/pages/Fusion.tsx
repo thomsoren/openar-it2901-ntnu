@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
+import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useSettings } from "../contexts/useSettings";
@@ -60,13 +61,15 @@ function Fusion() {
       )}
 
       {detectionVisible && (
-        <PoiOverlay
-          vessels={vessels}
-          videoTransform={videoTransform}
-          videoRef={videoRef}
-          videoSource={FUSION_VIDEO_CONFIG.SOURCE}
-          videoFitMode={videoFitMode}
-        />
+        <ARControlProvider>
+          <PoiOverlay
+            vessels={vessels}
+            videoTransform={videoTransform}
+            videoRef={videoRef}
+            videoSource={FUSION_VIDEO_CONFIG.SOURCE}
+            videoFitMode={videoFitMode}
+          />
+        </ARControlProvider>
       )}
     </div>
   );

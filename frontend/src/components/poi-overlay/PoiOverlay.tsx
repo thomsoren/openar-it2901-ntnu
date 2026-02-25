@@ -16,7 +16,7 @@ interface PoiOverlayProps {
     width: number;
     height: number;
   } | null;
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   videoSource: string;
   videoFitMode: string;
 }
