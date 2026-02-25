@@ -58,14 +58,11 @@ export function useFetchHistoricalMmsiInArea(): UseFetchHistoricalMmsiInAreaResu
     setError(null);
 
     try {
-      const response = await window.fetch(
-        `${API_CONFIG.BASE_URL}/api/ais/historical/mmsi_in_area`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(params),
-        }
-      );
+      const response = await window.fetch(`${API_CONFIG.BASE_URL}/api/ais/historical`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
 
       if (!response.ok) {
         const detail = await response.text();

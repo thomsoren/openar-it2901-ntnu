@@ -15,6 +15,14 @@ export interface HistoricalMmsiInAreaRequest {
   msgTimeTo: string;
   /** Whether to write an NDJSON session log on the server. */
   log?: boolean;
+  /**Latitude of current ship position. */
+  ship_lat: number;
+  /**Longitude of current ship position. */
+  ship_lon: number;
+  /**Heading of the ship in degrees. */
+  heading: number;
+  /**Field of view in degrees. */
+  fov_degrees: number;
 }
 
 export interface GeoJSONGeometry {

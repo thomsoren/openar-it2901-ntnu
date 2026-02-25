@@ -29,6 +29,7 @@ class AISLogEntry(BaseModel):
     navigational_status: int | None = Field(None, alias="navigationalStatus")
     rate_of_turn: float | None = Field(None, alias="rateOfTurn")
     log_received_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), alias="logReceivedAt")
+    projection: Dict[str, Any] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -46,7 +47,8 @@ class AISLogEntry(BaseModel):
             name=ais_data.get("name"),
             ship_type=ais_data.get("shipType"),
             navigational_status=ais_data.get("navigationalStatus"),
-            rate_of_turn=ais_data.get("rateOfTurn")
+            rate_of_turn=ais_data.get("rateOfTurn"),
+            projection=ais_data.get("projection"),
         )
 
 

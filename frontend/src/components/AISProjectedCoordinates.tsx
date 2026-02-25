@@ -47,6 +47,10 @@ export const AISProjectedCoordinates: React.FC = () => {
       polygon: { type: "Polygon", coordinates: [polygonCoords] },
       msgTimeFrom: "2026-02-19T08:10:00Z",
       msgTimeTo: "2026-02-19T08:15:00Z",
+      ship_lat: shipLat,
+      ship_lon: shipLon,
+      heading: heading,
+      fov_degrees: fovDegrees,
       log: true,
     });
   };

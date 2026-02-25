@@ -23,9 +23,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.websockets import WebSocketDisconnect
 
-from ais import service as ais_service
 from ais.fetch_ais import fetch_ais_stream_geojson, fetch_historic_ais_data
-from ais_mapping_service.pixel_projection.camera_config import CameraConfig
+from ais_mapping_service.pixel_projection.current_ship_config import CameraConfig, ShipConfig
 from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
 from ais.logger import AISSessionLogger
 from auth.deps import require_admin
@@ -253,8 +252,7 @@ def read_root():
             "video": "/api/video",
             "ais": "/api/ais",
             "ais_stream": "/api/ais/stream",
-            "ais_projections": "/api/ais/projections",
-            "ais_projections_mmsi": "/api/ais/projections/mmsi",
+            "ais_historical": "/api/ais/historical",
             "samples": "/api/samples",
             "storage_presign": "/api/storage/presign",
             "health": "/health",
@@ -354,16 +352,25 @@ async def stream_video(request: Request):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error in video stream: {exc}")
 
-class HistoricalMmsiInAreaRequest(BaseModel):
+class AISHistoricalRequest(BaseModel):
     polygon: dict
     msgTimeFrom: str
     msgTimeTo: str
+    ship_lat: float
+    ship_lon: float
+    heading: float
     log: bool = False
 
 
-@app.post("/api/ais/historical/mmsi_in_area")
-async def get_historical_mmsi_in_area(body: HistoricalMmsiInAreaRequest):
+@app.post("/api/ais/historical")
+async def get_historical_ais_data(body: AISHistoricalRequest):
     session_logger = AISSessionLogger() if body.log else None
+    ship_cfg = ShipConfig(
+        latitude=body.ship_lat,
+        longitude=body.ship_lon,
+        heading_deg=body.heading
+    )
+    cam_cfg = CameraConfig()
     try:
         results = []
         async for item in fetch_historic_ais_data(
@@ -371,6 +378,18 @@ async def get_historical_mmsi_in_area(body: HistoricalMmsiInAreaRequest):
             from_date=body.msgTimeFrom,
             to_date=body.msgTimeTo,
         ):
+            lat = item.get("latitude")
+            lon = item.get("longitude")
+            item["projection"] = (
+                project_ais_to_pixel(
+                    ship_cfg=ship_cfg,
+                    target_lat=lat,
+                    target_lon=lon,
+                    cam_cfg=cam_cfg,
+                )
+                if lat is not None and lon is not None
+                else None
+            )
             results.append(item)
             if session_logger:
                 session_logger.log(item)
@@ -380,29 +399,24 @@ async def get_historical_mmsi_in_area(body: HistoricalMmsiInAreaRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error fetching historical AIS data: {exc}")
 
-
-@app.get("/api/ais")
-async def get_ais_data():
-    try:
-        return await ais_service.get_ais_data()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error fetching AIS data: {exc}")
-
-
 class AISStreamRequest(BaseModel):
     # GeoJSON polygon: [[lon, lat], ...] computed by the frontend
     coordinates: List[List[float]]
     ship_lat: float
     ship_lon: float
     heading: float
-    fov_degrees: float
     log: bool = False
 
 @app.post("/api/ais/stream")
-async def stream_ais_geojson(body: AISStreamRequest):
+async def get_live_ais_data(body: AISStreamRequest):
     """Stream live AIS data inside the polygon, enriched with camera pixel projections."""
     session_logger = AISSessionLogger() if body.log else None
-    cam_cfg = CameraConfig(h_fov_deg=body.fov_degrees)
+    ship_cfg = ShipConfig(
+        latitude=body.ship_lat,
+        longitude=body.ship_lon,
+        heading_deg=body.heading
+    )
+    cam_cfg = CameraConfig()
     async def event_generator():
         try:
             async for feature in fetch_ais_stream_geojson(
@@ -412,9 +426,7 @@ async def stream_ais_geojson(body: AISStreamRequest):
                 lon = feature.get("longitude")
                 feature["projection"] = (
                     project_ais_to_pixel(
-                        ship_lat=body.ship_lat,
-                        ship_lon=body.ship_lon,
-                        ship_heading=body.heading,
+                        ship_cfg=ship_cfg,
                         target_lat=lat,
                         target_lon=lon,
                         cam_cfg=cam_cfg,
@@ -429,27 +441,8 @@ async def stream_ais_geojson(body: AISStreamRequest):
             yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
         finally:
             if session_logger:
-                metadata = session_logger.end_session()
-                if not metadata.get("flush_success", False):
-                    warning = {
-                        "type": "error",
-                        "message": "AIS logging failed",
-                        "detail": metadata.get("flush_error"),
-                        "total_logged": metadata.get("total_records", 0),
-                        "records_written": metadata.get("total_file_size_bytes", 0),
-                    }
-                    yield f"data: {json.dumps(warning)}\n"
-                elif metadata.get("total_splits", 1) > 1:
-                    info = {
-                        "type": "info",
-                        "message": "AIS logging completed with multiple files",
-                        "detail": f"Session was split into {metadata.get('total_splits')} files due to buffer size",
-                        "total_logged": metadata.get("total_records", 0),
-                        "total_file_size_bytes": metadata.get("total_file_size_bytes", 0),
-                        "log_files": metadata.get("log_files", []),
-                    }
-                    yield f"data: {json.dumps(info)}\n"
-
+                session_logger.end_session()
+        
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",

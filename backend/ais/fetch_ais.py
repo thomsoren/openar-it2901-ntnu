@@ -39,27 +39,6 @@ async def _fetch_token(session: aiohttp.ClientSession) -> str:
       raise ValueError("Token response missing access_token")
     return token
 
-# Fetch AIS data with automatic API key refresh
-async def fetch_ais():
-  if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
-      logger.warning("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment. Make sure it matches .env.example")
-      return
-
-  async with aiohttp.ClientSession() as session:
-    token = await _fetch_token(session)
-    async with session.get(
-      "https://historic.ais.barentswatch.no/v1/historic/trackslast24hours/257111020",
-      headers={
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json"
-      }
-    ) as response:
-
-      if response.status != 200:
-        raise ValueError(f"HTTP error {response.status}")
-
-      return await response.json()
-
 async def fetch_ais_stream_geojson(
     coordinates: List[List[float]],
     timeout: int = 120,
@@ -221,7 +200,7 @@ async def fetch_historic_mmsi_in_area(
             return result
 
 
-async def _fetch_tracks_for_mmsi(
+async def _fetch_historic_data_per_track(
     session: aiohttp.ClientSession,
     token: str,
     mmsi: int,
@@ -302,7 +281,7 @@ async def fetch_historic_ais_data(
 
     async def bounded_fetch(session: aiohttp.ClientSession, token: str, mmsi: int) -> list[dict]:
         async with semaphore:
-            return await _fetch_tracks_for_mmsi(session, token, mmsi, from_date, to_date, filter_satellite)
+            return await _fetch_historic_data_per_track(session, token, mmsi, from_date, to_date, filter_satellite)
 
     async with aiohttp.ClientSession() as session:
         token = await _fetch_token(session)
@@ -321,19 +300,3 @@ async def fetch_historic_ais_data(
             yield item
 
     logger.info("[historic] Yielded %d track point(s) across %d vessel(s)", total, len(mmsis))
-
-
-def main():
-    if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
-      logger.warning("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set in environment")
-      return
-    try:
-      ais_data = asyncio.run(fetch_ais())
-      with open("ais_data.json", "w") as f:
-        json.dump(ais_data, f, indent=2)
-      logger.info("AIS data fetched and saved to ais_data.json")
-    except Exception as e:
-      logger.error(f"Error fetching AIS data: {e}")
-
-if __name__ == "__main__":
-    main()
