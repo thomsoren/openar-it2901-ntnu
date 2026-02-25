@@ -8,7 +8,6 @@ import { ObiVesselTypeGenericOutlined } from "@ocean-industries-concept-lab/open
 import { ObiAisProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-proposal";
 import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
 import { ObiTargetSettingsProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-target-settings-proposal";
-import { ObiTargetCameraOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-target-camera-outlined";
 import { ObiExpand } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-expand";
 import { useARControls } from "./useARControls";
 import type { PoiDropdownValue, RangeValue } from "./ar-control-context";
@@ -117,14 +116,6 @@ export function ARControlPanel() {
         </ObcDropdownButton>
       </div>
 
-      <ObcIconButton
-        variant={IconButtonVariant.flat}
-        activated={state.detectionVisible}
-        title="Detections"
-        onClick={() => toggle("detectionVisible")}
-      >
-        <ObiTargetCameraOutlined />
-      </ObcIconButton>
       <ObcIconButton
         variant={IconButtonVariant.flat}
         activated={state.videoFitMode === "cover"}
