@@ -7,7 +7,7 @@ import threading
 
 from redis.exceptions import RedisError
 
-from common.config import create_redis_client, detections_channel, fused_channel
+from common.config import create_redis_client, detections_channel
 from sensor_fusion.service import SensorFusionService
 
 logger = logging.getLogger(__name__)
@@ -59,9 +59,7 @@ class FusionPublisher:
                 payload.get("timestamp_ms", 0),
             )
             if meta is not None:
-                enriched = {**payload, "vessels": vessels, "fusion": meta}
-                channel = fused_channel(stream_id)
-                data = json.dumps(enriched)
+                data = json.dumps({**payload, "vessels": vessels, "fusion": meta})
 
         try:
             self._redis.publish(channel, data)

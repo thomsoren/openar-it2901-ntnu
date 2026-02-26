@@ -70,7 +70,7 @@ class AISStore:
                 if obj.get("type") in {"session_start", "session_end"}:
                     continue
 
-                raw_ts = obj.get("logReceivedAt") or obj.get("msgtime") or obj.get("timestamp")
+                raw_ts = obj.get("msgtime") or obj.get("logReceivedAt") or obj.get("timestamp")
                 if not raw_ts:
                     skipped += 1
                     continue
