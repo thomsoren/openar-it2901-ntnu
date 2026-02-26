@@ -1,6 +1,8 @@
 import type { StreamSummary } from "../../types/stream";
 import { nextAvailableStreamId } from "./derived";
+import { DEFAULT_STREAM_ID } from "./constants";
 import { loadActiveTabId, loadJoinedStreams } from "./storage";
+import { areStreamsEquivalent } from "./running-streams-store";
 
 export interface StreamTabState {
   activeTabId: string;
@@ -33,7 +35,7 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
 
     case "CLOSE_TAB": {
       const { tabId } = action;
-      if (tabId === "default") return state;
+      if (tabId === DEFAULT_STREAM_ID) return state;
 
       const isConfigureTab = state.configureTabId === tabId;
       const nextJoined = state.joinedStreamIds.filter((id) => id !== tabId);
@@ -44,14 +46,22 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
       let nextActive = state.activeTabId;
 
       if (state.activeTabId === tabId) {
-        nextActive = nextJoined[0] ?? "default";
+        nextActive = nextJoined[0] ?? DEFAULT_STREAM_ID;
       }
 
-      const hasConfigured = nextJoined.some((id) => id !== "default" && id !== nextConfigureTab);
+      const hasConfigured = nextJoined.some(
+        (id) => id !== DEFAULT_STREAM_ID && id !== nextConfigureTab
+      );
       if (!hasConfigured && !nextConfigureTab) {
         const newId = nextAvailableStreamId(nextRunning, nextJoined);
         nextConfigureTab = newId;
-        nextJoined.push(newId);
+        return {
+          ...state,
+          joinedStreamIds: [...nextJoined, newId],
+          runningStreams: nextRunning,
+          configureTabId: nextConfigureTab,
+          activeTabId: nextActive,
+        };
       }
 
       return {
@@ -83,46 +93,47 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
     case "SET_RUNNING_STREAMS": {
       const { streams } = action;
 
-      const prev = new Map(state.runningStreams.map((s) => [`${s.stream_id}:${s.status}`, true]));
-      const unchanged =
-        state.runningStreams.length === streams.length &&
-        streams.every((s) => prev.has(`${s.stream_id}:${s.status}`));
+      const unchanged = areStreamsEquivalent(state.runningStreams, streams);
       if (unchanged && state.hasLoadedStreamList) return state;
 
       const available = new Set(streams.map((s) => s.stream_id));
       const nextJoined = state.joinedStreamIds.filter(
         (id) =>
-          id === "default" ||
+          id === DEFAULT_STREAM_ID ||
           id === state.configureTabId ||
           id === state.activeTabId ||
           available.has(id)
       );
-      if (!nextJoined.includes("default")) {
-        nextJoined.unshift("default");
-      }
+      const withDefault = nextJoined.includes(DEFAULT_STREAM_ID)
+        ? nextJoined
+        : [DEFAULT_STREAM_ID, ...nextJoined];
+
+      let nextJoinedIds = withDefault;
 
       let nextActive = state.activeTabId;
       let nextConfigureTab = state.configureTabId;
 
-      if (!nextJoined.includes(nextActive) && nextConfigureTab !== nextActive) {
-        nextActive = nextJoined[0] ?? "default";
-        if (!nextJoined.includes(nextActive)) {
-          nextJoined.push(nextActive);
-        }
+      if (!nextJoinedIds.includes(nextActive) && nextConfigureTab !== nextActive) {
+        nextActive = nextJoinedIds[0] ?? DEFAULT_STREAM_ID;
+        nextJoinedIds = nextJoinedIds.includes(nextActive)
+          ? nextJoinedIds
+          : [...nextJoinedIds, nextActive];
       }
 
-      const hasConfigured = nextJoined.some((id) => id !== "default" && id !== nextConfigureTab);
+      const hasConfigured = nextJoinedIds.some(
+        (id) => id !== DEFAULT_STREAM_ID && id !== nextConfigureTab
+      );
       if (!hasConfigured && !nextConfigureTab) {
-        const newId = nextAvailableStreamId(streams, nextJoined);
+        const newId = nextAvailableStreamId(streams, nextJoinedIds);
         nextConfigureTab = newId;
-        nextJoined.push(newId);
+        nextJoinedIds = [...nextJoinedIds, newId];
       }
 
       return {
         ...state,
         runningStreams: streams,
         hasLoadedStreamList: true,
-        joinedStreamIds: nextJoined,
+        joinedStreamIds: nextJoinedIds,
         configureTabId: nextConfigureTab,
         activeTabId: nextActive,
       };
@@ -147,18 +158,18 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
 
 export function initStreamTabState(): StreamTabState {
   const joined = loadJoinedStreams();
-  if (!joined.includes("default")) {
-    joined.unshift("default");
+  if (!joined.includes(DEFAULT_STREAM_ID)) {
+    joined.unshift(DEFAULT_STREAM_ID);
   }
 
-  const hasConfigured = joined.some((id) => id !== "default");
+  const hasConfigured = joined.some((id) => id !== DEFAULT_STREAM_ID);
   const configureTabId = hasConfigured ? null : "stream";
   if (configureTabId && !joined.includes(configureTabId)) {
     joined.push(configureTabId);
   }
 
   return {
-    activeTabId: hasConfigured ? loadActiveTabId() : "default",
+    activeTabId: hasConfigured ? loadActiveTabId() : DEFAULT_STREAM_ID,
     joinedStreamIds: joined,
     runningStreams: [],
     configureTabId,

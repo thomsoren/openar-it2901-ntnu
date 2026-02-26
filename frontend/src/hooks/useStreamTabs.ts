@@ -1,8 +1,13 @@
-import { useCallback, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import type { StreamSummary } from "../types/stream";
 import { listStreams, toStreamError } from "../services/streams";
 import { buildTabsAndActiveStream, hasConfiguredStreams } from "./stream-tabs/derived";
+import {
+  areStreamsEquivalent,
+  setRunningStreamsSnapshot,
+  useRunningStreamsSnapshot,
+} from "./stream-tabs/running-streams-store";
 import {
   useEnsureDefaultStream,
   useExternalStreamSelection,
@@ -58,6 +63,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
 
   const [state, dispatch] = useReducer(streamTabReducer, undefined, initStreamTabState);
   const { activeTabId, joinedStreamIds, runningStreams, configureTabId } = state;
+  const sharedRunningStreams = useRunningStreamsSnapshot();
 
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -73,10 +79,16 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
     [joinedStreamIds, runningStreams, configureTabId, activeTabId]
   );
 
+  useEffect(() => {
+    if (!areStreamsEquivalent(sharedRunningStreams, runningStreams)) {
+      dispatch({ type: "SET_RUNNING_STREAMS", streams: sharedRunningStreams });
+    }
+  }, [runningStreams, sharedRunningStreams]);
+
   const refreshStreams = useCallback(async () => {
     try {
       const streams = await listStreams();
-      dispatch({ type: "SET_RUNNING_STREAMS", streams });
+      setRunningStreamsSnapshot(streams);
     } catch (err) {
       setStreamError(toStreamError(err, "Failed to load streams"));
     }

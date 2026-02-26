@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export type PageId = "datavision" | "ais" | "components" | "fusion";
@@ -52,11 +52,14 @@ export function useNavigation() {
   const [showUserPanel, setShowUserPanel] = useState(false);
   const currentPage = useMemo(() => getPageFromPath(location.pathname), [location.pathname]);
 
-  const handleNavigationItemClick = (page: PageId) => {
-    navigate(PAGE_PATHS[page]);
-    setShowNavigationMenu(false);
-    setShowUserPanel(false);
-  };
+  const handleNavigationItemClick = useCallback(
+    (page: PageId) => {
+      navigate(PAGE_PATHS[page]);
+      setShowNavigationMenu(false);
+      setShowUserPanel(false);
+    },
+    [navigate]
+  );
 
   return {
     showBrillianceMenu,

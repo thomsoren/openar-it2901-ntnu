@@ -23,6 +23,8 @@ interface RecoveryState {
   controlError: string | null;
 }
 
+const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 10_000;
+
 type RecoveryAction =
   | { type: "RESET_STREAM" }
   | { type: "BUMP_SESSION" }
@@ -91,6 +93,7 @@ export function useVideoSessionRecovery({
   }, []);
 
   const imageLoadedRef = useRef(false);
+  const controlErrorRef = useRef<string | null>(null);
   const reconnectCountRef = useRef(0);
   const firstFrameRetryDoneRef = useRef(false);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -158,9 +161,8 @@ export function useVideoSessionRecovery({
   }, [streamKey]);
 
   useEffect(() => {
-    firstFrameRetryDoneRef.current = false;
-    dispatch({ type: "RESET_STREAM" });
-  }, [videoSession]);
+    controlErrorRef.current = controlError;
+  }, [controlError]);
 
   useEffect(() => {
     imageLoadedRef.current = false;
@@ -173,7 +175,7 @@ export function useVideoSessionRecovery({
 
       firstFrameRetryDoneRef.current = true;
       scheduleReconnect("Video stream reconnecting");
-    }, 10000);
+    }, FIRST_FRAME_WATCHDOG_TIMEOUT_MS);
 
     return () => {
       clearReconnectTimers();
@@ -196,7 +198,7 @@ export function useVideoSessionRecovery({
         dispatch({ type: "SET_IMAGE_LOADED", payload: true });
         clearReconnectTimers();
         const nextControlError = (() => {
-          const previous = state.controlError;
+          const previous = controlErrorRef.current;
           if (
             previous?.startsWith("Video stream") ||
             previous?.startsWith("Waiting for first video frame") ||
@@ -224,7 +226,7 @@ export function useVideoSessionRecovery({
         dispatch({ type: "SET_IMAGE_LOADED", payload: false });
       }
     },
-    [clearReconnectTimers, scheduleReconnect, state.controlError]
+    [clearReconnectTimers, scheduleReconnect]
   );
 
   return {

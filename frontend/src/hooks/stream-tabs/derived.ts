@@ -1,5 +1,6 @@
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import type { StreamSummary } from "../../types/stream";
+import { DEFAULT_STREAM_ID, DEFAULT_STREAM_TITLE } from "./constants";
 
 export function nextAvailableStreamId(
   runningStreams: StreamSummary[],
@@ -19,7 +20,7 @@ export function hasConfiguredStreams(
   joinedStreamIds: string[],
   configureTabId: string | null
 ): boolean {
-  return joinedStreamIds.some((id) => id !== "default" && id !== configureTabId);
+  return joinedStreamIds.some((id) => id !== DEFAULT_STREAM_ID && id !== configureTabId);
 }
 
 export function buildTabsAndActiveStream(
@@ -32,8 +33,8 @@ export function buildTabsAndActiveStream(
   const tabs: TabData[] = [];
   const seen = new Set<string>();
 
-  tabs.push({ id: "default", title: "Example" });
-  seen.add("default");
+  tabs.push({ id: DEFAULT_STREAM_ID, title: DEFAULT_STREAM_TITLE });
+  seen.add(DEFAULT_STREAM_ID);
 
   for (const id of joinedStreamIds) {
     if (seen.has(id) || id === configureTabId) continue;

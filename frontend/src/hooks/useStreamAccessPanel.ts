@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import type { StreamSummary } from "../types/stream";
 import { listStreams, startStream, toStreamError } from "../services/streams";
+import {
+  setRunningStreamsSnapshot,
+  useRunningStreamsSnapshot,
+} from "./stream-tabs/running-streams-store";
 
 interface UseStreamAccessPanelOptions {
   onStreamSelected: (streamId: string) => void;
@@ -42,14 +46,14 @@ export function useStreamAccessPanel({ onStreamSelected }: UseStreamAccessPanelO
   const [streamIdInput, setStreamIdInput] = useState("stream");
   const [sourceUrlInput, setSourceUrlInput] = useState("");
   const [streamSearch, setStreamSearch] = useState("");
-  const [runningStreams, setRunningStreams] = useState<StreamSummary[]>([]);
+  const runningStreams = useRunningStreamsSnapshot();
   const [streamPanelTab, setStreamPanelTab] = useState(0);
   const [streamActionError, setStreamActionError] = useState<string | null>(null);
   const [streamActionBusy, setStreamActionBusy] = useState(false);
 
   const loadStreams = useCallback(async (): Promise<StreamSummary[]> => {
     const streams = await listStreams();
-    setRunningStreams(streams);
+    setRunningStreamsSnapshot(streams);
     return streams;
   }, []);
 

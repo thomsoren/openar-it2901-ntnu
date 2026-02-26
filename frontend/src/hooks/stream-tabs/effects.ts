@@ -6,6 +6,7 @@ import {
   toStreamError,
 } from "../../services/streams";
 import { persistActiveTabId, persistJoinedStreamIds } from "./storage";
+import { setRunningStreamsSnapshot } from "./running-streams-store";
 import type { StreamTabAction } from "./reducer";
 
 interface EffectOptions {
@@ -18,6 +19,7 @@ export function useEnsureDefaultStream({ dispatch, setStreamError }: EffectOptio
     const ensureDefaultStream = async () => {
       try {
         const streams = await ensureDefaultStreamRunning();
+        setRunningStreamsSnapshot(streams);
         dispatch({ type: "SET_RUNNING_STREAMS", streams });
       } catch (err) {
         setStreamError(toStreamError(err, "Failed to initialize streams"));
@@ -69,13 +71,19 @@ export function useExternalStreamSelection(
 
   useEffect(() => {
     if (externalStreamId && externalStreamId !== prevExternalStreamIdRef.current) {
-      dispatch({ type: "JOIN_EXTERNAL_STREAM", streamId: externalStreamId });
       let cancelled = false;
 
       const syncExternalStreamState = async () => {
         try {
           const streams = await listStreams();
+          const exists = streams.some((stream) => stream.stream_id === externalStreamId);
           if (!cancelled) {
+            if (!exists) {
+              setStreamError(`Stream '${externalStreamId}' is not running`);
+              return;
+            }
+            setRunningStreamsSnapshot(streams);
+            dispatch({ type: "JOIN_EXTERNAL_STREAM", streamId: externalStreamId });
             dispatch({ type: "SET_RUNNING_STREAMS", streams });
           }
         } catch (err) {

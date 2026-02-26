@@ -20,6 +20,7 @@ import { stopStream, toStreamError } from "../services/streams";
 import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
 import { useDatavisionStatus } from "../hooks/useDatavisionStatus";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
+import { DEFAULT_STREAM_ID } from "../hooks/stream-tabs/constants";
 import "./Datavision.css";
 
 // ---------------------------------------------------------------------------
@@ -100,7 +101,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   const onTabClosed = useCallback(
     async (event: CustomEvent<{ id?: string }>) => {
       const tabId = event.detail?.id?.trim();
-      if (!tabId || tabId === "default") return;
+      if (!tabId || tabId === DEFAULT_STREAM_ID) return;
 
       const wasSetup = configureTabId === tabId;
       handleTabClosed(tabId);
