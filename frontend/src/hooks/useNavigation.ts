@@ -33,12 +33,6 @@ const getPageFromPath = (pathname: string): PageId => {
 };
 
 /**
- * Hook for application-level navigation and top-level panel visibility state.
- * Uses BrowserRouter location as source of truth for current page.
- *
- * @returns currentPage - active page derived from URL
- * @returns handleNavigationItemClick - navigates to page and closes open menus
- *
  * @example
  * ```tsx
  * const { currentPage, handleNavigationItemClick } = useNavigation();

@@ -46,11 +46,6 @@ export interface UseStreamTabsReturn {
 }
 
 /**
- * Hook for Datavision stream-tab workspace state.
- * Handles tab lifecycle, persistence, stream-list syncing, and periodic heartbeats.
- *
- * @param options.externalStreamId - Optional stream selected outside Datavision to join/activate
- *
  * @example
  * ```tsx
  * const { tabs, activeTabId, handleTabSelected } = useStreamTabs({

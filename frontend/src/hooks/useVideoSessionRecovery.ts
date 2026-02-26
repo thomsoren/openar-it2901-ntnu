@@ -71,12 +71,6 @@ const reducer = (state: RecoveryState, action: RecoveryAction): RecoveryState =>
 };
 
 /**
- * Hook for recovering video playback sessions on transient stream failures.
- * Tracks player status, retry attempts, first-frame watchdog, and user-facing control errors.
- *
- * @param streamKey - Unique key for the active stream; resets recovery state when changed
- * @param maxReconnectAttempts - Maximum auto-reconnect attempts before giving up (default: 8)
- *
  * @example
  * ```tsx
  * const recovery = useVideoSessionRecovery({ streamKey: activeTabId });

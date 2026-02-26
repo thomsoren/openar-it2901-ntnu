@@ -30,11 +30,6 @@ export interface UseStreamAccessPanelResult {
 }
 
 /**
- * Hook for stream actions in the navigation sidebar ("Join" / "Create").
- * Encapsulates list filtering, API calls, busy/error state, and tab selection callbacks.
- *
- * @param onStreamSelected - Called after successful join/create with the selected stream id
- *
  * @example
  * ```tsx
  * const panel = useStreamAccessPanel({
