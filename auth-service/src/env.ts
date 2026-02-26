@@ -47,3 +47,11 @@ export const env = {
   ]),
   databaseUrl: getRequired("DATABASE_URL"),
 };
+
+const isProduction = env.nodeEnv === "production";
+
+if (isProduction && env.betterAuthUrl === "http://localhost:3001") {
+  throw new Error(
+    "BETTER_AUTH_URL must be set to your deployed public auth base URL in production (for example: https://ar.bridgable.ai)"
+  );
+}
