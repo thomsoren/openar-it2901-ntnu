@@ -4,7 +4,8 @@ import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webc
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/text-input-field/text-input-field";
 import { authClient } from "../../lib/auth-client";
-import { mapAuthErrorMessage, GoogleIcon } from "./utils";
+import { mapAuthErrorMessage } from "./auth-error";
+import { GoogleIcon } from "./GoogleIcon";
 
 type LoginFormProps = {
   isSubmitting: boolean;
