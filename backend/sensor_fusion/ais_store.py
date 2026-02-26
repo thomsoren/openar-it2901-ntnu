@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-from bisect import bisect_left, bisect_right
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -94,10 +93,11 @@ class AISStore:
 
     def get_snapshot(self, query_utc: datetime) -> list[dict[str, Any]]:
         """
-        Return the best AIS record per MMSI within `time_window_s` of `query_utc`.
+        Return the best AIS record per MMSI from the entire log.
 
-        When multiple records for the same MMSI fall in the window, the one
-        with the smallest absolute time difference is returned.
+        Per MMSI, the latest record with ts <= query time is preferred
+        (floor/lookback). If no record exists yet (vessel first appears
+        after the query time), the earliest future record is used instead.
 
         Args:
             query_utc: The target UTC datetime (e.g. video_epoch + frame offset).
@@ -109,24 +109,34 @@ class AISStore:
             query_utc = query_utc.replace(tzinfo=timezone.utc)
 
         q_ts = query_utc.timestamp()
-        lo = bisect_left(self._sorted_ts, q_ts - self.time_window_s)
-        hi = bisect_right(self._sorted_ts, q_ts + self.time_window_s)
 
-        candidates = self._records[lo:hi]
-        if not candidates:
+        if not self._records:
             return []
 
-        # Keep the closest record per MMSI
-        best: dict[str, tuple[float, dict[str, Any]]] = {}
-        for ts, record in candidates:
+        # For each MMSI: track best past record (latest ts <= q_ts)
+        # and best future record (earliest ts > q_ts) as fallback
+        past: dict[str, tuple[float, dict[str, Any]]] = {}   # mmsi -> (ts, record)
+        future: dict[str, tuple[float, dict[str, Any]]] = {}  # mmsi -> (ts, record)
+
+        for ts, record in self._records:
             mmsi = str(record.get("mmsi", ""))
             if not mmsi:
                 continue
-            diff = abs(ts - q_ts)
-            if mmsi not in best or diff < best[mmsi][0]:
-                best[mmsi] = (diff, record)
+            if ts <= q_ts:
+                if mmsi not in past or ts > past[mmsi][0]:
+                    past[mmsi] = (ts, record)
+            else:
+                if mmsi not in future or ts < future[mmsi][0]:
+                    future[mmsi] = (ts, record)
 
-        return [rec for _, rec in best.values()]
+        result: dict[str, dict[str, Any]] = {}
+        for mmsi, (_, rec) in past.items():
+            result[mmsi] = rec
+        for mmsi, (_, rec) in future.items():
+            if mmsi not in result:
+                result[mmsi] = rec
+
+        return list(result.values())
 
     @property
     def record_count(self) -> int:

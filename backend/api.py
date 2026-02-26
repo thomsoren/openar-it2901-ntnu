@@ -582,7 +582,6 @@ async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool =
     except ResourceLimitExceededError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    _auto_configure_fusion(stream_id)
     return {"status": "started", **handle.to_dict()}
 
 
