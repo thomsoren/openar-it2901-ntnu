@@ -66,7 +66,6 @@ class AISStore:
                     skipped += 1
                     continue
 
-                # Skip session metadata lines
                 if obj.get("type") in {"session_start", "session_end"}:
                     continue
 
@@ -79,22 +78,19 @@ class AISStore:
                     dt = datetime.fromisoformat(raw_ts)
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
-                    ts = dt.timestamp()
+                    records.append((dt.timestamp(), obj))
                 except ValueError:
                     skipped += 1
                     continue
 
-                records.append((ts, obj))
-
-        # Sort by timestamp ascending
         records.sort(key=lambda r: r[0])
         self._records = records
         self._sorted_ts = [r[0] for r in records]
-
         logger.info(
             "[AISStore] Loaded %d records from %s (skipped %d)",
             len(records), self.path.name, skipped,
         )
+
 
     def get_snapshot(self, query_utc: datetime) -> list[dict[str, Any]]:
         """

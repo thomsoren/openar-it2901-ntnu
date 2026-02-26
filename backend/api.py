@@ -53,6 +53,7 @@ from orchestrator import (
 from storage import s3
 from cv.publisher import get_fusion_publisher
 from sensor_fusion import AISStore
+from sensor_fusion.fusion_config import fetch_and_configure_ais as _fetch_and_configure_ais
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +89,71 @@ DEFAULT_STREAM_ID = os.getenv("DEFAULT_STREAM_ID", "default")
 PROTECT_DEFAULT_STREAM = os.getenv("PROTECT_DEFAULT_STREAM", "0").lower() in {"1", "true", "yes"}
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
+# Auto-fusion: if set, fusion is configured automatically for every new stream.
+# AUTO_FUSION_AIS_LOG: path to NDJSON AIS session log (relative to BASE_DIR or absolute)
+# AUTO_FUSION_VIDEO_EPOCH_UTC: ISO-8601 UTC datetime for frame 0; defaults to now() if unset
+AUTO_FUSION_AIS_LOG = os.getenv("AUTO_FUSION_AIS_LOG")
+AUTO_FUSION_VIDEO_EPOCH_UTC = os.getenv("AUTO_FUSION_VIDEO_EPOCH_UTC")
+AUTO_FUSION_TIME_WINDOW_S = float(os.getenv("AUTO_FUSION_TIME_WINDOW_S", "10.0"))
+AUTO_FUSION_INCLUDE_UNMATCHED = os.getenv("AUTO_FUSION_INCLUDE_UNMATCHED", "0").lower() in {"1", "true", "yes"}
+
 orchestrator: WorkerOrchestrator | None = None
 
+
+def _auto_configure_fusion(stream_id: str) -> None:
+    """Auto-configure sensor fusion for *stream_id* if AUTO_FUSION_AIS_LOG is set.
+
+    Uses AUTO_FUSION_VIDEO_EPOCH_UTC if provided, otherwise defaults to now().
+    Silently skips if already configured or if the AIS log is unavailable.
+    """
+    if not AUTO_FUSION_AIS_LOG:
+        return
+
+    fusion_pub = get_fusion_publisher()
+    if fusion_pub.fusion_svc.is_configured(stream_id):
+        return
+
+    ais_path = Path(AUTO_FUSION_AIS_LOG)
+    if not ais_path.is_absolute():
+        ais_path = BASE_DIR / ais_path
+    if not ais_path.exists():
+        logger.warning(
+            "[auto-fusion] AIS log not found at %s — fusion skipped for stream '%s'",
+            ais_path, stream_id,
+        )
+        return
+
+    from datetime import datetime, timezone
+    if AUTO_FUSION_VIDEO_EPOCH_UTC:
+        try:
+            video_epoch = datetime.fromisoformat(AUTO_FUSION_VIDEO_EPOCH_UTC)
+            if video_epoch.tzinfo is None:
+                video_epoch = video_epoch.replace(tzinfo=timezone.utc)
+        except ValueError:
+            logger.warning(
+                "[auto-fusion] Invalid AUTO_FUSION_VIDEO_EPOCH_UTC '%s' — using now()",
+                AUTO_FUSION_VIDEO_EPOCH_UTC,
+            )
+            video_epoch = datetime.now(tz=timezone.utc)
+    else:
+        video_epoch = datetime.now(tz=timezone.utc)
+
+    try:
+        store = AISStore(ais_path, time_window_s=AUTO_FUSION_TIME_WINDOW_S)
+    except Exception as exc:
+        logger.warning("[auto-fusion] Failed to load AIS log: %s", exc)
+        return
+
+    fusion_pub.fusion_svc.configure(
+        stream_id=stream_id,
+        ais_store=store,
+        video_epoch_utc=video_epoch,
+        include_unmatched_ais=AUTO_FUSION_INCLUDE_UNMATCHED,
+    )
+    logger.info(
+        "[auto-fusion] Configured for stream '%s' — %d AIS records, epoch=%s",
+        stream_id, store.record_count, video_epoch.isoformat(),
+    )
 
 
 class StreamStartRequest(BaseModel):
@@ -210,6 +274,7 @@ async def lifespan(_: FastAPI):
                 StreamConfig(stream_id=DEFAULT_STREAM_ID, source_url=source_url, loop=True)
             )
             logger.info("Default stream '%s' started from %s", DEFAULT_STREAM_ID, source_url)
+            _auto_configure_fusion(DEFAULT_STREAM_ID)
         except (StreamAlreadyRunningError, ResourceLimitExceededError):
             pass
     else:
@@ -480,6 +545,8 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
     except ResourceLimitExceededError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
+    _auto_configure_fusion(stream_id)
+
     return {
         "status": "started",
         **handle.to_dict(),
@@ -507,9 +574,7 @@ async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool =
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {exc}")
 
-    config = StreamConfig(
-        stream_id=stream_id, source_url=str(local_path), loop=loop
-    )
+    config = StreamConfig(stream_id=stream_id, source_url=str(local_path), loop=loop)
     try:
         handle = orchestrator.start_stream(config)
     except StreamAlreadyRunningError as exc:
@@ -517,6 +582,7 @@ async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool =
     except ResourceLimitExceededError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
+    _auto_configure_fusion(stream_id)
     return {"status": "started", **handle.to_dict()}
 
 
@@ -697,6 +763,42 @@ async def start_fusion(stream_id: str, request: FusionStartRequest):
         "fused_channel": fused_channel(stream_id),
         "video_epoch_utc": video_epoch.isoformat(),
     }
+
+
+class FusionFromAreaRequest(BaseModel):
+    ship_lat: float
+    ship_lon: float
+    video_epoch_utc: str  # ISO-8601
+    duration_s: float
+    radius_km: float = 5.0
+    time_window_s: float = 10.0
+
+
+@app.post("/api/streams/{stream_id}/fusion/configure-from-area", status_code=201)
+async def configure_fusion_from_area(stream_id: str, request: FusionFromAreaRequest):
+    """Fetch historic AIS for a geographic area and configure sensor fusion."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    from datetime import datetime, timezone
+    try:
+        epoch = datetime.fromisoformat(request.video_epoch_utc)
+        if epoch.tzinfo is None:
+            epoch = epoch.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid video_epoch_utc: {exc}")
+    try:
+        record_count = await _fetch_and_configure_ais(
+            stream_id=stream_id,
+            ship_lat=request.ship_lat,
+            ship_lon=request.ship_lon,
+            video_epoch_utc=epoch,
+            duration_s=request.duration_s,
+            radius_km=request.radius_km,
+            time_window_s=request.time_window_s,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"status": "configured", "stream_id": stream_id, "ais_records": record_count}
 
 
 @app.post("/api/streams/{stream_id}/fusion/stop", status_code=200)

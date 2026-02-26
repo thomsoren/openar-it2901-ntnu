@@ -244,6 +244,8 @@ async def fetch_historic_ais_data(
     to_date: str,
     filter_satellite: bool = True,
     concurrency: int = 10,
+    session_logger: AISSessionLogger | None = None,
+    log: bool = False,
 ) -> AsyncIterator[dict]:
     """
     Fetch historical AIS tracks for all vessels that were inside *polygon*
@@ -261,6 +263,7 @@ async def fetch_historic_ais_data(
         to_date:   ISO 8601 end datetime
         filter_satellite: Pass filterSatellitePositions to the track endpoint.
         concurrency: Max simultaneous per-MMSI requests.
+        session_logger: Optional logger; each yielded record is logged.
 
     Yields:
         Individual AIS track point dicts.
@@ -268,11 +271,16 @@ async def fetch_historic_ais_data(
     if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
         raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
 
+    if log and session_logger is None:
+        session_logger = AISSessionLogger()
+
     # ── Step 1: resolve MMSIs in the area ──────────────────────────────────
     logger.info("[historic] Resolving MMSIs in area | from=%s to=%s", from_date, to_date)
     mmsis = await fetch_historic_mmsi_in_area(polygon, from_date, to_date)
     if not mmsis:
         logger.info("[historic] No MMSIs found in area for the given timeframe.")
+        if session_logger:
+            session_logger.end_session()
         return
     logger.info("[historic] Found %d MMSI(s) — fetching tracks", len(mmsis))
 
@@ -297,6 +305,10 @@ async def fetch_historic_ais_data(
             continue
         for item in result:
             total += 1
+            if session_logger:
+                session_logger.log(item)
             yield item
 
+    if session_logger:
+        session_logger.end_session()
     logger.info("[historic] Yielded %d track point(s) across %d vessel(s)", total, len(mmsis))
