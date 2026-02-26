@@ -10,7 +10,7 @@ from cv.decode_thread import DecodeThread
 from cv.detectors import get_shared_detector
 from cv.ffmpeg import FFmpegDirectPublisher
 from cv.inference_thread import InferenceThread
-from cv.publisher import DetectionPublisher
+from cv.publisher import get_fusion_publisher, DetectionPublisher
 from orchestrator.exceptions import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -54,7 +54,7 @@ class WorkerOrchestrator:
         """Lazily create and start the inference thread if not injected."""
         if self._inference_thread is None:
             detector = get_shared_detector()
-            publisher = DetectionPublisher()
+            publisher = get_fusion_publisher()
             self._inference_thread = InferenceThread(detector, publisher)
             self._inference_thread.start()
         return self._inference_thread

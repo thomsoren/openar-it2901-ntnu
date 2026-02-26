@@ -36,6 +36,7 @@ from common.config import (
     build_playback_urls,
     create_async_redis_client,
     detections_channel,
+    fused_channel,
     load_samples,
 )
 from common.types import DetectedVessel
@@ -50,6 +51,8 @@ from orchestrator import (
     WorkerOrchestrator,
 )
 from storage import s3
+from cv.publisher import get_fusion_publisher
+from sensor_fusion import AISStore
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,7 @@ PROTECT_DEFAULT_STREAM = os.getenv("PROTECT_DEFAULT_STREAM", "0").lower() in {"1
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 orchestrator: WorkerOrchestrator | None = None
+
 
 
 class StreamStartRequest(BaseModel):
@@ -638,6 +642,134 @@ async def websocket_detections_default(websocket: WebSocket):
 @app.websocket("/api/fusion/ws")
 async def websocket_fusion(websocket: WebSocket):
     await fusion.handle_fusion_ws(websocket)
+
+
+# ── Sensor Fusion endpoints ─────────────────────────────────────────────────
+
+class FusionStartRequest(BaseModel):
+    ais_log_path: str          # Relative or absolute path to the NDJSON session log
+    video_epoch_utc: str       # ISO-8601 UTC datetime for frame 0, e.g. "2026-02-25T09:55:40Z"
+    time_window_s: float = 10.0
+    include_unmatched_ais: bool = False
+
+
+@app.post("/api/streams/{stream_id}/fusion/start", status_code=201)
+async def start_fusion(stream_id: str, request: FusionStartRequest):
+    """Configure sensor fusion for a stream."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+
+    fusion_pub = get_fusion_publisher()
+    if fusion_pub.fusion_svc.is_configured(stream_id):
+        raise HTTPException(status_code=409, detail="Fusion already configured for this stream")
+
+    # Resolve AIS log path
+    ais_path = Path(request.ais_log_path)
+    if not ais_path.is_absolute():
+        ais_path = BASE_DIR / ais_path
+    if not ais_path.exists():
+        raise HTTPException(status_code=404, detail=f"AIS log not found: {ais_path}")
+
+    try:
+        from datetime import datetime, timezone
+        video_epoch = datetime.fromisoformat(request.video_epoch_utc)
+        if video_epoch.tzinfo is None:
+            video_epoch = video_epoch.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid video_epoch_utc: {exc}")
+
+    try:
+        store = AISStore(ais_path, time_window_s=request.time_window_s)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load AIS log: {exc}")
+
+    fusion_pub.fusion_svc.configure(
+        stream_id=stream_id,
+        ais_store=store,
+        video_epoch_utc=video_epoch,
+        include_unmatched_ais=request.include_unmatched_ais,
+    )
+
+    return {
+        "status": "configured",
+        "stream_id": stream_id,
+        "ais_records": store.record_count,
+        "fused_channel": fused_channel(stream_id),
+        "video_epoch_utc": video_epoch.isoformat(),
+    }
+
+
+@app.post("/api/streams/{stream_id}/fusion/stop", status_code=200)
+async def stop_fusion(stream_id: str):
+    """Disable fusion for a stream."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    fusion_pub = get_fusion_publisher()
+    if not fusion_pub.fusion_svc.is_configured(stream_id):
+        raise HTTPException(status_code=404, detail="No active fusion for this stream")
+    fusion_pub.fusion_svc.clear(stream_id)
+    return {"status": "stopped", "stream_id": stream_id}
+
+
+@app.get("/api/streams/{stream_id}/fusion/status")
+async def fusion_status(stream_id: str):
+    """Return whether fusion is configured for a stream."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    is_active = get_fusion_publisher().fusion_svc.is_configured(stream_id)
+    return {
+        "stream_id": stream_id,
+        "active": is_active,
+        "fused_channel": fused_channel(stream_id),
+    }
+
+
+@app.websocket("/api/fused/ws/{stream_id}")
+async def websocket_fused(websocket: WebSocket, stream_id: str):
+    """WebSocket that forwards the fused (detection + AIS) channel."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        await websocket.close(code=1008, reason="invalid_stream_id")
+        return
+
+    await websocket.accept()
+
+    channel = fused_channel(stream_id)
+    redis_client = websocket.app.state.redis_client
+    pubsub = redis_client.pubsub()
+
+    try:
+        await pubsub.subscribe(channel)
+    except RedisError as exc:
+        await _safe_ws_send_json(websocket, {"type": "error", "message": str(exc)})
+        await websocket.close(code=1011)
+        return
+
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            payload = message.get("data")
+            if isinstance(payload, bytes):
+                payload = payload.decode("utf-8")
+            if not await _safe_ws_send_text(websocket, payload):
+                break
+    except WebSocketDisconnect:
+        pass
+    except RuntimeError:
+        pass
+    except Exception:
+        logger.exception("Fused websocket failed for channel '%s'", channel)
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+        except Exception:
+            pass
+
+
+@app.websocket("/api/fused/ws")
+async def websocket_fused_default(websocket: WebSocket):
+    await websocket_fused(websocket, DEFAULT_STREAM_ID)
 
 
 if __name__ == "__main__":

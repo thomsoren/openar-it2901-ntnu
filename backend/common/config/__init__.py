@@ -45,8 +45,10 @@ from .samples import (
 from .redis import (
     REDIS_URL,
     REDIS_DETECTIONS_CHANNEL_PREFIX,
+    REDIS_FUSED_CHANNEL_PREFIX,
     DEFAULT_DETECTIONS_STREAM_ID,
     detections_channel,
+    fused_channel,
     create_redis_client,
     create_async_redis_client,
 )
