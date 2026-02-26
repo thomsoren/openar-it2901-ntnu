@@ -7,7 +7,28 @@ import {
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
+import { AISDataPanel } from "../components/AISDataPanel/AISDataPanel";
 import VideoPlayer, { type VideoPlayerState } from "../components/video-player/VideoPlayer";
+import { type DetectedVessel } from "../types/detection";
+import { type AISData } from "../types/aisData";
+
+/** Map a fused Vessel (from detection WS) to the AISData shape the panel expects. */
+function vesselToAISData(v: NonNullable<DetectedVessel["vessel"]>): AISData {
+  return {
+    mmsi: Number(v.mmsi),
+    name: v.name ?? "",
+    latitude: v.latitude ?? 0,
+    longitude: v.longitude ?? 0,
+    speedOverGround: v.speed ?? -1,
+    trueHeading: v.heading ?? -1,
+    courseOverGround: -1,
+    rateOfTurn: 0,
+    shipType: Number(v.ship_type ?? 0) || 0,
+    navigationalStatus: 0,
+    msgtime: "",
+    projection: null,
+  };
+}
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
@@ -52,6 +73,31 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
     configureTabId,
     streamError,
   } = useStreamTabs({ externalStreamId, multiStreamTestingEnabled });
+
+  // --- Selected vessel for AIS panel ---
+  const [selectedVessel, setSelectedVessel] = useState<AISData | null>(null);
+
+  const handleVesselClick = useCallback((item: DetectedVessel) => {
+    console.log("[POI click]", item);
+    const mmsiNum = item.vessel ? Number(item.vessel.mmsi) : (item.detection.track_id ?? 0);
+    const aisData = item.vessel
+      ? vesselToAISData(item.vessel)
+      : {
+          mmsi: mmsiNum,
+          name: `Track #${item.detection.track_id ?? "?"}`,
+          latitude: 0,
+          longitude: 0,
+          speedOverGround: -1,
+          trueHeading: -1,
+          courseOverGround: -1,
+          rateOfTurn: 0,
+          shipType: 0,
+          navigationalStatus: 0,
+          msgtime: "",
+          projection: null,
+        };
+    setSelectedVessel((prev) => (prev?.mmsi === aisData.mmsi ? null : aisData));
+  }, []);
 
   // --- Video state ---
   const [controlError, setControlError] = useState<string | null>(null);
@@ -338,7 +384,12 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                     detectionFrame={
                       videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
                     }
+                    onVesselClick={handleVesselClick}
                   />
+                )}
+
+                {selectedVessel && (
+                  <AISDataPanel vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
                 )}
               </>
             )}

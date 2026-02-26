@@ -13,9 +13,15 @@ interface PoiOverlayProps {
     width: number;
     height: number;
   } | null;
+  onVesselClick?: (vessel: DetectedVessel) => void;
 }
 
-function PoiOverlay({ vessels = [], videoTransform, detectionFrame = null }: PoiOverlayProps) {
+function PoiOverlay({
+  vessels = [],
+  videoTransform,
+  detectionFrame = null,
+  onVesselClick,
+}: PoiOverlayProps) {
   if (vessels.length === 0) {
     return null;
   }
@@ -56,15 +62,32 @@ function PoiOverlay({ vessels = [], videoTransform, detectionFrame = null }: Poi
           : [];
 
         return (
-          <ObcPoiData
-            key={trackId}
-            style={{ position: "absolute" }}
-            x={screenX}
-            y={lineHeight}
-            buttonY={buttonY}
-            value={PoiDataValue.Unchecked}
-            data={vesselData}
-          />
+          <React.Fragment key={trackId}>
+            <ObcPoiData
+              style={{ position: "absolute" }}
+              x={screenX}
+              y={lineHeight}
+              buttonY={buttonY}
+              value={PoiDataValue.Unchecked}
+              data={vesselData}
+            />
+            {onVesselClick && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: screenX - 22,
+                  top: buttonY - 22,
+                  width: 44,
+                  height: 44,
+                  cursor: "pointer",
+                  pointerEvents: "all",
+                  zIndex: 20,
+                  borderRadius: "50%",
+                }}
+                onClick={() => onVesselClick(item)}
+              />
+            )}
+          </React.Fragment>
         );
       })}
     </div>
