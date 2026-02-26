@@ -62,24 +62,24 @@ function PoiOverlay({
   useLayoutEffect(() => {
     measureLayerOffset();
 
+    const rafId = requestAnimationFrame(() => measureLayerOffset());
     const overlay = overlayRef.current;
     const layer = layerElRef.current;
-    if (!overlay) return;
+    if (!overlay) return () => cancelAnimationFrame(rafId);
 
     const ro = new ResizeObserver(measureLayerOffset);
     ro.observe(overlay);
     if (layer) ro.observe(layer);
 
-    return () => ro.disconnect();
-  }, [measureLayerOffset, vessels.length]);
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [measureLayerOffset, vessels.length, videoTransform]);
 
   const filteredVessels = vessels.filter((item) =>
     isLayerVisible(item.detection.class_name, arControls)
   );
-
-  if (filteredVessels.length === 0) {
-    return null;
-  }
 
   const sourceWidth = videoTransform.sourceWidth;
   const sourceHeight = videoTransform.sourceHeight;

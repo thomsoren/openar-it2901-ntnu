@@ -24,7 +24,8 @@ function Fusion() {
     containerRef,
     videoFitMode,
     FUSION_VIDEO_CONFIG.WIDTH,
-    FUSION_VIDEO_CONFIG.HEIGHT
+    FUSION_VIDEO_CONFIG.HEIGHT,
+    detectionVisible
   );
 
   useEffect(() => {
