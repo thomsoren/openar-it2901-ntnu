@@ -8,6 +8,7 @@ import { ObiVesselTypeGenericOutlined } from "@ocean-industries-concept-lab/open
 import { ObiAisProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-proposal";
 import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
 import { ObiTargetSettingsProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-target-settings-proposal";
+import { ObiExpand } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-expand";
 import { useARControls } from "./useARControls";
 import type { PoiDropdownValue, RangeValue } from "./ar-control-context";
 import "./ARControlPanel.css";
@@ -27,7 +28,7 @@ const POI_OPTIONS: { value: PoiDropdownValue; label: string }[] = [
 ];
 
 export function ARControlPanel() {
-  const { state, toggle, setRangeValue, setPoiDropdownValue } = useARControls();
+  const { state, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode } = useARControls();
 
   const buoyAndLightOn = state.buoyLayerVisible && state.flotsamLayerVisible;
   const aisDataOn = state.aisCardsVisible && state.mobLayerVisible;
@@ -114,6 +115,15 @@ export function ARControlPanel() {
           <ObiTargetSettingsProposal slot="icon" />
         </ObcDropdownButton>
       </div>
+
+      <ObcIconButton
+        variant={IconButtonVariant.flat}
+        activated={state.videoFitMode === "cover"}
+        title={state.videoFitMode === "cover" ? "Fill Screen (Crop)" : "Fit to Screen (Letterbox)"}
+        onClick={() => setVideoFitMode(state.videoFitMode === "cover" ? "contain" : "cover")}
+      >
+        <ObiExpand />
+      </ObcIconButton>
     </div>
   );
 }

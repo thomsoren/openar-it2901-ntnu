@@ -14,7 +14,7 @@ import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { useSettings } from "../contexts/useSettings";
+import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useAuth } from "../hooks/useAuth";
 import { DETECTION_CONFIG } from "../config/video";
 import { apiFetch as apiFetchLib } from "../lib/api-client";
@@ -33,13 +33,13 @@ interface DatavisionProps {
   onAuthGateVisibleChange?: (visible: boolean) => void;
 }
 
-function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
+function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === "undefined" ? 1440 : window.innerWidth
   );
-  const { videoFitMode, detectionVisible, multiStreamTestingEnabled } = useSettings();
+  const { state: arControls } = useARControls();
   const auth = useAuth();
 
   // --- Tab / stream state (extracted hook) ---
@@ -57,7 +57,7 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
     handleStreamReady,
     configureTabId,
     streamError,
-  } = useStreamTabs({ externalStreamId, multiStreamTestingEnabled });
+  } = useStreamTabs({ externalStreamId });
 
   // --- Video state ---
   const [controlError, setControlError] = useState<string | null>(null);
@@ -139,7 +139,7 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
   const videoTransform = useVideoTransform(
     videoRef,
     containerRef,
-    videoFitMode,
+    arControls.videoFitMode,
     undefined,
     undefined,
     imageLoaded
@@ -273,119 +273,123 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
   const shouldStackTabsBar = viewportWidth < requiredWidth;
 
   return (
-    <ARControlProvider>
-      <div style={{ position: "relative", width: "100%", height: "100%" }}>
-        <section className="stream-workspace">
-          <div className="stream-tabs-shell">
-            <div
-              className={`stream-tabs-bar${shouldStackTabsBar ? " stream-tabs-bar--stacked" : ""}`}
-            >
-              <ObcTabRow
-                className="stream-tab-row"
-                tabs={tabs}
-                selectedTabId={activeTabId}
-                hasAddNewTab={showAddButton}
-                hasClose={showCloseButtons}
-                onTabSelected={handleTabSelected}
-                onTabClosed={onTabClosed}
-                onAddNewTab={handleAddTab}
-              />
-              <ARControlPanel />
-            </div>
-
-            <div
-              ref={containerRef}
-              className={[
-                "stream-card-content",
-                activeIsSetup ? "" : !activeStream ? "stream-card-content--empty" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              {activeIsSetup && (
-                <>
-                  {!auth.session ? (
-                    <div className="stream-setup-auth">
-                      <AuthGate initialMode="login" onAuthenticated={auth.handleAuthenticated} />
-                    </div>
-                  ) : (
-                    <StreamSetup tabId={activeTabId} onStreamReady={handleStreamReady} />
-                  )}
-                </>
-              )}
-
-              {!activeIsSetup &&
-                !activeStream &&
-                "No running streams. Join or create one from the sidebar."}
-
-              {!activeIsSetup && activeStream && (
-                <>
-                  <VideoPlayer
-                    key={`${activeTabId}-${videoSession}`}
-                    streamId={activeStream.stream_id}
-                    whepUrl={activeStreamPlayback?.whep_url}
-                    hlsUrl={activeStreamPlayback?.hls_url}
-                    sessionToken={videoSession}
-                    className="background-video"
-                    style={{ objectFit: videoFitMode, backgroundColor: "#e5e9ef" }}
-                    onVideoReady={(videoEl) => {
-                      videoRef.current = videoEl;
-                    }}
-                    onStatusChange={handleVideoStatusChange}
-                  />
-
-                  {showVideoLoader && (
-                    <div className="video-loading-center">
-                      <ObcProgressBar
-                        className="video-loading-center__progress"
-                        type={ProgressBarType.circular}
-                        mode={ProgressBarMode.indeterminate}
-                        circularState={CircularProgressState.indeterminate}
-                        style={
-                          {
-                            "--instrument-enhanced-secondary-color": "#4ea9dd",
-                            "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
-                          } as CSSProperties
-                        }
-                      >
-                        <span slot="icon"></span>
-                      </ObcProgressBar>
-                      <div className="video-loading-center__label">
-                        {!imageLoaded
-                          ? "Connecting to video stream..."
-                          : "Waiting for detections..."}
-                      </div>
-                    </div>
-                  )}
-                  {isLoading && imageLoaded && (
-                    <div className="status-overlay">Connecting to detection stream...</div>
-                  )}
-                  {error && <div className="status-overlay status-error">Error: {error}</div>}
-                  {!isLoading && !error && (
-                    <div className="status-overlay status-info">
-                      {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
-                      {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
-                      {interpolatedVessels.length}
-                      {videoState.error ? ` | Video error: ${videoState.error}` : ""}
-                      {displayError ? ` | Control: ${displayError}` : ""}
-                    </div>
-                  )}
-
-                  {detectionVisible && (
-                    <PoiOverlay
-                      vessels={interpolatedVessels}
-                      videoTransform={videoTransform}
-                      detectionFrame={
-                        videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
-                      }
-                    />
-                  )}
-                </>
-              )}
-            </div>
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <section className="stream-workspace">
+        <div className="stream-tabs-shell">
+          <div
+            className={`stream-tabs-bar${shouldStackTabsBar ? " stream-tabs-bar--stacked" : ""}`}
+          >
+            <ObcTabRow
+              className="stream-tab-row"
+              tabs={tabs}
+              selectedTabId={activeTabId}
+              hasAddNewTab={showAddButton}
+              hasClose={showCloseButtons}
+              onTabSelected={handleTabSelected}
+              onTabClosed={onTabClosed}
+              onAddNewTab={handleAddTab}
+            />
+            <ARControlPanel />
           </div>
-        </section>
-      </div>
+
+          <div
+            ref={containerRef}
+            className={[
+              "stream-card-content",
+              activeIsSetup ? "" : !activeStream ? "stream-card-content--empty" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {activeIsSetup && (
+              <>
+                {!auth.session ? (
+                  <div className="stream-setup-auth">
+                    <AuthGate initialMode="login" onAuthenticated={auth.handleAuthenticated} />
+                  </div>
+                ) : (
+                  <StreamSetup tabId={activeTabId} onStreamReady={handleStreamReady} />
+                )}
+              </>
+            )}
+
+            {!activeIsSetup &&
+              !activeStream &&
+              "No running streams. Join or create one from the sidebar."}
+
+            {!activeIsSetup && activeStream && (
+              <>
+                <VideoPlayer
+                  key={`${activeTabId}-${videoSession}`}
+                  streamId={activeStream.stream_id}
+                  whepUrl={activeStreamPlayback?.whep_url}
+                  hlsUrl={activeStreamPlayback?.hls_url}
+                  sessionToken={videoSession}
+                  className="background-video"
+                  style={{ objectFit: arControls.videoFitMode, backgroundColor: "#e5e9ef" }}
+                  onVideoReady={(videoEl) => {
+                    videoRef.current = videoEl;
+                  }}
+                  onStatusChange={handleVideoStatusChange}
+                />
+
+                {showVideoLoader && (
+                  <div className="video-loading-center">
+                    <ObcProgressBar
+                      className="video-loading-center__progress"
+                      type={ProgressBarType.circular}
+                      mode={ProgressBarMode.indeterminate}
+                      circularState={CircularProgressState.indeterminate}
+                      style={
+                        {
+                          "--instrument-enhanced-secondary-color": "#4ea9dd",
+                          "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+                        } as CSSProperties
+                      }
+                    >
+                      <span slot="icon"></span>
+                    </ObcProgressBar>
+                    <div className="video-loading-center__label">
+                      {!imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."}
+                    </div>
+                  </div>
+                )}
+                {isLoading && imageLoaded && (
+                  <div className="status-overlay">Connecting to detection stream...</div>
+                )}
+                {error && <div className="status-overlay status-error">Error: {error}</div>}
+                {!isLoading && !error && (
+                  <div className="status-overlay status-info">
+                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
+                    {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
+                    {interpolatedVessels.length}
+                    {videoState.error ? ` | Video error: ${videoState.error}` : ""}
+                    {displayError ? ` | Control: ${displayError}` : ""}
+                  </div>
+                )}
+
+                {arControls.detectionVisible && (
+                  <PoiOverlay
+                    vessels={interpolatedVessels}
+                    videoTransform={videoTransform}
+                    detectionFrame={
+                      videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
+                    }
+                  />
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Datavision(props: DatavisionProps) {
+  return (
+    <ARControlProvider>
+      <DatavisionInner {...props} />
     </ARControlProvider>
   );
 }

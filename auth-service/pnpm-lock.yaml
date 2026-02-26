@@ -24,6 +24,9 @@ importers:
       '@types/node':
         specifier: ^24.3.1
         version: 24.10.13
+      '@types/pg':
+        specifier: ^8.16.0
+        version: 8.16.0
       tsx:
         specifier: ^4.20.6
         version: 4.21.0
@@ -223,6 +226,9 @@ packages:
 
   '@types/node@24.10.13':
     resolution: {integrity: sha512-oH72nZRfDv9lADUBSo104Aq7gPHpQZc4BTx38r9xf9pg5LfP6EzSyH2n7qFmmxRQXh7YlUXODcYsg6PuTDSxGg==}
+
+  '@types/pg@8.16.0':
+    resolution: {integrity: sha512-RmhMd/wD+CF8Dfo+cVIy3RR5cl8CyfXQ0tGgW6XBL8L4LM/UTEbNXYRbLwU6w+CgrKBNbrQWt4FUtTfaU5jSYQ==}
 
   better-auth@1.4.18:
     resolution: {integrity: sha512-bnyifLWBPcYVltH3RhS7CM62MoelEqC6Q+GnZwfiDWNfepXoQZBjEvn4urcERC7NTKgKq5zNBM8rvPvRBa6xcg==}
@@ -518,6 +524,12 @@ snapshots:
   '@types/node@24.10.13':
     dependencies:
       undici-types: 7.16.0
+
+  '@types/pg@8.16.0':
+    dependencies:
+      '@types/node': 24.10.13
+      pg-protocol: 1.11.0
+      pg-types: 2.2.0
 
   better-auth@1.4.18(pg@8.18.0):
     dependencies:
