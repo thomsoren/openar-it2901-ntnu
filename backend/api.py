@@ -23,22 +23,26 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.websockets import WebSocketDisconnect
 
-from ais import service as ais_service
-from ais.fetch_ais import (
-    fetch_ais_stream_geojson,
-    fetch_ais_stream_projections,
-    fetch_ais_stream_projections_by_mmsi,
-)
+from ais.fetch_ais import fetch_ais_stream_geojson, fetch_historic_ais_data
+from ais_mapping_service.pixel_projection.current_ship_config import CameraConfig, ShipConfig
+from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
 from ais.logger import AISSessionLogger
-from auth.deps import require_admin
+import aiohttp
+
+from auth.deps import authenticate_websocket, require_admin
 from auth.routes import limiter, router as auth_router
 from common.config import (
+    AUTO_FUSION_AIS_LOG,
+    AUTO_FUSION_INCLUDE_UNMATCHED,
+    AUTO_FUSION_TIME_WINDOW_S,
+    AUTO_FUSION_VIDEO_EPOCH_UTC,
     BASE_DIR,
     MEDIAMTX_ENABLED,
     VIDEO_PATH,
     build_playback_urls,
     create_async_redis_client,
     detections_channel,
+    fused_channel,
     load_samples,
 )
 from common.types import DetectedVessel
@@ -53,6 +57,9 @@ from orchestrator import (
     WorkerOrchestrator,
 )
 from storage import s3
+from cv.publisher import get_fusion_publisher
+from sensor_fusion import AISStore
+from sensor_fusion.fusion_config import fetch_and_configure_ais as _fetch_and_configure_ais
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +101,65 @@ DEFAULT_STREAM_ID = os.getenv("DEFAULT_STREAM_ID", "default")
 PROTECT_DEFAULT_STREAM = os.getenv("PROTECT_DEFAULT_STREAM", "0").lower() in {"1", "true", "yes"}
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
+# Auto-fusion configuration is read from common.config.fusion (SSOT).
+
 orchestrator: WorkerOrchestrator | None = None
+
+
+def _auto_configure_fusion(stream_id: str) -> None:
+    """Auto-configure sensor fusion for *stream_id* if AUTO_FUSION_AIS_LOG is set.
+
+    Uses AUTO_FUSION_VIDEO_EPOCH_UTC if provided, otherwise defaults to now().
+    Silently skips if already configured or if the AIS log is unavailable.
+    """
+    if not AUTO_FUSION_AIS_LOG:
+        return
+
+    fusion_pub = get_fusion_publisher()
+    if fusion_pub.fusion_svc.is_configured(stream_id):
+        return
+
+    ais_path = Path(AUTO_FUSION_AIS_LOG)
+    if not ais_path.is_absolute():
+        ais_path = BASE_DIR / ais_path
+    if not ais_path.exists():
+        logger.warning(
+            "[auto-fusion] AIS log not found at %s — fusion skipped for stream '%s'",
+            ais_path, stream_id,
+        )
+        return
+
+    from datetime import datetime, timezone
+    if AUTO_FUSION_VIDEO_EPOCH_UTC:
+        try:
+            video_epoch = datetime.fromisoformat(AUTO_FUSION_VIDEO_EPOCH_UTC)
+            if video_epoch.tzinfo is None:
+                video_epoch = video_epoch.replace(tzinfo=timezone.utc)
+        except ValueError:
+            logger.warning(
+                "[auto-fusion] Invalid AUTO_FUSION_VIDEO_EPOCH_UTC '%s' — using now()",
+                AUTO_FUSION_VIDEO_EPOCH_UTC,
+            )
+            video_epoch = datetime.now(tz=timezone.utc)
+    else:
+        video_epoch = datetime.now(tz=timezone.utc)
+
+    try:
+        store = AISStore(ais_path, time_window_s=AUTO_FUSION_TIME_WINDOW_S)
+    except (OSError, ValueError) as exc:
+        logger.warning("[auto-fusion] Failed to load AIS log: %s", exc)
+        return
+
+    fusion_pub.fusion_svc.configure(
+        stream_id=stream_id,
+        ais_store=store,
+        video_epoch_utc=video_epoch,
+        include_unmatched_ais=AUTO_FUSION_INCLUDE_UNMATCHED,
+    )
+    logger.info(
+        "[auto-fusion] Configured for stream '%s' — %d AIS records, epoch=%s",
+        stream_id, store.record_count, video_epoch.isoformat(),
+    )
 
 
 class StreamStartRequest(BaseModel):
@@ -215,6 +280,7 @@ async def lifespan(_: FastAPI):
                 StreamConfig(stream_id=DEFAULT_STREAM_ID, source_url=source_url, loop=True)
             )
             logger.info("Default stream '%s' started from %s", DEFAULT_STREAM_ID, source_url)
+            _auto_configure_fusion(DEFAULT_STREAM_ID)
         except (StreamAlreadyRunningError, ResourceLimitExceededError):
             pass
     else:
@@ -261,8 +327,7 @@ def read_root():
             "video": "/api/video",
             "ais": "/api/ais",
             "ais_stream": "/api/ais/stream",
-            "ais_projections": "/api/ais/projections",
-            "ais_projections_mmsi": "/api/ais/projections/mmsi",
+            "ais_historical": "/api/ais/historical",
             "samples": "/api/samples",
             "storage_presign": "/api/storage/presign",
             "health": "/health",
@@ -362,29 +427,88 @@ async def stream_video(request: Request):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error in video stream: {exc}")
 
+class AISHistoricalRequest(BaseModel):
+    polygon: dict
+    msgTimeFrom: str
+    msgTimeTo: str
+    ship_lat: float
+    ship_lon: float
+    heading: float
+    log: bool = False
 
-@app.get("/api/ais")
-async def get_ais_data():
+
+@app.post("/api/ais/historical")
+async def get_historical_ais_data(body: AISHistoricalRequest, _: AppUser = Depends(require_admin)):
+    session_logger = AISSessionLogger() if body.log else None
+    ship_cfg = ShipConfig(
+        latitude=body.ship_lat,
+        longitude=body.ship_lon,
+        heading_deg=body.heading
+    )
+    cam_cfg = CameraConfig()
     try:
-        return await ais_service.get_ais_data()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error fetching AIS data: {exc}")
-
+        results = []
+        async for item in fetch_historic_ais_data(
+            polygon=body.polygon,
+            from_date=body.msgTimeFrom,
+            to_date=body.msgTimeTo,
+        ):
+            lat = item.get("latitude")
+            lon = item.get("longitude")
+            item["projection"] = (
+                project_ais_to_pixel(
+                    ship_cfg=ship_cfg,
+                    target_lat=lat,
+                    target_lon=lon,
+                    cam_cfg=cam_cfg,
+                )
+                if lat is not None and lon is not None
+                else None
+            )
+            results.append(item)
+            if session_logger:
+                session_logger.log(item)
+        if session_logger:
+            session_logger.end_session()
+        return results
+    except (ValueError, aiohttp.ClientError) as exc:
+        raise HTTPException(status_code=500, detail=f"Error fetching historical AIS data: {exc}")
 
 class AISStreamRequest(BaseModel):
     # GeoJSON polygon: [[lon, lat], ...] computed by the frontend
     coordinates: List[List[float]]
-    log: bool = False,
+    ship_lat: float
+    ship_lon: float
+    heading: float
+    log: bool = False
 
 @app.post("/api/ais/stream")
-async def stream_ais_geojson(body: AISStreamRequest):
-    """Stream live AIS data inside the polygon pre-computed by the frontend."""
+async def get_live_ais_data(body: AISStreamRequest):
+    """Stream live AIS data inside the polygon, enriched with camera pixel projections."""
     session_logger = AISSessionLogger() if body.log else None
+    ship_cfg = ShipConfig(
+        latitude=body.ship_lat,
+        longitude=body.ship_lon,
+        heading_deg=body.heading
+    )
+    cam_cfg = CameraConfig()
     async def event_generator():
         try:
             async for feature in fetch_ais_stream_geojson(
                 coordinates=body.coordinates
             ):
+                lat = feature.get("latitude")
+                lon = feature.get("longitude")
+                feature["projection"] = (
+                    project_ais_to_pixel(
+                        ship_cfg=ship_cfg,
+                        target_lat=lat,
+                        target_lon=lon,
+                        cam_cfg=cam_cfg,
+                    )
+                    if lat is not None and lon is not None
+                    else None
+                )
                 if session_logger:
                     session_logger.log(feature)
                 yield f"data: {json.dumps(feature)}\n"
@@ -392,87 +516,8 @@ async def stream_ais_geojson(body: AISStreamRequest):
             yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
         finally:
             if session_logger:
-                metadata = session_logger.end_session()
-                if not metadata.get("flush_success", False):
-                    warning = {
-                        "type": "error",
-                        "message": "AIS logging failed",
-                        "detail": metadata.get("flush_error"),
-                        "total_logged": metadata.get("total_records", 0),
-                        "records_written": metadata.get("total_file_size_bytes", 0),
-                    }
-                    yield f"data: {json.dumps(warning)}\n"
-                elif metadata.get("total_splits", 1) > 1:
-                    info = {
-                        "type": "info",
-                        "message": "AIS logging completed with multiple files",
-                        "detail": f"Session was split into {metadata.get('total_splits')} files due to buffer size",
-                        "total_logged": metadata.get("total_records", 0),
-                        "total_file_size_bytes": metadata.get("total_file_size_bytes", 0),
-                        "log_files": metadata.get("log_files", []),
-                    }
-                    yield f"data: {json.dumps(info)}\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
-
-
-@app.get("/api/ais/projections")
-async def stream_ais_projections(
-    ship_lat: float = 63.4365,
-    ship_lon: float = 10.3835,
-    heading: float = 90,
-    offset_meters: float = 3000,
-    fov_degrees: float = 120,
-):
-    async def event_generator():
-        try:
-            async for feature in fetch_ais_stream_projections(
-                ship_lat=ship_lat,
-                ship_lon=ship_lon,
-                heading=heading,
-                offset_meters=offset_meters,
-                fov_degrees=fov_degrees,
-            ):
-                yield f"data: {json.dumps(feature)}\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
-
-
-@app.get("/api/ais/projections/mmsi")
-async def stream_ais_projections_by_mmsi(
-    mmsi: str,
-    offset_meters: float = 3000,
-    fov_degrees: float = 120,
-):
-    async def event_generator():
-        try:
-            async for feature in fetch_ais_stream_projections_by_mmsi(
-                mmsi=mmsi,
-                offset_meters=offset_meters,
-                fov_degrees=fov_degrees,
-            ):
-                yield f"data: {json.dumps(feature)}\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
-
+                session_logger.end_session()
+        
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -506,6 +551,8 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
     except ResourceLimitExceededError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
+    _auto_configure_fusion(stream_id)
+
     return {
         "status": "started",
         **handle.to_dict(),
@@ -533,9 +580,7 @@ async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool =
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {exc}")
 
-    config = StreamConfig(
-        stream_id=stream_id, source_url=str(local_path), loop=loop
-    )
+    config = StreamConfig(stream_id=stream_id, source_url=str(local_path), loop=loop)
     try:
         handle = orchestrator.start_stream(config)
     except StreamAlreadyRunningError as exc:
@@ -668,6 +713,192 @@ async def websocket_detections_default(websocket: WebSocket):
 @app.websocket("/api/fusion/ws")
 async def websocket_fusion(websocket: WebSocket):
     await fusion.handle_fusion_ws(websocket)
+
+
+# ── Sensor Fusion endpoints ─────────────────────────────────────────────────
+
+class FusionStartRequest(BaseModel):
+    ais_log_path: str          # Relative or absolute path to the NDJSON session log
+    video_epoch_utc: str       # ISO-8601 UTC datetime for frame 0, e.g. "2026-02-25T09:55:40Z"
+    time_window_s: float = 10.0
+    include_unmatched_ais: bool = False
+
+
+@app.post("/api/streams/{stream_id}/fusion/start", status_code=201)
+async def start_fusion(
+    stream_id: str,
+    request: FusionStartRequest,
+    _: AppUser = Depends(require_admin),
+):
+    """Configure sensor fusion for a stream."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+
+    fusion_pub = get_fusion_publisher()
+    if fusion_pub.fusion_svc.is_configured(stream_id):
+        raise HTTPException(status_code=409, detail="Fusion already configured for this stream")
+
+    # Resolve AIS log path and validate containment to prevent path traversal.
+    ais_path = Path(request.ais_log_path)
+    if not ais_path.is_absolute():
+        ais_path = BASE_DIR / ais_path
+    try:
+        resolved = ais_path.resolve()
+        if not resolved.is_relative_to(BASE_DIR.resolve()):
+            raise HTTPException(
+                status_code=400, detail="Path must be within the project directory"
+            )
+    except HTTPException:
+        raise
+    except OSError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="AIS log not found")
+
+    try:
+        from datetime import datetime, timezone
+        video_epoch = datetime.fromisoformat(request.video_epoch_utc)
+        if video_epoch.tzinfo is None:
+            video_epoch = video_epoch.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid video_epoch_utc: {exc}")
+
+    try:
+        store = AISStore(resolved, time_window_s=request.time_window_s)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load AIS log: {exc}")
+
+    fusion_pub.fusion_svc.configure(
+        stream_id=stream_id,
+        ais_store=store,
+        video_epoch_utc=video_epoch,
+        include_unmatched_ais=request.include_unmatched_ais,
+    )
+
+    return {
+        "status": "configured",
+        "stream_id": stream_id,
+        "ais_records": store.record_count,
+        "fused_channel": fused_channel(stream_id),
+        "video_epoch_utc": video_epoch.isoformat(),
+    }
+
+
+class FusionFromAreaRequest(BaseModel):
+    ship_lat: float
+    ship_lon: float
+    video_epoch_utc: str  # ISO-8601
+    duration_s: float
+    radius_km: float = 5.0
+    time_window_s: float = 10.0
+
+
+@app.post("/api/streams/{stream_id}/fusion/configure-from-area", status_code=201)
+async def configure_fusion_from_area(
+    stream_id: str,
+    request: FusionFromAreaRequest,
+    _: AppUser = Depends(require_admin),
+):
+    """Fetch historic AIS for a geographic area and configure sensor fusion."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    from datetime import datetime, timezone
+    try:
+        epoch = datetime.fromisoformat(request.video_epoch_utc)
+        if epoch.tzinfo is None:
+            epoch = epoch.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid video_epoch_utc: {exc}")
+    try:
+        record_count = await _fetch_and_configure_ais(
+            stream_id=stream_id,
+            ship_lat=request.ship_lat,
+            ship_lon=request.ship_lon,
+            video_epoch_utc=epoch,
+            duration_s=request.duration_s,
+            radius_km=request.radius_km,
+            time_window_s=request.time_window_s,
+        )
+    except (ValueError, OSError, aiohttp.ClientError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"status": "configured", "stream_id": stream_id, "ais_records": record_count}
+
+
+@app.post("/api/streams/{stream_id}/fusion/stop", status_code=200)
+async def stop_fusion(stream_id: str, _: AppUser = Depends(require_admin)):
+    """Disable fusion for a stream."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    fusion_pub = get_fusion_publisher()
+    if not fusion_pub.fusion_svc.is_configured(stream_id):
+        raise HTTPException(status_code=404, detail="No active fusion for this stream")
+    fusion_pub.fusion_svc.clear(stream_id)
+    return {"status": "stopped", "stream_id": stream_id}
+
+
+@app.get("/api/streams/{stream_id}/fusion/status")
+async def fusion_status(stream_id: str, _: AppUser = Depends(require_admin)):
+    """Return whether fusion is configured for a stream."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream_id")
+    is_active = get_fusion_publisher().fusion_svc.is_configured(stream_id)
+    return {
+        "stream_id": stream_id,
+        "active": is_active,
+        "fused_channel": fused_channel(stream_id),
+    }
+
+
+@app.websocket("/api/fused/ws/{stream_id}")
+async def websocket_fused(websocket: WebSocket, stream_id: str):
+    """WebSocket that forwards the fused (detection + AIS) channel."""
+    if not STREAM_ID_PATTERN.fullmatch(stream_id):
+        await websocket.close(code=1008, reason="invalid_stream_id")
+        return
+
+    user = await authenticate_websocket(websocket)
+    if user is None:
+        return
+
+    await websocket.accept()
+
+    channel = fused_channel(stream_id)
+    redis_client = websocket.app.state.redis_client
+    pubsub = redis_client.pubsub()
+
+    try:
+        await pubsub.subscribe(channel)
+    except RedisError as exc:
+        await _safe_ws_send_json(websocket, {"type": "error", "message": str(exc)})
+        await websocket.close(code=1011)
+        return
+
+    try:
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            payload = message.get("data")
+            if isinstance(payload, bytes):
+                payload = payload.decode("utf-8")
+            if not await _safe_ws_send_text(websocket, payload):
+                break
+    except WebSocketDisconnect:
+        pass
+    except RuntimeError:
+        pass
+    except Exception:
+        logger.exception("Fused websocket failed for channel '%s'", channel)
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+        except Exception:
+            pass
+
+
+@app.websocket("/api/fused/ws")
+async def websocket_fused_default(websocket: WebSocket):
+    await websocket_fused(websocket, DEFAULT_STREAM_ID)
 
 
 if __name__ == "__main__":

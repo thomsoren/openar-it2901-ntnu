@@ -8,12 +8,18 @@ from redis.asyncio import Redis as AsyncRedis
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 REDIS_DETECTIONS_CHANNEL_PREFIX = os.getenv("REDIS_DETECTIONS_CHANNEL_PREFIX", "detections")
+REDIS_FUSED_CHANNEL_PREFIX = os.getenv("REDIS_FUSED_CHANNEL_PREFIX", "fused")
 DEFAULT_DETECTIONS_STREAM_ID = os.getenv("DEFAULT_DETECTIONS_STREAM_ID", "default")
 
 
 def detections_channel(stream_id: str) -> str:
-    """Build pub/sub channel name for a detection stream."""
+    """Build pub/sub channel name for a raw detection stream."""
     return f"{REDIS_DETECTIONS_CHANNEL_PREFIX}:{stream_id}"
+
+
+def fused_channel(stream_id: str) -> str:
+    """Build pub/sub channel name for a fused (detection + AIS) stream."""
+    return f"{REDIS_FUSED_CHANNEL_PREFIX}:{stream_id}"
 
 
 def create_redis_client() -> Redis:

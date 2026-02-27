@@ -1,4 +1,11 @@
 """Configuration module exports."""
+from .fusion import (
+    AUTO_FUSION_AIS_LOG,
+    AUTO_FUSION_VIDEO_EPOCH_UTC,
+    AUTO_FUSION_TIME_WINDOW_S,
+    AUTO_FUSION_INCLUDE_UNMATCHED,
+    FUSION_MAX_MATCH_PX,
+)
 from .paths import (
     BASE_DIR,
     MODELS_DIR,
@@ -45,8 +52,10 @@ from .samples import (
 from .redis import (
     REDIS_URL,
     REDIS_DETECTIONS_CHANNEL_PREFIX,
+    REDIS_FUSED_CHANNEL_PREFIX,
     DEFAULT_DETECTIONS_STREAM_ID,
     detections_channel,
+    fused_channel,
     create_redis_client,
     create_async_redis_client,
 )
@@ -135,4 +144,10 @@ __all__ = [
     "FFMPEG_SCALE_HEIGHT",
     "build_rtsp_publish_url",
     "build_playback_urls",
+    # Sensor fusion
+    "AUTO_FUSION_AIS_LOG",
+    "AUTO_FUSION_VIDEO_EPOCH_UTC",
+    "AUTO_FUSION_TIME_WINDOW_S",
+    "AUTO_FUSION_INCLUDE_UNMATCHED",
+    "FUSION_MAX_MATCH_PX",
 ]
