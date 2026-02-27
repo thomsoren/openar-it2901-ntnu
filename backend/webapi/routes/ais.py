@@ -34,9 +34,9 @@ _SSE_HEADERS = {
 async def _sse_generator(source: AsyncIterator) -> AsyncIterator[str]:
     try:
         async for feature in source:
-            yield f"data: {json.dumps(feature)}\\n"
+            yield f"data: {json.dumps(feature)}\n"
     except Exception as exc:
-        yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\\n"
+        yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
 
 
 def _sse_response(source: AsyncIterator) -> StreamingResponse:
@@ -60,9 +60,9 @@ async def stream_ais_geojson(body: AISStreamRequest):
             async for feature in fetch_ais_stream_geojson(coordinates=body.coordinates):
                 if session_logger:
                     session_logger.log(feature)
-                yield f"data: {json.dumps(feature)}\\n"
+                yield f"data: {json.dumps(feature)}\n"
         except Exception as exc:
-            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\\n"
+            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
         finally:
             if session_logger:
                 metadata = session_logger.end_session()
@@ -74,7 +74,7 @@ async def stream_ais_geojson(body: AISStreamRequest):
                         "total_logged": metadata.get("total_records", 0),
                         "records_written": metadata.get("total_file_size_bytes", 0),
                     }
-                    yield f"data: {json.dumps(warning)}\\n"
+                    yield f"data: {json.dumps(warning)}\n"
                 elif metadata.get("total_splits", 1) > 1:
                     info = {
                         "type": "info",
@@ -84,7 +84,7 @@ async def stream_ais_geojson(body: AISStreamRequest):
                         "total_file_size_bytes": metadata.get("total_file_size_bytes", 0),
                         "log_files": metadata.get("log_files", []),
                     }
-                    yield f"data: {json.dumps(info)}\\n"
+                    yield f"data: {json.dumps(info)}\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=_SSE_HEADERS)
 

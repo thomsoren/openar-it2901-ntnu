@@ -21,6 +21,7 @@ from orchestrator import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
     StreamConfig,
+    StreamHandle,
     StreamNotFoundError,
     WorkerOrchestrator,
 )
