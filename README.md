@@ -16,16 +16,52 @@ OpenAR - Augmented Reality demonstration for maritime vessel detection using Ope
 
 ### Prerequisites
 
-- **Node.js:** v18 LTS or higher
+- **Docker:** Required for all setups
 - **pnpm:** Install with `npm install -g pnpm`
-- **Python:** 3.11+
-- **uv:** Fast Python package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
-- **Docker:** Required for PostgreSQL and Redis
-- **CUDA:** For GPU-accelerated inference (optional but recommended)
-- Access to GitHub Packages for `@ocean-industries-concept-lab` components
-- **MediaMTX:** required for streaming, setup described below
+- **GitHub token:** With `read:packages` scope for OpenBridge components ([create one](https://github.com/settings/tokens))
 
-### Quick Start
+For native (non-Docker) development, you also need:
+- **Node.js:** v18 LTS or higher
+- **Python:** 3.11 (3.14 is not compatible with PyTorch)
+- **uv:** Fast Python package manager ([install guide](https://docs.astral.sh/uv/getting-started/installation/))
+- **FFmpeg:** Required for video streaming (`brew install ffmpeg` / `apt install ffmpeg` / `choco install ffmpeg`)
+- **CUDA:** For GPU-accelerated inference (optional but recommended)
+
+### Quick Start (Docker — Recommended)
+
+Runs everything in containers. No need to install Python, FFmpeg, or configure npm registries locally.
+
+```bash
+# 1. Copy the Docker env template
+cp .env.docker.example .env
+
+# 2. Set your GitHub token (required for OpenBridge packages)
+#    Edit .env and set GITHUB_TOKEN=ghp_your_token_here
+
+# 3. Build and start all services
+pnpm docker:up
+
+# 4. In another terminal — create a dev admin user
+pnpm seed-admin
+```
+
+**With NVIDIA GPU** (requires [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):
+
+```bash
+pnpm docker:up:gpu
+```
+
+**Apple Silicon (MPS):** Docker on Mac runs a Linux VM, so MPS is not available inside containers. Run infrastructure in Docker and the backend natively for GPU acceleration:
+
+```bash
+# Start everything except backend in Docker
+docker compose up postgres redis mediamtx auth-service frontend
+
+# Run backend natively (auto-detects MPS)
+cd backend && uv run main.py
+```
+
+### Quick Start (Native)
 
 ```bash
 # 1. First-time setup (copies .env files, starts Docker infra, installs deps)

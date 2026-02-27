@@ -9,7 +9,7 @@ set -eu
 AUTH_URL="${BETTER_AUTH_URL:-http://localhost:3001}"
 AUTH_PATH="${BETTER_AUTH_BASE_PATH:-/api/auth}"
 DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5433}"
+DB_PORT="${DB_PORT:-5532}"
 DB_USER="${DB_USER:-openar}"
 DB_NAME="${DB_NAME:-openar}"
 

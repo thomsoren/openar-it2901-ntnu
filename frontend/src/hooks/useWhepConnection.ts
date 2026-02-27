@@ -76,6 +76,25 @@ const waitForIceGathering = (pc: RTCPeerConnection): Promise<void> => {
   });
 };
 
+/**
+ * Hook for establishing and managing a WHEP/WebRTC receive-only session.
+ * Negotiates SDP against MediaMTX WHEP endpoint and maps connection/media events to UI state.
+ *
+ * @param whepUrl - WHEP endpoint URL; when null the hook stays idle
+ * @param videoRef - Target video element ref for attaching remote stream
+ * @param enabled - Whether connection should be active
+ * @param sessionToken - Token used to force reconnect when incremented
+ *
+ * @example
+ * ```tsx
+ * const { status, error } = useWhepConnection({
+ *   whepUrl,
+ *   videoRef,
+ *   enabled: true,
+ *   sessionToken,
+ * });
+ * ```
+ */
 export function useWhepConnection({
   whepUrl,
   videoRef,

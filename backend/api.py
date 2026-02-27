@@ -68,10 +68,16 @@ app = FastAPI(
 # localhost dev defaults.  See auth/config.py for parsing logic.
 from auth.config import settings as auth_settings
 
+private_network_origin_regex = (
+    r"^https?://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$"
+    if auth_settings.allow_private_network_origins
+    else None
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(auth_settings.cors_origins),
-    allow_origin_regex=r"^https?://(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
+    allow_origin_regex=private_network_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],

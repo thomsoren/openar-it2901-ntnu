@@ -1,5 +1,5 @@
 import { useEffect, useState, RefObject } from "react";
-import { VideoFitMode } from "../contexts/settings-context";
+import { VideoFitMode } from "../components/ar-control-panel/ar-control-context";
 
 export interface VideoTransform {
   sourceWidth: number;
@@ -13,13 +13,24 @@ export interface VideoTransform {
 }
 
 /**
- * Calculates the actual rendered position and scale of the video element
- * accounting for object-fit property (contain or cover).
+ * Hook for calculating rendered media transform inside a container.
+ * Accounts for `object-fit` behavior so overlay coordinates can be mapped correctly.
  *
- * This is crucial for mapping detection coordinates to POI overlay positions.
+ * @param videoRef - Ref to the rendered media element (video or image)
+ * @param containerRef - Ref to the containing element
+ * @param fitMode - Object-fit mode ("contain" or "cover")
+ * @param nativeWidth - Optional fallback source width
+ * @param nativeHeight - Optional fallback source height
+ * @param recalcTrigger - Optional external value to force recalculation when changed
  *
- * - contain: Video fits entirely within container with letterbox/pillarbox
- * - cover: Video fills container completely, may be cropped
+ * @example
+ * ```tsx
+ * const videoTransform = useVideoTransform(
+ *   videoRef,
+ *   containerRef,
+ *   "cover"
+ * );
+ * ```
  */
 export function useVideoTransform(
   videoRef: RefObject<HTMLElement | null>,

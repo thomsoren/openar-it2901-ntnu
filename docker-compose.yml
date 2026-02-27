@@ -1,0 +1,104 @@
+services:
+  # ── Infrastructure ──────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16.6
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5532}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-openar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openar_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-openar}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openar -d openar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.16.1
+    restart: unless-stopped
+    ports:
+      - "8854:8854"       # RTSP ingest
+      - "8888:8888"       # HLS egress
+      - "8889:8889"       # WHEP/WebRTC egress
+      - "8189:8189/udp"   # ICE/UDP
+      - "9997:9997"       # API
+    volumes:
+      - ./backend/streaming/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    command: ["/mediamtx.yml"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9997/v3/paths/list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Application Services ────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${AUTH_PORT:-3001}:3001"
+    environment:
+      PORT: 3001
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-openar}:${POSTGRES_PASSWORD:-openar_dev}@postgres:5432/${POSTGRES_DB:-openar}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://auth-service:3001}
+      BETTER_AUTH_BASE_PATH: /api/auth
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Backend runs on the host (GPU access). Start with: cd backend && uv run main.py
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5273}:5273"
+    environment:
+      VITE_API_URL: ${VITE_API_URL}
+      VITE_BETTER_AUTH_URL: ${VITE_BETTER_AUTH_URL}
+      VITE_BETTER_AUTH_BASE_PATH: /api/auth
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5273"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  postgres_data:

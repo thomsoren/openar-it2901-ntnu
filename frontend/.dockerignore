@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.git/
+*.log
+nixpacks.toml
