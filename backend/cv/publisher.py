@@ -34,16 +34,19 @@ class DetectionPublisher:
             pass
 
 
-class FusionPublisher:
+class FusionPublisher(DetectionPublisher):
     """Publisher that optionally enriches detection payloads with AIS data.
 
     If fusion is configured for *stream_id*, the payload is enriched
     synchronously and published to `fused:{stream_id}`.  Otherwise it falls
     through to `detections:{stream_id}` unchanged.
+
+    Extends DetectionPublisher so it can be used anywhere a DetectionPublisher
+    is expected (e.g. InferenceThread).
     """
 
     def __init__(self, fusion_svc: SensorFusionService):
-        self._redis = create_redis_client()
+        super().__init__()  # creates self._redis via DetectionPublisher
         self.fusion_svc = fusion_svc
 
     def publish(self, stream_id: str, payload: dict) -> bool:
@@ -67,12 +70,6 @@ class FusionPublisher:
         except RedisError as exc:
             logger.warning("Redis publish failed for stream '%s': %s", stream_id, exc)
             return False
-
-    def close(self):
-        try:
-            self._redis.close()
-        except Exception:
-            pass
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────

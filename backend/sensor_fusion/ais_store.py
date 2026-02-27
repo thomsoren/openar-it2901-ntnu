@@ -18,6 +18,7 @@ query time is used.
 """
 from __future__ import annotations
 
+import bisect
 import json
 import logging
 from datetime import datetime, timezone
@@ -113,12 +114,17 @@ class AISStore:
         if not self._records:
             return []
 
+        # Use bisect to narrow the scan to [q_ts - window, q_ts + window].
+        # This implements the time_window_s contract and avoids O(n) full scans.
+        lo_idx = bisect.bisect_left(self._sorted_ts, q_ts - self.time_window_s)
+        hi_idx = bisect.bisect_right(self._sorted_ts, q_ts + self.time_window_s)
+
         # For each MMSI: track best past record (latest ts <= q_ts)
         # and best future record (earliest ts > q_ts) as fallback
         past: dict[str, tuple[float, dict[str, Any]]] = {}   # mmsi -> (ts, record)
         future: dict[str, tuple[float, dict[str, Any]]] = {}  # mmsi -> (ts, record)
 
-        for ts, record in self._records:
+        for ts, record in self._records[lo_idx:hi_idx]:
             mmsi = str(record.get("mmsi", ""))
             if not mmsi:
                 continue

@@ -19,14 +19,13 @@ from __future__ import annotations
 
 import logging
 import math
-import os
 from typing import Any
 
+from common.config import FUSION_MAX_MATCH_PX as MAX_MATCH_DISTANCE_PX
 from common.types import Detection, DetectedVessel, Vessel
 
 logger = logging.getLogger(__name__)
 
-MAX_MATCH_DISTANCE_PX = float(os.getenv("FUSION_MAX_MATCH_PX", "500"))
 
 
 def _pixel_distance(det: Detection, proj: dict[str, Any]) -> float:

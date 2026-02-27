@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
+import { apiFetch } from "../lib/api-client";
 import { AISData } from "../types/aisData";
-import { API_CONFIG } from "../config/video";
 import { isPointInPolygon, buildFovPolygon } from "../utils/geometryMath";
 
 const isVesselInFov = (vessel: AISData, polygon: [number, number][]): boolean => {
@@ -74,7 +74,7 @@ export const useFetchAISGeographicalData = (
 
     const runStream = async () => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/api/ais/stream`, {
+        const response = await apiFetch("/api/ais/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -82,7 +82,6 @@ export const useFetchAISGeographicalData = (
             ship_lat: shipLat,
             ship_lon: shipLon,
             heading,
-            fov_degrees: fovDegrees,
           }),
           signal: controller.signal,
         });
@@ -103,7 +102,6 @@ export const useFetchAISGeographicalData = (
             if (!line.startsWith("data: ")) continue;
             try {
               const data: AISData = JSON.parse(line.slice(6));
-              console.log("Received AIS data:", data);
               if (!data.latitude || !data.longitude || !data.mmsi) continue;
 
               vesselCacheRef.current.set(data.mmsi, data);

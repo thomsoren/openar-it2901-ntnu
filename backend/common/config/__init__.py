@@ -1,4 +1,11 @@
 """Configuration module exports."""
+from .fusion import (
+    AUTO_FUSION_AIS_LOG,
+    AUTO_FUSION_VIDEO_EPOCH_UTC,
+    AUTO_FUSION_TIME_WINDOW_S,
+    AUTO_FUSION_INCLUDE_UNMATCHED,
+    FUSION_MAX_MATCH_PX,
+)
 from .paths import (
     BASE_DIR,
     MODELS_DIR,
@@ -137,4 +144,10 @@ __all__ = [
     "FFMPEG_SCALE_HEIGHT",
     "build_rtsp_publish_url",
     "build_playback_urls",
+    # Sensor fusion
+    "AUTO_FUSION_AIS_LOG",
+    "AUTO_FUSION_VIDEO_EPOCH_UTC",
+    "AUTO_FUSION_TIME_WINDOW_S",
+    "AUTO_FUSION_INCLUDE_UNMATCHED",
+    "FUSION_MAX_MATCH_PX",
 ]

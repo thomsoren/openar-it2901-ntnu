@@ -27,9 +27,15 @@ from ais.fetch_ais import fetch_ais_stream_geojson, fetch_historic_ais_data
 from ais_mapping_service.pixel_projection.current_ship_config import CameraConfig, ShipConfig
 from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
 from ais.logger import AISSessionLogger
-from auth.deps import require_admin
+import aiohttp
+
+from auth.deps import authenticate_websocket, require_admin
 from auth.routes import limiter, router as auth_router
 from common.config import (
+    AUTO_FUSION_AIS_LOG,
+    AUTO_FUSION_INCLUDE_UNMATCHED,
+    AUTO_FUSION_TIME_WINDOW_S,
+    AUTO_FUSION_VIDEO_EPOCH_UTC,
     BASE_DIR,
     MEDIAMTX_ENABLED,
     VIDEO_PATH,
@@ -95,13 +101,7 @@ DEFAULT_STREAM_ID = os.getenv("DEFAULT_STREAM_ID", "default")
 PROTECT_DEFAULT_STREAM = os.getenv("PROTECT_DEFAULT_STREAM", "0").lower() in {"1", "true", "yes"}
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-# Auto-fusion: if set, fusion is configured automatically for every new stream.
-# AUTO_FUSION_AIS_LOG: path to NDJSON AIS session log (relative to BASE_DIR or absolute)
-# AUTO_FUSION_VIDEO_EPOCH_UTC: ISO-8601 UTC datetime for frame 0; defaults to now() if unset
-AUTO_FUSION_AIS_LOG = os.getenv("AUTO_FUSION_AIS_LOG")
-AUTO_FUSION_VIDEO_EPOCH_UTC = os.getenv("AUTO_FUSION_VIDEO_EPOCH_UTC")
-AUTO_FUSION_TIME_WINDOW_S = float(os.getenv("AUTO_FUSION_TIME_WINDOW_S", "10.0"))
-AUTO_FUSION_INCLUDE_UNMATCHED = os.getenv("AUTO_FUSION_INCLUDE_UNMATCHED", "0").lower() in {"1", "true", "yes"}
+# Auto-fusion configuration is read from common.config.fusion (SSOT).
 
 orchestrator: WorkerOrchestrator | None = None
 
@@ -146,7 +146,7 @@ def _auto_configure_fusion(stream_id: str) -> None:
 
     try:
         store = AISStore(ais_path, time_window_s=AUTO_FUSION_TIME_WINDOW_S)
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         logger.warning("[auto-fusion] Failed to load AIS log: %s", exc)
         return
 
@@ -438,7 +438,7 @@ class AISHistoricalRequest(BaseModel):
 
 
 @app.post("/api/ais/historical")
-async def get_historical_ais_data(body: AISHistoricalRequest):
+async def get_historical_ais_data(body: AISHistoricalRequest, _: AppUser = Depends(require_admin)):
     session_logger = AISSessionLogger() if body.log else None
     ship_cfg = ShipConfig(
         latitude=body.ship_lat,
@@ -471,7 +471,7 @@ async def get_historical_ais_data(body: AISHistoricalRequest):
         if session_logger:
             session_logger.end_session()
         return results
-    except Exception as exc:
+    except (ValueError, aiohttp.ClientError) as exc:
         raise HTTPException(status_code=500, detail=f"Error fetching historical AIS data: {exc}")
 
 class AISStreamRequest(BaseModel):
@@ -725,7 +725,11 @@ class FusionStartRequest(BaseModel):
 
 
 @app.post("/api/streams/{stream_id}/fusion/start", status_code=201)
-async def start_fusion(stream_id: str, request: FusionStartRequest):
+async def start_fusion(
+    stream_id: str,
+    request: FusionStartRequest,
+    _: AppUser = Depends(require_admin),
+):
     """Configure sensor fusion for a stream."""
     if not STREAM_ID_PATTERN.fullmatch(stream_id):
         raise HTTPException(status_code=400, detail="Invalid stream_id")
@@ -734,12 +738,22 @@ async def start_fusion(stream_id: str, request: FusionStartRequest):
     if fusion_pub.fusion_svc.is_configured(stream_id):
         raise HTTPException(status_code=409, detail="Fusion already configured for this stream")
 
-    # Resolve AIS log path
+    # Resolve AIS log path and validate containment to prevent path traversal.
     ais_path = Path(request.ais_log_path)
     if not ais_path.is_absolute():
         ais_path = BASE_DIR / ais_path
-    if not ais_path.exists():
-        raise HTTPException(status_code=404, detail=f"AIS log not found: {ais_path}")
+    try:
+        resolved = ais_path.resolve()
+        if not resolved.is_relative_to(BASE_DIR.resolve()):
+            raise HTTPException(
+                status_code=400, detail="Path must be within the project directory"
+            )
+    except HTTPException:
+        raise
+    except OSError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="AIS log not found")
 
     try:
         from datetime import datetime, timezone
@@ -750,8 +764,8 @@ async def start_fusion(stream_id: str, request: FusionStartRequest):
         raise HTTPException(status_code=400, detail=f"Invalid video_epoch_utc: {exc}")
 
     try:
-        store = AISStore(ais_path, time_window_s=request.time_window_s)
-    except Exception as exc:
+        store = AISStore(resolved, time_window_s=request.time_window_s)
+    except (OSError, ValueError) as exc:
         raise HTTPException(status_code=500, detail=f"Failed to load AIS log: {exc}")
 
     fusion_pub.fusion_svc.configure(
@@ -780,7 +794,11 @@ class FusionFromAreaRequest(BaseModel):
 
 
 @app.post("/api/streams/{stream_id}/fusion/configure-from-area", status_code=201)
-async def configure_fusion_from_area(stream_id: str, request: FusionFromAreaRequest):
+async def configure_fusion_from_area(
+    stream_id: str,
+    request: FusionFromAreaRequest,
+    _: AppUser = Depends(require_admin),
+):
     """Fetch historic AIS for a geographic area and configure sensor fusion."""
     if not STREAM_ID_PATTERN.fullmatch(stream_id):
         raise HTTPException(status_code=400, detail="Invalid stream_id")
@@ -801,13 +819,13 @@ async def configure_fusion_from_area(stream_id: str, request: FusionFromAreaRequ
             radius_km=request.radius_km,
             time_window_s=request.time_window_s,
         )
-    except Exception as exc:
+    except (ValueError, OSError, aiohttp.ClientError) as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return {"status": "configured", "stream_id": stream_id, "ais_records": record_count}
 
 
 @app.post("/api/streams/{stream_id}/fusion/stop", status_code=200)
-async def stop_fusion(stream_id: str):
+async def stop_fusion(stream_id: str, _: AppUser = Depends(require_admin)):
     """Disable fusion for a stream."""
     if not STREAM_ID_PATTERN.fullmatch(stream_id):
         raise HTTPException(status_code=400, detail="Invalid stream_id")
@@ -819,7 +837,7 @@ async def stop_fusion(stream_id: str):
 
 
 @app.get("/api/streams/{stream_id}/fusion/status")
-async def fusion_status(stream_id: str):
+async def fusion_status(stream_id: str, _: AppUser = Depends(require_admin)):
     """Return whether fusion is configured for a stream."""
     if not STREAM_ID_PATTERN.fullmatch(stream_id):
         raise HTTPException(status_code=400, detail="Invalid stream_id")
@@ -836,6 +854,10 @@ async def websocket_fused(websocket: WebSocket, stream_id: str):
     """WebSocket that forwards the fused (detection + AIS) channel."""
     if not STREAM_ID_PATTERN.fullmatch(stream_id):
         await websocket.close(code=1008, reason="invalid_stream_id")
+        return
+
+    user = await authenticate_websocket(websocket)
+    if user is None:
         return
 
     await websocket.accept()

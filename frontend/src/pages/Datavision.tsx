@@ -227,12 +227,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
                     detectionFrame={
                       videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
                     }
-                    onVesselClick={handleVesselClick}
                   />
-                )}
-
-                {selectedVessel && (
-                  <AISDataPanel vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
                 )}
               </>
             )}

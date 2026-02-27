@@ -1,4 +1,4 @@
-# camera_config.py
+# current_ship_config.py
 from pydantic import BaseModel
 
 class CameraConfig(BaseModel):

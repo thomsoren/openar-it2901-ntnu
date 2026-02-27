@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { API_CONFIG } from "../config/video";
+import { apiFetch } from "../lib/api-client";
 import { HistoricalMmsiInAreaRequest } from "../types/aisData";
 
 interface UseFetchHistoricalMmsiInAreaResult {
@@ -10,7 +10,7 @@ interface UseFetchHistoricalMmsiInAreaResult {
   /** Error message if the request failed. */
   error: string | null;
   /** Trigger the request manually with the given parameters. */
-  fetch: (params: HistoricalMmsiInAreaRequest) => Promise<number[]>;
+  fetchMmsis: (params: HistoricalMmsiInAreaRequest) => Promise<number[]>;
   /** Reset state back to its initial values. */
   reset: () => void;
 }
@@ -28,16 +28,19 @@ interface UseFetchHistoricalMmsiInAreaResult {
  *
  * @example
  * ```tsx
- * const { mmsis, isLoading, error, fetch } = useFetchHistoricalMmsiInArea();
+ * const { mmsis, isLoading, error, fetchMmsis } = useFetchHistoricalMmsiInArea();
  *
  * const handleQuery = async () => {
- *   await fetch({
+ *   await fetchMmsis({
  *     polygon: {
  *       type: "Polygon",
  *       coordinates: [[[10.3, 63.4], [10.4, 63.4], [10.4, 63.5], [10.3, 63.5], [10.3, 63.4]]],
  *     },
  *     msgTimeFrom: "2026-02-17T08:00:00Z",
  *     msgTimeTo:   "2026-02-17T10:00:00Z",
+ *     ship_lat: 63.4365,
+ *     ship_lon: 10.3835,
+ *     heading: 90,
  *   });
  * };
  * ```
@@ -53,12 +56,12 @@ export function useFetchHistoricalMmsiInArea(): UseFetchHistoricalMmsiInAreaResu
     setError(null);
   }, []);
 
-  const fetch = useCallback(async (params: HistoricalMmsiInAreaRequest): Promise<number[]> => {
+  const fetchMmsis = useCallback(async (params: HistoricalMmsiInAreaRequest): Promise<number[]> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await window.fetch(`${API_CONFIG.BASE_URL}/api/ais/historical`, {
+      const response = await apiFetch("/api/ais/historical", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
@@ -81,5 +84,5 @@ export function useFetchHistoricalMmsiInArea(): UseFetchHistoricalMmsiInAreaResu
     }
   }, []);
 
-  return { mmsis, isLoading, error, fetch, reset };
+  return { mmsis, isLoading, error, fetchMmsis, reset };
 }

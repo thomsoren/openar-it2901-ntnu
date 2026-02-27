@@ -21,13 +21,11 @@ export interface HistoricalMmsiInAreaRequest {
   ship_lon: number;
   /**Heading of the ship in degrees. */
   heading: number;
-  /**Field of view in degrees. */
-  fov_degrees: number;
 }
 
 export interface GeoJSONGeometry {
-  type: string;
-  coordinates: unknown;
+  type: "Polygon";
+  coordinates: [number, number][][];
 }
 
 export interface AISData {

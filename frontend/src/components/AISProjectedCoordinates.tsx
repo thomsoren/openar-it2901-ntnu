@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import type { AISData, AISProjection } from "../types/aisData";
 import { useFetchAISGeographicalData } from "../hooks/useFetchAISGeographicalData";
 import "./AISProjectedCoordinates.css";
 import { ObcInput } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/input/input";
@@ -8,6 +9,11 @@ import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-r
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
 import { useFetchHistoricalMmsiInArea } from "../hooks/useFetchHistoricalMmsiInArea";
 import { buildFovPolygon } from "../utils/geometryMath";
+
+/** Type guard: narrows AISData to ensure projection is non-null. */
+function hasProjection(f: AISData): f is AISData & { projection: AISProjection } {
+  return f.projection != null;
+}
 const CANVAS_WIDTH = 1920;
 const CANVAS_HEIGHT = 1080;
 
@@ -18,6 +24,8 @@ export const AISProjectedCoordinates: React.FC = () => {
   const [heading, setHeading] = useState(90);
   const [offsetMeters, setOffsetMeters] = useState(3000);
   const [fovDegrees, setFovDegrees] = useState(120);
+  const [msgTimeFrom, setMsgTimeFrom] = useState("");
+  const [msgTimeTo, setMsgTimeTo] = useState("");
 
   const parseNumberInput = (event: Event, fallback: number) => {
     const rawValue = (event.target as { value?: string }).value ?? "";
@@ -38,24 +46,23 @@ export const AISProjectedCoordinates: React.FC = () => {
     mmsis: historicalMmsis,
     isLoading: isHistoricalLoading,
     error: historicalError,
-    fetch: fetchHistoricalMmsis,
+    fetchMmsis: fetchHistoricalMmsis,
   } = useFetchHistoricalMmsiInArea();
 
   const handleHistoricQuery = () => {
     const polygonCoords = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
     fetchHistoricalMmsis({
       polygon: { type: "Polygon", coordinates: [polygonCoords] },
-      msgTimeFrom: "2026-02-19T08:10:00Z",
-      msgTimeTo: "2026-02-19T08:15:00Z",
+      msgTimeFrom,
+      msgTimeTo,
       ship_lat: shipLat,
       ship_lon: shipLon,
       heading: heading,
-      fov_degrees: fovDegrees,
       log: true,
     });
   };
 
-  const visibleFeatures = features.filter((f) => f.projection != null);
+  const visibleFeatures = features.filter(hasProjection);
 
   return (
     <div className="projection-container">
@@ -161,6 +168,28 @@ export const AISProjectedCoordinates: React.FC = () => {
             onInput={(e) => setFovDegrees(parseNumberInput(e, fovDegrees))}
           />
         </div>
+        <div className="param-group">
+          <span className="param-label">From (UTC)</span>
+          <ObcInput
+            /* @ts-expect-error - OpenBridge component type mismatch */
+            type="text"
+            value={msgTimeFrom}
+            placeholder="2026-01-01T08:00:00Z"
+            aria-label="Historic query start time (ISO-8601 UTC)"
+            onInput={(e) => setMsgTimeFrom((e.target as { value?: string }).value ?? "")}
+          />
+        </div>
+        <div className="param-group">
+          <span className="param-label">To (UTC)</span>
+          <ObcInput
+            /* @ts-expect-error - OpenBridge component type mismatch */
+            type="text"
+            value={msgTimeTo}
+            placeholder="2026-01-01T08:15:00Z"
+            aria-label="Historic query end time (ISO-8601 UTC)"
+            onInput={(e) => setMsgTimeTo((e.target as { value?: string }).value ?? "")}
+          />
+        </div>
       </div>
 
       <div className="projection-canvas-section">
@@ -231,15 +260,15 @@ export const AISProjectedCoordinates: React.FC = () => {
               <g key={feature.mmsi}>
                 {/* Points */}
                 <circle
-                  cx={feature.projection!.x_px}
-                  cy={feature.projection!.y_px}
+                  cx={feature.projection.x_px}
+                  cy={feature.projection.y_px}
                   r="8"
                   fill="#00ff00"
                   opacity="0.8"
                 />
                 <circle
-                  cx={feature.projection!.x_px}
-                  cy={feature.projection!.y_px}
+                  cx={feature.projection.x_px}
+                  cy={feature.projection.y_px}
                   r="12"
                   fill="none"
                   stroke="#00ff00"
@@ -249,8 +278,8 @@ export const AISProjectedCoordinates: React.FC = () => {
 
                 {/* Label */}
                 <text
-                  x={feature.projection!.x_px + 15}
-                  y={feature.projection!.y_px - 5}
+                  x={feature.projection.x_px + 15}
+                  y={feature.projection.y_px - 5}
                   fill="#00ff00"
                   fontSize="14"
                   fontFamily="monospace"
@@ -290,26 +319,26 @@ export const AISProjectedCoordinates: React.FC = () => {
                     <div className="data-detail">
                       <span className="data-detail-label">Pixel Position</span>
                       <span className="data-detail-value">
-                        ({Math.round(feature.projection!.x_px)},{" "}
-                        {Math.round(feature.projection!.y_px)})
+                        ({Math.round(feature.projection.x_px)},{" "}
+                        {Math.round(feature.projection.y_px)})
                       </span>
                     </div>
                     <div className="data-detail">
                       <span className="data-detail-label">Distance</span>
                       <span className="data-detail-value">
-                        {Math.round(feature.projection!.distance_m)} m
+                        {Math.round(feature.projection.distance_m)} m
                       </span>
                     </div>
                     <div className="data-detail">
                       <span className="data-detail-label">Bearing</span>
                       <span className="data-detail-value">
-                        {feature.projection!.bearing_deg.toFixed(1)}°
+                        {feature.projection.bearing_deg.toFixed(1)}°
                       </span>
                     </div>
                     <div className="data-detail">
                       <span className="data-detail-label">Rel. Bearing</span>
                       <span className="data-detail-value">
-                        {feature.projection!.rel_bearing_deg.toFixed(1)}°
+                        {feature.projection.rel_bearing_deg.toFixed(1)}°
                       </span>
                     </div>
                   </div>
