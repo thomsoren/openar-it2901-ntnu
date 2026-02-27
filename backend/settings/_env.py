@@ -14,14 +14,32 @@ def get_bool(name: str, default: bool = False) -> bool:
 
 
 def get_int(name: str, default: int, minimum: int | None = None) -> int:
-    value = int(os.getenv(name, str(default)))
+    raw = os.getenv(name)
+    if raw is None:
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ValueError(
+                f"Environment variable {name}={raw!r} is not a valid integer"
+            ) from None
     if minimum is not None:
         return max(minimum, value)
     return value
 
 
 def get_float(name: str, default: float, minimum: float | None = None) -> float:
-    value = float(os.getenv(name, str(default)))
+    raw = os.getenv(name)
+    if raw is None:
+        value = default
+    else:
+        try:
+            value = float(raw)
+        except ValueError:
+            raise ValueError(
+                f"Environment variable {name}={raw!r} is not a valid float"
+            ) from None
     if minimum is not None:
         return max(minimum, value)
     return value

@@ -1,15 +1,13 @@
-"""Compatibility entrypoint exposing the FastAPI app and orchestrator state."""
+"""Compatibility entrypoint — delegates to webapi package."""
 from __future__ import annotations
 
-from webapi.app import app
+from webapi.app import app  # noqa: F401
+
+import webapi as _webapi
 
 
 def __getattr__(name: str):
-    if name == "orchestrator":
-        from webapi.state import orchestrator
-
-        return orchestrator
-    raise AttributeError(name)
+    return getattr(_webapi, name)
 
 
-__all__ = ["app", "orchestrator"]
+__all__ = _webapi.__all__
