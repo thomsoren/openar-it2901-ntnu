@@ -1,17 +1,17 @@
 import { useEffect, useState, useRef } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
+import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { useSettings } from "../contexts/useSettings";
 import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
 import { apiFetchPublic } from "../lib/api-client";
 
-function Fusion() {
+function FusionInner() {
   const [detectionsEnabled, setDetectionsEnabled] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { videoFitMode, detectionVisible } = useSettings();
+  const { state: arControls } = useARControls();
   // Use WebSocket for real-time fusion detections
   const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
     url: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws`,
@@ -22,10 +22,10 @@ function Fusion() {
   const videoTransform = useVideoTransform(
     videoRef,
     containerRef,
-    videoFitMode,
+    arControls.videoFitMode,
     FUSION_VIDEO_CONFIG.WIDTH,
     FUSION_VIDEO_CONFIG.HEIGHT,
-    detectionVisible
+    arControls.detectionVisible
   );
 
   useEffect(() => {
@@ -61,18 +61,24 @@ function Fusion() {
         </div>
       )}
 
-      {detectionVisible && (
-        <ARControlProvider>
-          <PoiOverlay
-            vessels={vessels}
-            videoTransform={videoTransform}
-            videoRef={videoRef}
-            videoSource={FUSION_VIDEO_CONFIG.SOURCE}
-            videoFitMode={videoFitMode}
-          />
-        </ARControlProvider>
+      {arControls.detectionVisible && (
+        <PoiOverlay
+          vessels={vessels}
+          videoTransform={videoTransform}
+          videoRef={videoRef}
+          videoSource={FUSION_VIDEO_CONFIG.SOURCE}
+          videoFitMode={arControls.videoFitMode}
+        />
       )}
     </div>
+  );
+}
+
+function Fusion() {
+  return (
+    <ARControlProvider>
+      <FusionInner />
+    </ARControlProvider>
   );
 }
 

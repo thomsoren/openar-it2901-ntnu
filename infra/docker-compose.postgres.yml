@@ -4,7 +4,7 @@ services:
     container_name: openar-postgres
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "5532:5432"
     environment:
       POSTGRES_USER: openar
       POSTGRES_PASSWORD: openar_dev

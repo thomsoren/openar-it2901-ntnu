@@ -10,8 +10,10 @@ _JWT_SECRET_DEFAULT = "change-me-in-production"
 
 _DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:5273",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
+    "http://127.0.0.1:5273",
     "http://127.0.0.1:3000",
 ]
 
@@ -23,11 +25,25 @@ def _parse_cors_origins() -> list[str]:
     return list(_DEFAULT_CORS_ORIGINS)
 
 
+def _is_enabled(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_production_environment() -> bool:
+    env_value = os.getenv("ENV", "").strip().lower()
+    node_env_value = os.getenv("NODE_ENV", "").strip().lower()
+    combined = env_value or node_env_value or "development"
+    return combined not in {"development", "dev", "test"}
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str = os.getenv(
         "DATABASE_URL",
-        "postgresql+psycopg://openar:openar_dev@localhost:5433/openar",
+        "postgresql+psycopg://openar:openar_dev@localhost:5532/openar",
     )
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", _JWT_SECRET_DEFAULT)
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
@@ -36,11 +52,12 @@ class Settings:
     better_auth_base_path: str = os.getenv("BETTER_AUTH_BASE_PATH", "/api/auth")
     auth_request_timeout_sec: float = float(os.getenv("AUTH_REQUEST_TIMEOUT_SEC", "10"))
     cors_origins: tuple[str, ...] = tuple(_parse_cors_origins())
+    allow_private_network_origins: bool = _is_enabled("CORS_ALLOW_PRIVATE_NETWORK_ORIGINS", default=False)
 
 
 settings = Settings()
 
-_is_production = os.getenv("ENV", "development").lower() not in ("development", "dev", "test")
+_is_production = _is_production_environment()
 if settings.jwt_secret_key == _JWT_SECRET_DEFAULT:
     if _is_production:
         raise RuntimeError(
@@ -48,3 +65,9 @@ if settings.jwt_secret_key == _JWT_SECRET_DEFAULT:
             "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
         )
     logger.warning("Using default JWT secret — set JWT_SECRET_KEY before deploying")
+
+if _is_production and settings.better_auth_base_url == "http://localhost:3001":
+    raise RuntimeError(
+        "BETTER_AUTH_BASE_URL must be set to your deployed public auth base URL in production "
+        "(for example: https://ar.bridgable.ai)."
+    )

@@ -14,7 +14,7 @@ import {
   ProgressBarMode,
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar";
-import { apiFetch, getApiAccessToken, getApiBaseUrl } from "../../lib/api-client";
+import { startStream, toStreamError, uploadStreamSource } from "../../services/streams";
 import "./StreamSetup.css";
 
 type StreamSetupProps = {
@@ -103,23 +103,11 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setStatus("starting");
     setMessage(null);
     try {
-      const body: { source_url?: string; loop: boolean } = { loop: true };
-      if (source) {
-        body.source_url = source;
-      }
-      const response = await apiFetch(`/api/streams/${encodeURIComponent(tabId)}/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok && response.status !== 409) {
-        const payload = (await response.json().catch(() => ({}))) as { detail?: string };
-        throw new Error(payload.detail || "Failed to start stream");
-      }
+      await startStream(tabId, { sourceUrl: source, loop: true });
       onStreamReady(tabId);
     } catch (err) {
       setStatus("error");
-      setMessage(err instanceof Error ? err.message : "Failed to start stream");
+      setMessage(toStreamError(err, "Failed to start stream"));
     }
   };
 
@@ -129,51 +117,22 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setMessage(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      await uploadStreamSource(
+        tabId,
+        file,
+        (percentage) => setUploadProgress(percentage),
+        (request) => {
+          xhrRef.current = request;
+        }
+      );
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhrRef.current = xhr;
-        xhr.upload.addEventListener("progress", (event) => {
-          if (event.lengthComputable) {
-            setUploadProgress(Math.round((event.loaded / event.total) * 100));
-          }
-        });
-        xhr.addEventListener("load", () => {
-          xhrRef.current = null;
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            try {
-              const body = JSON.parse(xhr.responseText) as { detail?: string };
-              reject(new Error(body.detail || `Upload failed with status ${xhr.status}`));
-            } catch {
-              reject(new Error(`Upload failed with status ${xhr.status}`));
-            }
-          }
-        });
-        xhr.addEventListener("error", () => {
-          xhrRef.current = null;
-          reject(new Error("Network error during upload"));
-        });
-        xhr.addEventListener("abort", () => {
-          xhrRef.current = null;
-          reject(new Error("Upload aborted"));
-        });
-
-        const url = `${getApiBaseUrl()}/api/streams/${encodeURIComponent(tabId)}/upload`;
-        xhr.open("POST", url);
-        const token = getApiAccessToken();
-        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-        xhr.send(formData);
-      });
-
+      xhrRef.current = null;
       setUploadProgress(100);
       onStreamReady(tabId);
     } catch (err) {
+      xhrRef.current = null;
       setStatus("error");
-      setMessage(err instanceof Error ? err.message : "Upload failed");
+      setMessage(toStreamError(err, "Upload failed"));
     }
   };
 
@@ -183,10 +142,9 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
       setMessage("Please select a valid video file.");
       return;
     }
-    setFiles((prev) => {
-      setActiveIndex(prev.length);
-      return [...prev, { file, addedAt: new Date() }];
-    });
+    const nextIndex = files.length;
+    setFiles((prev) => [...prev, { file, addedAt: new Date() }]);
+    setActiveIndex(nextIndex);
     setPreviewFromFile(file);
     setStatus("idle");
     setMessage(null);
