@@ -4,6 +4,8 @@ import logging
 import os
 from dataclasses import dataclass
 
+from settings._env import get_bool
+
 logger = logging.getLogger(__name__)
 
 _JWT_SECRET_DEFAULT = "change-me-in-production"
@@ -23,13 +25,6 @@ def _parse_cors_origins() -> list[str]:
     if raw.strip():
         return [o.strip() for o in raw.split(",") if o.strip()]
     return list(_DEFAULT_CORS_ORIGINS)
-
-
-def _is_enabled(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _is_production_environment() -> bool:
@@ -52,7 +47,7 @@ class Settings:
     better_auth_base_path: str = os.getenv("BETTER_AUTH_BASE_PATH", "/api/auth")
     auth_request_timeout_sec: float = float(os.getenv("AUTH_REQUEST_TIMEOUT_SEC", "10"))
     cors_origins: tuple[str, ...] = tuple(_parse_cors_origins())
-    allow_private_network_origins: bool = _is_enabled("CORS_ALLOW_PRIVATE_NETWORK_ORIGINS", default=False)
+    allow_private_network_origins: bool = get_bool("CORS_ALLOW_PRIVATE_NETWORK_ORIGINS", default=False)
 
 
 settings = Settings()

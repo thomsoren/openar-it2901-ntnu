@@ -4,14 +4,10 @@ from __future__ import annotations
 import os
 from urllib.parse import urlsplit, urlunsplit
 
-
-def _truthy(value: str | None, default: bool = False) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+from settings._env import get_bool
 
 
-MEDIAMTX_ENABLED = _truthy(os.getenv("MEDIAMTX_ENABLED"), default=True)
+MEDIAMTX_ENABLED = get_bool("MEDIAMTX_ENABLED", default=True)
 MEDIAMTX_RTSP_BASE = os.getenv("MEDIAMTX_RTSP_BASE", "rtsp://localhost:8854").rstrip("/")
 MEDIAMTX_WHEP_BASE = os.getenv("MEDIAMTX_WHEP_BASE", "http://localhost:8889").rstrip("/")
 MEDIAMTX_HLS_BASE = os.getenv("MEDIAMTX_HLS_BASE", "http://localhost:8888").rstrip("/")
@@ -22,9 +18,8 @@ MEDIAMTX_READ_USER = os.getenv("MEDIAMTX_READ_USER", "").strip()
 MEDIAMTX_READ_PASS = os.getenv("MEDIAMTX_READ_PASS", "").strip()
 # WARNING: When true, read credentials are embedded in playback URLs returned
 # to the browser via the API. Only enable for local development or trusted networks.
-MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS = _truthy(
-    os.getenv("MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS"),
-    default=False,
+MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS = get_bool(
+    "MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS", default=False,
 )
 
 FFMPEG_BIN = os.getenv("FFMPEG_BIN", "ffmpeg")

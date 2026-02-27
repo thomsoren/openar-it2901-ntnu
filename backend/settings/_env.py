@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+import os
+
+
+TRUTHY = {"1", "true", "yes", "on"}
+
+
+def get_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in TRUTHY
+
+
+def get_int(name: str, default: int, minimum: int | None = None) -> int:
+    value = int(os.getenv(name, str(default)))
+    if minimum is not None:
+        return max(minimum, value)
+    return value
+
+
+def get_float(name: str, default: float, minimum: float | None = None) -> float:
+    value = float(os.getenv(name, str(default)))
+    if minimum is not None:
+        return max(minimum, value)
+    return value
+
+
+def get_str(name: str, default: str) -> str:
+    return os.getenv(name, default)

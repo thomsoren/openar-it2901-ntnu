@@ -2,10 +2,10 @@
 import os
 
 # S3 connection settings
-S3_ENDPOINT = "https://hel1.your-objectstorage.com"
-S3_REGION = "hel1"
-S3_BUCKET = "bridgable"
-S3_PREFIX = "openar"
+S3_ENDPOINT = os.getenv("S3_ENDPOINT", "https://hel1.your-objectstorage.com").strip()
+S3_REGION = os.getenv("S3_REGION", "hel1").strip()
+S3_BUCKET = os.getenv("S3_BUCKET", "bridgable").strip()
+S3_PREFIX = os.getenv("S3_PREFIX", "openar").strip()
 S3_ALLOWED_PREFIXES = ["fvessel", "detection", "image", "video"]
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()

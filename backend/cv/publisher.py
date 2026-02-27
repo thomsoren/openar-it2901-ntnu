@@ -22,11 +22,11 @@ class DetectionPublisher:
             self._redis.publish(detections_channel(stream_id), json.dumps(payload))
             return True
         except RedisError as exc:
-            logger.warning(f"Redis publish failed for stream '{stream_id}': {exc}")
+            logger.warning("Redis publish failed for stream '%s': %s", stream_id, exc)
             return False
 
-    def close(self):
+    def close(self) -> None:
         try:
             self._redis.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis close failed: %s", exc)

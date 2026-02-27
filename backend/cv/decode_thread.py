@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-import os
+import random
 import threading
 import time
 from urllib.parse import urlparse
@@ -10,12 +10,19 @@ from urllib.parse import urlparse
 import cv2
 import numpy as np
 
+from cv.config import DEFAULT_FPS, INITIAL_RECONNECT_BACKOFF_SEC, MAX_RECONNECT_BACKOFF_SEC
+from cv.runtime import STREAM_MAX_CATCHUP_SKIP, STREAM_MAX_RECONNECT_ATTEMPTS
+
 logger = logging.getLogger(__name__)
 
 
 def _is_remote_stream_url(source_url: str) -> bool:
     scheme = urlparse(source_url).scheme.lower()
     return scheme in {"rtsp", "http", "https", "rtmp", "udp", "tcp"}
+
+
+def _jittered_backoff(current: float, maximum: float) -> float:
+    return min(current * 2.0 * random.uniform(0.8, 1.2), maximum)
 
 
 class DecodeThread:
@@ -38,7 +45,7 @@ class DecodeThread:
         self._frame_idx: int = 0
         self._timestamp_ms: float = 0.0
 
-        self._fps: float = 25.0
+        self._fps: float = DEFAULT_FPS
         self._width: int = 0
         self._height: int = 0
 
@@ -59,7 +66,7 @@ class DecodeThread:
 
         fps_raw = cap.get(cv2.CAP_PROP_FPS)
         if not fps_raw or fps_raw <= 1 or fps_raw > 240:
-            self._fps = 25.0
+            self._fps = DEFAULT_FPS
         else:
             self._fps = float(fps_raw)
         self._width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -106,15 +113,15 @@ class DecodeThread:
     def _reader_loop(self, cap: cv2.VideoCapture) -> None:
         source_fps = self._fps
         allow_catchup_skips = not self._is_remote
-        max_catchup_skip = max(1, int(os.getenv("STREAM_MAX_CATCHUP_SKIP", "8")))
-        max_reconnect_attempts = int(os.getenv("STREAM_MAX_RECONNECT_ATTEMPTS", "30"))
+        max_catchup_skip = STREAM_MAX_CATCHUP_SKIP
+        max_reconnect_attempts = STREAM_MAX_RECONNECT_ATTEMPTS
 
         frame_idx = -1
         start_mono = time.monotonic()
         read_interval = 1.0 / source_fps if source_fps > 0 else 0.04
         next_read_time = time.monotonic()
         last_ts_ms = 0.0
-        reconnect_backoff = 0.5
+        reconnect_backoff = INITIAL_RECONNECT_BACKOFF_SEC
         reconnect_attempts = 0
 
         try:
@@ -134,7 +141,7 @@ class DecodeThread:
                             reconnect_attempts, max_reconnect_attempts,
                         )
                         time.sleep(reconnect_backoff)
-                        reconnect_backoff = min(reconnect_backoff * 2.0, 8.0)
+                        reconnect_backoff = _jittered_backoff(reconnect_backoff, MAX_RECONNECT_BACKOFF_SEC)
                         cap = cv2.VideoCapture(self.source_url)
                         continue
                     break
@@ -167,10 +174,10 @@ class DecodeThread:
                             reconnect_attempts, max_reconnect_attempts,
                         )
                         time.sleep(reconnect_backoff)
-                        reconnect_backoff = min(reconnect_backoff * 2.0, 8.0)
+                        reconnect_backoff = _jittered_backoff(reconnect_backoff, MAX_RECONNECT_BACKOFF_SEC)
                         cap = cv2.VideoCapture(self.source_url)
                         if cap.isOpened():
-                            reconnect_backoff = 0.5
+                            reconnect_backoff = INITIAL_RECONNECT_BACKOFF_SEC
                             reconnect_attempts = 0
                             start_mono = time.monotonic()
                             next_read_time = time.monotonic()

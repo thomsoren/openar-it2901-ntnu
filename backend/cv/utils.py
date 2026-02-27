@@ -1,13 +1,12 @@
-"""
-Computer vision utility functions.
-"""
+"""Computer vision utility functions."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
 
 import cv2
+
+from cv.config import DEFAULT_FPS
 
 
 @dataclass
@@ -18,16 +17,7 @@ class VideoInfo:
     total_frames: int
 
 
-def get_video_info(source: Union[str, int, Path]) -> VideoInfo | None:
-    """
-    Extract metadata from a video source.
-    
-    Args:
-        source: Path to video file, camera index, or RTSP/HTTP URL.
-        
-    Returns:
-        VideoInfo object or None if the source cannot be opened.
-    """
+def get_video_info(source: str | int | Path) -> VideoInfo | None:
     if isinstance(source, Path):
         source = str(source)
         
@@ -39,7 +29,7 @@ def get_video_info(source: Union[str, int, Path]) -> VideoInfo | None:
     try:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         return VideoInfo(

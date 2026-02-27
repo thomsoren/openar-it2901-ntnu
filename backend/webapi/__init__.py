@@ -1,4 +1,4 @@
-"""Compatibility entrypoint exposing the FastAPI app and orchestrator state."""
+"""API package exports."""
 from __future__ import annotations
 
 from webapi.app import app
