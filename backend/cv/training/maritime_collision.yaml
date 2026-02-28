@@ -1,0 +1,10 @@
+path: /cluster/home/ludvigho/openar-it2901-ntnu/backend/data/maritime_collision_avoidance
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: obstacle
+  1: power-driven vessel
+  2: sailboat
+  3: seamark
+  4: seaplane

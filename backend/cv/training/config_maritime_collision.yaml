@@ -1,0 +1,72 @@
+# RT-DETR Training — Maritime Collision Avoidance (DE/GB/NL RGB)
+
+# Data
+data_yaml: /cluster/home/ludvigho/openar-it2901-ntnu/backend/cv/training/maritime_collision.yaml
+
+# Model
+model: rtdetr-l.pt
+
+# Training
+epochs: 250
+batch: -1
+imgsz: 640
+device: "0"
+
+# Output
+project: runs/train
+name: maritime_collision
+
+# Performance
+workers: 8
+cache: true
+amp: true
+patience: 15
+save_period: 25
+
+# LR schedule
+lr0: 0.0001
+lrf: 0.01
+cos_lr: true
+warmup_epochs: 3
+warmup_momentum: 0.8
+
+# Regularization
+weight_decay: 0.0005
+label_smoothing: 0.05
+dropout: 0.0
+
+# Backbone freezing (number of layers to freeze)
+freeze: 10
+
+# Disable built-in augmentation — images are pre-augmented offline
+mosaic: 0.0
+mixup: 0.0
+degrees: 0.0
+translate: 0.0
+scale: 0.0
+fliplr: 0.0
+flipud: 0.0
+hsv_h: 0.0
+hsv_s: 0.0
+hsv_v: 0.0
+
+# Resume from last checkpoint if job was interrupted
+# Set to path of last.pt to resume, or false for fresh start
+resume: false
+
+# --- Optuna Hyperparameter Search ---
+optuna:
+  enabled: true
+  n_trials: 25
+  # Shorter runs for HPO trials — just enough to see relative ranking
+  trial_epochs: 40
+  trial_patience: 8
+  # Search space (log = log-uniform, uniform = linear, categorical = discrete choices)
+  search_space:
+    lr0: { low: 0.00001, high: 0.001, log: true }
+    weight_decay: { low: 0.00001, high: 0.005, log: true }
+    warmup_epochs: { low: 1, high: 5 }
+    freeze: { choices: [0, 5, 10, 15] }
+    label_smoothing: { low: 0.0, high: 0.1 }
+    dropout: { low: 0.0, high: 0.3 }
+    cos_lr: { choices: [true, false] }
