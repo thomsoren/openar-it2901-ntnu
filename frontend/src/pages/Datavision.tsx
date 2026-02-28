@@ -6,6 +6,7 @@ import {
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
+import PoiErrorBoundary from "../components/poi-overlay/PoiErrorBoundary";
 import VideoPlayer from "../components/video-player/VideoPlayer";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
@@ -233,13 +234,15 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
                 )}
 
                 {arControls.detectionVisible && (
-                  <PoiOverlay
-                    vessels={vessels}
-                    videoTransform={videoTransform}
-                    detectionFrame={
-                      videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
-                    }
-                  />
+                  <PoiErrorBoundary>
+                    <PoiOverlay
+                      vessels={vessels}
+                      videoTransform={videoTransform}
+                      detectionFrame={
+                        videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
+                      }
+                    />
+                  </PoiErrorBoundary>
                 )}
               </>
             )}

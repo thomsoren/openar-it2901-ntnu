@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect, useCallback } from "react";
+import React, { useRef, useState, useLayoutEffect, useCallback, useMemo } from "react";
 import { ObcPoiController } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-controller/poi-controller";
 import { ObcPoiLayerStack } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer-stack/poi-layer-stack";
 import { ObcPoiLayer } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer/poi-layer";
@@ -59,6 +59,7 @@ function PoiOverlay({
     setLayerTopOffset(layerRect.bottom - overlayRect.top);
   }, []);
 
+  // Create ResizeObserver once, don't recreate on every vessel/transform update
   useLayoutEffect(() => {
     measureLayerOffset();
 
@@ -75,7 +76,7 @@ function PoiOverlay({
       cancelAnimationFrame(rafId);
       ro.disconnect();
     };
-  }, [measureLayerOffset, vessels.length, videoTransform]);
+  }, [measureLayerOffset]); // Don't include vessels.length or videoTransform
 
   const filteredVessels = vessels.filter((item) =>
     isLayerVisible(item.detection.class_name, arControls)
@@ -89,6 +90,44 @@ function PoiOverlay({
     detectionFrame?.height && detectionFrame.height > 0 ? detectionFrame.height : sourceHeight;
   const mapX = detectionWidth > 0 ? sourceWidth / detectionWidth : 1;
   const mapY = detectionHeight > 0 ? sourceHeight / detectionHeight : 1;
+
+  // Memoize vessel elements to prevent recreating web components on every render
+  const vesselElements = useMemo(() => {
+    return filteredVessels.map((item, index) => {
+      const trackId = item.detection.track_id ?? `vessel-${index}`;
+
+      const scaledX = item.detection.x * mapX * videoTransform.scaleX;
+      const scaledY = item.detection.y * mapY * videoTransform.scaleY;
+
+      const scaledWidth = item.detection.width * mapX * videoTransform.scaleX;
+      const scaledHeight = item.detection.height * mapY * videoTransform.scaleY;
+
+      const screenX = scaledX + videoTransform.offsetX;
+      const screenY = scaledY + videoTransform.offsetY;
+
+      // Prevent negative line lengths which can break web components
+      const lineLength = Math.max(0, screenY - layerTopOffset);
+
+      const vesselData =
+        arControls.aisCardsVisible && item.vessel
+          ? [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
+          : [];
+
+      return (
+        <ObcPoiData
+          key={trackId}
+          style={{ position: "absolute" }}
+          x={screenX}
+          y={lineLength}
+          boxWidth={scaledWidth}
+          boxHeight={scaledHeight}
+          value={PoiDataValue.Unchecked}
+          data={vesselData}
+          relativeDirection={item.vessel?.heading ?? 0}
+        />
+      );
+    });
+  }, [filteredVessels, mapX, mapY, videoTransform, layerTopOffset, arControls.aisCardsVisible]);
 
   return (
     <div className="poi-overlay" ref={overlayRef}>
@@ -124,52 +163,21 @@ function PoiOverlay({
         >
           <ObcPoiLayer
             overlap-mode="crossing"
-            debug
             label="Second Layer"
             className="poi-layer"
             is-selected
+            debug
           >
             {/* Second layer content - can add different POIs here */}
           </ObcPoiLayer>
           <ObcPoiLayer
+            debug
             ref={layerRefCallback}
             overlap-mode="crossing"
-            debug
             label="Vessel Layer"
             className="poi-layer"
           >
-            {filteredVessels.map((item, index) => {
-              const trackId = item.detection.track_id ?? index;
-
-              const scaledX = item.detection.x * mapX * videoTransform.scaleX;
-              const scaledY = item.detection.y * mapY * videoTransform.scaleY;
-
-              const scaledWidth = item.detection.width * mapX * videoTransform.scaleX;
-              const scaledHeight = item.detection.height * mapY * videoTransform.scaleY;
-
-              const screenX = scaledX + videoTransform.offsetX;
-              const screenY = scaledY + videoTransform.offsetY;
-
-              const lineLength = screenY - layerTopOffset;
-
-              const vesselData =
-                arControls.aisCardsVisible && item.vessel?.name
-                  ? [{ value: item.vessel.name, label: "Vessel", unit: "" }]
-                  : [];
-
-              return (
-                <ObcPoiData
-                  key={trackId}
-                  style={{ position: "absolute" }}
-                  x={screenX}
-                  y={lineLength}
-                  boxWidth={scaledWidth}
-                  boxHeight={scaledHeight}
-                  value={PoiDataValue.Unchecked}
-                  data={vesselData}
-                />
-              );
-            })}
+            {vesselElements}
           </ObcPoiLayer>
         </ObcPoiLayerStack>
       </ObcPoiController>
