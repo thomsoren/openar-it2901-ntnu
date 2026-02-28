@@ -50,7 +50,7 @@ def _probe_video_codec(source_url: str) -> str | None:
         streams = data.get("streams", [])
         if streams:
             return streams[0].get("codec_name")
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as exc:
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         logger.debug("ffprobe failed for %s: %s", source_url, exc)
     return None
 
@@ -240,10 +240,10 @@ class FFmpegDirectPublisher:
         try:
             self.process.terminate()
             self.process.wait(timeout=2)
-        except Exception:
+        except subprocess.TimeoutExpired:
             try:
                 self.process.kill()
-            except Exception:
-                pass
+            except OSError as exc:
+                logger.debug("[%s] Failed to kill FFmpeg process: %s", self.stream_id, exc)
         finally:
             self.process = None

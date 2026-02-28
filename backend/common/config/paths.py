@@ -1,8 +1,8 @@
 """Path configuration for the backend."""
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from settings._env import get_str
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(dotenv_path=BASE_DIR / ".env")
@@ -12,7 +12,7 @@ MODELS_DIR = BASE_DIR / "models"
 SAMPLES_CONFIG_PATH = BASE_DIR / "fusion" / "samples.json"
 
 # Default video paths (local fallback)
-_default_video_filename = os.getenv("DEFAULT_VIDEO_FILENAME", "recording.mp4")
+_default_video_filename = get_str("DEFAULT_VIDEO_FILENAME", "recording.mp4")
 DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / _default_video_filename
 DEFAULT_FUSION_VIDEO_PATH = (
     BASE_DIR / "data" / "raw" / "fvessel" / "video-01" / "segment-001"

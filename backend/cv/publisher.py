@@ -24,22 +24,22 @@ class DetectionPublisher:
             self._redis.publish(detections_channel(stream_id), json.dumps(payload))
             return True
         except RedisError as exc:
-            logger.warning(f"Redis publish failed for stream '{stream_id}': {exc}")
+            logger.warning("Redis publish failed for stream '%s': %s", stream_id, exc)
             return False
 
-    def close(self):
+    def close(self) -> None:
         try:
             self._redis.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Redis close failed: %s", exc)
 
 
 class FusionPublisher(DetectionPublisher):
     """Publisher that optionally enriches detection payloads with AIS data.
 
     If fusion is configured for *stream_id*, the payload is enriched
-    synchronously and published to `fused:{stream_id}`.  Otherwise it falls
-    through to `detections:{stream_id}` unchanged.
+    synchronously and then published to `detections:{stream_id}` with
+    attached `fusion` metadata. Otherwise it is published unchanged.
 
     Extends DetectionPublisher so it can be used anywhere a DetectionPublisher
     is expected (e.g. InferenceThread).

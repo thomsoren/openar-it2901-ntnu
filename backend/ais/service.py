@@ -10,7 +10,6 @@ from typing import Iterable
 from common.config import AIS_S3_KEY, AIS_SAMPLE_PATH
 from common.types import Vessel
 from storage import s3
-from .logger import AISSessionLogger
 
 
 def _load_ais_csv_from_lines(lines: Iterable[str]) -> tuple[list[dict], dict[str, dict]]:
@@ -84,3 +83,8 @@ def build_vessel_from_ais(mmsi: str) -> Vessel | None:
         latitude=ais.get("latitude"),
         longitude=ais.get("longitude"),
     )
+
+
+def get_ais_data() -> list[dict]:
+    """Return the cached AIS sample snapshot loaded at startup."""
+    return list(AIS_SAMPLE_DATA)

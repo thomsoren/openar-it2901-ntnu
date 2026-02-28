@@ -3,11 +3,14 @@ import logging
 import aiohttp
 import asyncio
 import json
+import math
 from urllib.parse import quote
 from dotenv import load_dotenv
 from typing import AsyncIterator, List
 
 from .logger import AISSessionLogger
+from ais_mapping_service.pixel_projection.current_ship_config import CameraConfig, ShipConfig
+from ais_mapping_service.pixel_projection.projection import project_ais_to_pixel
 
 load_dotenv()
 
@@ -312,3 +315,154 @@ async def fetch_historic_ais_data(
     if session_logger:
         session_logger.end_session()
     logger.info("[historic] Yielded %d track point(s) across %d vessel(s)", total, len(mmsis))
+
+
+def _build_fov_polygon(
+    ship_lat: float,
+    ship_lon: float,
+    heading: float,
+    offset_meters: float,
+    fov_degrees: float,
+) -> list[list[float]]:
+    half_fov = fov_degrees / 2
+    meters_per_degree_lat = 111_320
+    meters_per_degree_lon = max(1e-6, 111_320 * math.cos(math.radians(ship_lat)))
+    offset_lat = offset_meters / meters_per_degree_lat
+    offset_lon = offset_meters / meters_per_degree_lon
+
+    left_angle = heading - half_fov
+    right_angle = heading + half_fov
+
+    left_lat = ship_lat + offset_lat * math.cos(math.radians(left_angle))
+    left_lon = ship_lon + offset_lon * math.sin(math.radians(left_angle))
+    right_lat = ship_lat + offset_lat * math.cos(math.radians(right_angle))
+    right_lon = ship_lon + offset_lon * math.sin(math.radians(right_angle))
+
+    return [
+        [ship_lon, ship_lat],
+        [left_lon, left_lat],
+        [right_lon, right_lat],
+        [ship_lon, ship_lat],
+    ]
+
+
+async def fetch_vessel_position_by_mmsi(mmsi: str) -> ShipConfig | None:
+    if not AIS_CLIENT_ID or not AIS_CLIENT_SECRET:
+        raise ValueError("AIS_CLIENT_ID or AIS_CLIENT_SECRET not set")
+
+    try:
+        mmsi_int = int(mmsi.strip())
+    except ValueError as exc:
+        raise ValueError(f"Invalid MMSI: {mmsi} (must be numeric)") from exc
+
+    request_body = {
+        "modelType": "Simple",
+        "modelFormat": "Json",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [-180, -90],
+                [180, -90],
+                [180, 90],
+                [-180, 90],
+                [-180, -90],
+            ]],
+        },
+        "mmsi": [mmsi_int],
+        "downsample": True,
+    }
+
+    async with aiohttp.ClientSession() as session:
+        token = await _fetch_token(session)
+        async with session.post(
+            "https://live.ais.barentswatch.no/live/v1/combined",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=request_body,
+            timeout=aiohttp.ClientTimeout(total=60, sock_read=30),
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise ValueError(f"HTTP {response.status}: {error_text}")
+
+            async for line in response.content:
+                text_line = line.decode("utf-8").strip()
+                if not text_line:
+                    continue
+                try:
+                    data = json.loads(text_line)
+                except json.JSONDecodeError:
+                    continue
+
+                latitude = data.get("latitude")
+                longitude = data.get("longitude")
+                if latitude is None or longitude is None:
+                    continue
+
+                heading = data.get("trueHeading")
+                if heading is None:
+                    heading = data.get("courseOverGround", 0)
+
+                return ShipConfig(
+                    latitude=float(latitude),
+                    longitude=float(longitude),
+                    heading_deg=float(heading),
+                )
+
+    return None
+
+
+def _project_feature(feature: dict, ship_cfg: ShipConfig, cam_cfg: CameraConfig) -> dict:
+    lat = feature.get("latitude")
+    lon = feature.get("longitude")
+    projection = None
+    if lat is not None and lon is not None:
+        projection = project_ais_to_pixel(
+            ship_cfg=ship_cfg,
+            target_lat=float(lat),
+            target_lon=float(lon),
+            cam_cfg=cam_cfg,
+        )
+
+    enriched = dict(feature)
+    enriched["projection"] = projection
+    return enriched
+
+
+async def fetch_ais_stream_projections(
+    ship_lat: float,
+    ship_lon: float,
+    heading: float,
+    offset_meters: float,
+    fov_degrees: float,
+) -> AsyncIterator[dict]:
+    ship_cfg = ShipConfig(latitude=ship_lat, longitude=ship_lon, heading_deg=heading)
+    cam_cfg = CameraConfig(h_fov_deg=fov_degrees)
+    coordinates = _build_fov_polygon(
+        ship_lat=ship_lat,
+        ship_lon=ship_lon,
+        heading=heading,
+        offset_meters=offset_meters,
+        fov_degrees=fov_degrees,
+    )
+
+    async for feature in fetch_ais_stream_geojson(coordinates=coordinates):
+        yield _project_feature(feature, ship_cfg=ship_cfg, cam_cfg=cam_cfg)
+
+
+async def fetch_ais_stream_projections_by_mmsi(
+    mmsi: str,
+    offset_meters: float = 3000,
+    fov_degrees: float = 120,
+) -> AsyncIterator[dict]:
+    ship_cfg = await fetch_vessel_position_by_mmsi(mmsi)
+    if ship_cfg is None:
+        raise ValueError(f"Vessel with MMSI {mmsi} not found in Barentswatch AIS data")
+
+    async for feature in fetch_ais_stream_projections(
+        ship_lat=ship_cfg.latitude,
+        ship_lon=ship_cfg.longitude,
+        heading=ship_cfg.heading_deg,
+        offset_meters=offset_meters,
+        fov_degrees=fov_degrees,
+    ):
+        yield feature

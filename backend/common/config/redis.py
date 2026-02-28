@@ -1,15 +1,14 @@
 """Redis configuration and helpers."""
 from __future__ import annotations
 
-import os
-
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
+from settings._env import get_str
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-REDIS_DETECTIONS_CHANNEL_PREFIX = os.getenv("REDIS_DETECTIONS_CHANNEL_PREFIX", "detections")
-REDIS_FUSED_CHANNEL_PREFIX = os.getenv("REDIS_FUSED_CHANNEL_PREFIX", "fused")
-DEFAULT_DETECTIONS_STREAM_ID = os.getenv("DEFAULT_DETECTIONS_STREAM_ID", "default")
+REDIS_URL = get_str("REDIS_URL", "redis://localhost:6379/0")
+REDIS_DETECTIONS_CHANNEL_PREFIX = get_str("REDIS_DETECTIONS_CHANNEL_PREFIX", "detections")
+REDIS_FUSED_CHANNEL_PREFIX = get_str("REDIS_FUSED_CHANNEL_PREFIX", "fused")
+DEFAULT_DETECTIONS_STREAM_ID = get_str("DEFAULT_DETECTIONS_STREAM_ID", "default")
 
 
 def detections_channel(stream_id: str) -> str:
