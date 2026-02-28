@@ -20,7 +20,7 @@ TRAIN_KEYS = [
     "epochs", "imgsz", "batch", "device", "project", "name", "workers",
     "cache", "amp", "patience", "save_period",
     "lr0", "lrf", "cos_lr", "warmup_epochs", "warmup_momentum",
-    "weight_decay", "label_smoothing", "dropout", "freeze",
+    "weight_decay", "label_smoothing", "dropout",
     "mosaic", "close_mosaic", "mixup", "degrees", "translate", "scale",
     "fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v",
 ]
@@ -54,6 +54,7 @@ def run_optuna_search(config, data_yaml):
     n_trials = optuna_cfg.get("n_trials", 25)
     trial_epochs = optuna_cfg.get("trial_epochs", 40)
     trial_patience = optuna_cfg.get("trial_patience", 8)
+    trial_fraction = optuna_cfg.get("trial_fraction", 1.0)
 
     study = optuna.create_study(
         direction="maximize",
@@ -78,6 +79,7 @@ def run_optuna_search(config, data_yaml):
             config, data_yaml,
             epochs=trial_epochs,
             patience=trial_patience,
+            fraction=trial_fraction,
             name=trial_name,
             save_period=0,
             **params,
