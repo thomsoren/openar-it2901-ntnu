@@ -49,7 +49,7 @@ def read_detr_labels(label_path):
             class_id, x_c, y_c, w, h = line.split()
             bbox = _clamp_bbox(float(x_c), float(y_c), float(w), float(h))
             if bbox[2] > 0 and bbox[3] > 0:
-                class_labels.append(int(class_id))
+                class_labels.append(int(float(class_id)))
                 bboxes.append(bbox)
     return bboxes, class_labels
 
