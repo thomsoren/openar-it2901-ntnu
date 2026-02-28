@@ -13,7 +13,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-DEFAULT_CONFIG = Path(__file__).parent / "config.yaml"
+DEFAULT_CONFIG = Path(__file__).parent / "config_maritime_collision.yaml"
 
 # Keys passed directly from config YAML to model.train()
 TRAIN_KEYS = [
