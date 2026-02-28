@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, WebSocket
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from webapi.errors import not_found, wrap_internal
 from common.config import VIDEO_PATH
@@ -24,7 +24,7 @@ def get_detections() -> list[DetectedVessel]:
 
 
 @router.get("/api/detections/file")
-def get_detections_file(request: Request):
+def get_detections_file(request: Request) -> Response:
     try:
         return s3.detections_response(request)
     except FileNotFoundError:
@@ -34,7 +34,7 @@ def get_detections_file(request: Request):
 
 
 @router.get("/api/video")
-def get_video():
+def get_video() -> FileResponse:
     path = VIDEO_PATH
     if not path or not path.exists():
         not_found(f"Video not found: {path}")
@@ -42,7 +42,7 @@ def get_video():
 
 
 @router.get("/api/video/fusion")
-def get_fusion_video(request: Request):
+def get_fusion_video(request: Request) -> Response:
     try:
         return s3.fusion_video_response(request)
     except FileNotFoundError:
@@ -52,7 +52,7 @@ def get_fusion_video(request: Request):
 
 
 @router.get("/api/assets/oceanbackground")
-def get_components_background():
+def get_components_background() -> Response:
     try:
         return s3.components_background_response()
     except FileNotFoundError:
@@ -62,7 +62,7 @@ def get_components_background():
 
 
 @router.get("/api/video/stream")
-async def stream_video(request: Request):
+async def stream_video(request: Request) -> Response:
     try:
         return s3.video_stream_response(request)
     except Exception as exc:
@@ -70,5 +70,5 @@ async def stream_video(request: Request):
 
 
 @router.websocket("/api/fusion/ws")
-async def websocket_fusion(websocket: WebSocket):
+async def websocket_fusion(websocket: WebSocket) -> None:
     await fusion.handle_fusion_ws(websocket)

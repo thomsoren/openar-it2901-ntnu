@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -37,7 +38,7 @@ def _format_sse(payload: object) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-async def _sse_generator(source: AsyncIterator) -> AsyncIterator[str]:
+async def _sse_generator(source: AsyncIterator[dict[str, Any]]) -> AsyncIterator[str]:
     try:
         async for feature in source:
             yield _format_sse(feature)
@@ -45,12 +46,12 @@ async def _sse_generator(source: AsyncIterator) -> AsyncIterator[str]:
         yield _format_sse({"error": f"{type(exc).__name__}: {exc}"})
 
 
-def _sse_response(source: AsyncIterator) -> StreamingResponse:
+def _sse_response(source: AsyncIterator[dict[str, Any]]) -> StreamingResponse:
     return StreamingResponse(_sse_generator(source), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.get("/api/ais")
-async def get_ais_data():
+async def get_ais_data() -> list[dict[str, Any]]:
     try:
         return ais_service.get_ais_data()
     except Exception as exc:
@@ -58,7 +59,7 @@ async def get_ais_data():
 
 
 @router.post("/api/ais/stream")
-async def stream_ais_geojson(body: AISStreamRequest):
+async def stream_ais_geojson(body: AISStreamRequest) -> StreamingResponse:
     session_logger = AISSessionLogger() if body.log else None
 
     async def event_generator():

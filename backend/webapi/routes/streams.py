@@ -3,8 +3,9 @@ from __future__ import annotations
 import shutil
 import uuid
 from pathlib import PurePath
+from typing import Any
 
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, Response, UploadFile
 from pydantic import BaseModel
 
 from webapi.errors import (
@@ -64,7 +65,7 @@ def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamC
 
 
 @router.post("/api/streams/{stream_id}/start", status_code=201)
-async def start_stream(stream_id: str, request: StreamStartRequest):
+async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str, Any]:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
 
@@ -86,7 +87,11 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
 
 
 @router.post("/api/streams/{stream_id}/upload", status_code=201)
-async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool = True):
+async def upload_and_start_stream(
+    stream_id: str,
+    file: UploadFile,
+    loop: bool = True,
+) -> dict[str, Any]:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
 
@@ -110,8 +115,8 @@ async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool =
     return {"status": "started", **handle.to_dict()}
 
 
-@router.delete("/api/streams/{stream_id}", status_code=204)
-async def stop_stream(stream_id: str):
+@router.delete("/api/streams/{stream_id}", status_code=204, response_class=Response)
+async def stop_stream(stream_id: str) -> Response:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
 
@@ -119,17 +124,18 @@ async def stop_stream(stream_id: str):
         orchestrator.stop_stream(stream_id)
     except StreamNotFoundError as exc:
         not_found(str(exc))
+    return Response(status_code=204)
 
 
 @router.get("/api/streams")
-async def list_streams():
+async def list_streams() -> dict[str, Any]:
     orchestrator = _require_orchestrator()
     streams = [augment_stream_payload(stream) for stream in orchestrator.list_streams()]
     return {"streams": streams, "max_workers": app_settings.max_workers}
 
 
 @router.get("/api/streams/{stream_id}/playback")
-async def get_stream_playback(stream_id: str):
+async def get_stream_playback(stream_id: str) -> dict[str, Any]:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
 
@@ -141,8 +147,9 @@ async def get_stream_playback(stream_id: str):
     return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id)}
 
 
-@router.post("/api/streams/{stream_id}/heartbeat", status_code=204)
-async def heartbeat_stream(stream_id: str):
+@router.post("/api/streams/{stream_id}/heartbeat", status_code=204, response_class=Response)
+async def heartbeat_stream(stream_id: str) -> Response:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
     orchestrator.touch_stream(stream_id)
+    return Response(status_code=204)

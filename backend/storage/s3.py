@@ -138,6 +138,14 @@ def get_download_url(raw_key: str, expires: int = 900) -> str:
     raise RuntimeError("S3 is not configured")
 
 
+def download_to_path(raw_key: str, destination: Path) -> Path:
+    """Download an S3 object key to a local path and return the destination."""
+    full_key, _ = _normalize_key(raw_key)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _client().download_file(S3_BUCKET, full_key, str(destination))
+    return destination
+
+
 def _stream_s3_body(body, chunk_size: int = 1024 * 1024):
     try:
         for chunk in body.iter_chunks(chunk_size=chunk_size):

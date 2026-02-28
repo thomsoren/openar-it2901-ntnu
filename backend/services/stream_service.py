@@ -22,8 +22,6 @@ def resolve_default_source() -> str | None:
 
 def _download_s3_to_cache(s3_key: str) -> str:
     cache_dir = BASE_DIR / "data" / "cache" / "s3"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
     filename = Path(s3_key).name
     local_path = cache_dir / filename
 
@@ -33,9 +31,7 @@ def _download_s3_to_cache(s3_key: str) -> str:
 
     logger.info("[s3] Downloading s3://%s to %s", s3_key, local_path)
     try:
-        client = s3._client()
-        full_key, _ = s3._normalize_key(s3_key)
-        client.download_file(s3.S3_BUCKET, full_key, str(local_path))
+        s3.download_to_path(s3_key, local_path)
         logger.info("[s3] Download complete: %s", local_path)
         return str(local_path)
     except Exception as exc:

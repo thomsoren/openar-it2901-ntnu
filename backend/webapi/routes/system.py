@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 
 from webapi.errors import bad_request, wrap_internal
@@ -16,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("/")
-def read_root():
+def read_root() -> dict[str, Any]:
     return {
         "status": "ok",
         "message": "OpenAR Backend API is running",
@@ -39,7 +41,7 @@ def read_root():
 
 
 @router.get("/health")
-def health_check():
+def health_check() -> dict[str, Any]:
     try:
         return s3.health_status()
     except Exception as exc:
@@ -47,7 +49,7 @@ def health_check():
 
 
 @router.get("/api/samples")
-def list_samples():
+def list_samples() -> dict[str, Any]:
     try:
         return {"samples": load_samples()}
     except Exception as exc:
@@ -55,7 +57,7 @@ def list_samples():
 
 
 @router.post("/api/fusion/reset")
-def reset_fusion_timer():
+def reset_fusion_timer() -> dict[str, Any]:
     try:
         start = fusion.reset_sample_timer()
         return {"status": "ok", "start_mono": start}
@@ -67,7 +69,7 @@ def reset_fusion_timer():
 def presign_storage(
     request: s3.PresignRequest,
     _: AppUser = Depends(require_admin),
-):
+) -> dict[str, Any]:
     try:
         return s3.presign_storage(request)
     except ValueError as exc:
