@@ -3,8 +3,11 @@ import type { VideoPlayerState } from "../components/video-player/VideoPlayer";
 
 interface UseDatavisionStatusOptions {
   activeTabId: string;
+  wsUrl: string;
   vesselsCount: number;
   isConnected: boolean;
+  detectionTimestampMs: number;
+  lastMessageAtMs: number;
   controlError: string | null;
   videoState: VideoPlayerState;
 }
@@ -31,24 +34,32 @@ interface UseDatavisionStatusOptions {
  */
 export function useDatavisionStatus({
   activeTabId,
+  wsUrl,
   vesselsCount,
   isConnected,
+  detectionTimestampMs,
+  lastMessageAtMs,
   controlError,
   videoState,
 }: UseDatavisionStatusOptions) {
   return useMemo(() => {
     const connectionLabel = isConnected ? "Connected" : "Disconnected";
     const videoLabel = `${videoState.transport.toUpperCase()} ${videoState.status}`;
+    const messageLabel = lastMessageAtMs ? new Date(lastMessageAtMs).toLocaleTimeString() : "n/a";
+    const detectionLabel = detectionTimestampMs || "n/a";
     const videoErrorLabel = videoState.error ? ` | Video error: ${videoState.error}` : "";
     const controlLabel = controlError ? ` | Control: ${controlError}` : "";
 
     return {
-      infoLabel: `${connectionLabel} | Stream: ${activeTabId} | ${videoLabel} | Vessels: ${vesselsCount}${videoErrorLabel}${controlLabel}`,
+      infoLabel: `${connectionLabel} | Stream: ${activeTabId} | ${videoLabel} | Vessels: ${vesselsCount} | Last msg: ${messageLabel} | Last detection ts: ${detectionLabel} | WS: ${wsUrl}${videoErrorLabel}${controlLabel}`,
     };
   }, [
     activeTabId,
+    wsUrl,
     vesselsCount,
     isConnected,
+    detectionTimestampMs,
+    lastMessageAtMs,
     controlError,
     videoState.transport,
     videoState.status,

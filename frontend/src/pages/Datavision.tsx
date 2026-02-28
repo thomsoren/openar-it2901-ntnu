@@ -81,10 +81,19 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
+  const detectionWsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
-  const { vessels, isLoading, error, isConnected, videoInfo } = useDetectionsWebSocket({
-    url: wsUrl,
+  const {
+    vessels,
+    isLoading,
+    error,
+    isConnected,
+    videoInfo,
+    wsUrl: activeWsUrl,
+    detectionTimestampMs,
+    lastMessageAtMs,
+  } = useDetectionsWebSocket({
+    url: detectionWsUrl,
     enabled: wsEnabled,
   });
 
@@ -123,8 +132,11 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   const displayError = controlError || streamError;
   const statusDisplay = useDatavisionStatus({
     activeTabId,
+    wsUrl: activeWsUrl,
     vesselsCount: vessels.length,
     isConnected,
+    detectionTimestampMs,
+    lastMessageAtMs,
     controlError: displayError,
     videoState,
   });

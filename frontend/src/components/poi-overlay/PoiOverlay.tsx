@@ -16,9 +16,9 @@ interface PoiOverlayProps {
     width: number;
     height: number;
   } | null;
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  videoSource: string;
-  videoFitMode: string;
+  videoRef?: React.RefObject<HTMLVideoElement | null>;
+  videoSource?: string;
+  videoFitMode?: string;
 }
 
 function isLayerVisible(
@@ -39,7 +39,7 @@ function PoiOverlay({
   detectionFrame = null,
   videoRef,
   videoSource,
-  videoFitMode,
+  videoFitMode = "cover",
 }: PoiOverlayProps) {
   const { state: arControls } = useARControls();
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -102,18 +102,20 @@ function PoiOverlay({
           } as React.CSSProperties
         }
       >
-        <video
-          ref={videoRef}
-          slot="media"
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="background-video"
-          style={{ objectFit: videoFitMode === "cover" ? "cover" : "contain" }}
-        >
-          <source src={videoSource} type="video/mp4" />
-        </video>
+        {videoRef && videoSource && (
+          <video
+            ref={videoRef}
+            slot="media"
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="background-video"
+            style={{ objectFit: videoFitMode === "cover" ? "cover" : "contain" }}
+          >
+            <source src={videoSource} type="video/mp4" />
+          </video>
+        )}
         <ObcPoiLayerStack
           slot="stack"
           selection-mode="multi"

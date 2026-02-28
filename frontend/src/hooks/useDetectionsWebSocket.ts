@@ -29,6 +29,7 @@ interface WebSocketState {
   frameIndex: number;
   fps: number;
   detectionTimestampMs: number;
+  lastMessageAtMs: number;
   detectionFrameSentAtMs: number;
   videoInfo: VideoInfo | null;
   isConnected: boolean;
@@ -38,6 +39,8 @@ interface WebSocketState {
 }
 
 interface UseDetectionsWebSocketResult extends WebSocketState {
+  /** Effective websocket URL used by this hook */
+  wsUrl: string;
   /** Manually connect to WebSocket */
   connect: () => void;
   /** Manually disconnect from WebSocket */
@@ -65,6 +68,7 @@ function createWebSocketStore(
     frameIndex: 0,
     fps: 0,
     detectionTimestampMs: 0,
+    lastMessageAtMs: 0,
     detectionFrameSentAtMs: 0,
     videoInfo: null,
     isConnected: false,
@@ -102,6 +106,7 @@ function createWebSocketStore(
       frameIndex: 0,
       fps: 0,
       detectionTimestampMs: 0,
+      lastMessageAtMs: 0,
       detectionFrameSentAtMs: 0,
       videoInfo: null,
       isConnected: false,
@@ -125,6 +130,7 @@ function createWebSocketStore(
             case "ready":
               if (data.width && data.height) {
                 setState({
+                  lastMessageAtMs: Date.now(),
                   videoInfo: {
                     width: data.width,
                     height: data.height,
@@ -138,17 +144,18 @@ function createWebSocketStore(
               setState({
                 frameIndex: data.frame_index,
                 detectionTimestampMs: data.timestamp_ms || 0,
+                lastMessageAtMs: Date.now(),
                 detectionFrameSentAtMs: data.frame_sent_at_ms || 0,
                 fps: data.fps,
                 vessels: data.vessels || [],
               });
               break;
             case "complete":
-              setState({ isComplete: true });
+              setState({ isComplete: true, lastMessageAtMs: Date.now() });
               break;
 
             case "error":
-              setState({ error: data.message });
+              setState({ error: data.message, lastMessageAtMs: Date.now() });
               break;
           }
         } catch {
@@ -167,6 +174,7 @@ function createWebSocketStore(
           vessels: [],
           frameIndex: 0,
           detectionTimestampMs: 0,
+          lastMessageAtMs: 0,
           detectionFrameSentAtMs: 0,
           fps: 0,
         });
@@ -192,6 +200,7 @@ function createWebSocketStore(
       vessels: [],
       frameIndex: 0,
       detectionTimestampMs: 0,
+      lastMessageAtMs: 0,
       detectionFrameSentAtMs: 0,
       fps: 0,
     });
@@ -258,6 +267,7 @@ export const useDetectionsWebSocket = ({
 
   return {
     ...state,
+    wsUrl,
     connect,
     disconnect,
   };

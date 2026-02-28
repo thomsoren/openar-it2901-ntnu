@@ -14,10 +14,7 @@ from typing import List
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ais import service as ais_service
-from common.config import (
-    GT_FUSION_S3_KEY, GT_FUSION_PATH,
-    SAMPLE_START_SEC, SAMPLE_DURATION,
-)
+from common.config import SAMPLE_START_SEC, SAMPLE_DURATION
 from common.types import Detection, DetectedVessel
 from storage import s3
 
@@ -62,7 +59,7 @@ def _load_fusion_by_second(lines: List[str]) -> dict[int, list[dict]]:
 def _load_fusion_data() -> dict[int, list[dict]]:
     """Load fusion ground truth data. Returns empty dict if unavailable."""
     try:
-        text = s3.read_text_from_sources(GT_FUSION_S3_KEY, GT_FUSION_PATH)
+        text = s3.read_text_from_sources(s3.resolve_system_asset_key("gt_fusion", "txt"))
         if not text:
             logger.info("Fusion data not available - fusion features disabled")
             return {}

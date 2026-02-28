@@ -13,7 +13,16 @@ function FusionInner() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { state: arControls } = useARControls();
   // Use WebSocket for real-time fusion detections
-  const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
+  const {
+    vessels,
+    isLoading,
+    error,
+    isConnected,
+    fps,
+    wsUrl,
+    lastMessageAtMs,
+    detectionTimestampMs,
+  } = useDetectionsWebSocket({
     url: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws`,
     enabled: detectionsEnabled,
   });
@@ -57,7 +66,9 @@ function FusionInner() {
       {!isLoading && !error && (
         <div className="status-overlay status-info">
           {isConnected ? "Connected" : "Disconnected"} | FVessel | Fusion | {fps.toFixed(1)} FPS |
-          Vessels: {vessels.length}
+          Vessels: {vessels.length} | Last msg:{" "}
+          {lastMessageAtMs ? new Date(lastMessageAtMs).toLocaleTimeString() : "n/a"} | Last
+          detection ts: {detectionTimestampMs || "n/a"} | WS: {wsUrl}
         </div>
       )}
 

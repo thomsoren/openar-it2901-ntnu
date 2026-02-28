@@ -15,7 +15,7 @@ import shutil
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from redis.exceptions import RedisError
 from slowapi import _rate_limit_exceeded_handler
@@ -30,7 +30,7 @@ from ais.fetch_ais import (
     fetch_ais_stream_projections_by_mmsi,
 )
 from ais.logger import AISSessionLogger
-from auth.deps import require_admin
+from auth.deps import get_current_user
 from auth.routes import limiter, router as auth_router
 from common.config import (
     BASE_DIR,
@@ -298,11 +298,15 @@ def reset_fusion_timer():
 @app.post("/api/storage/presign")
 def presign_storage(
     request: s3.PresignRequest,
-    _: AppUser = Depends(require_admin),
+    current_user: AppUser = Depends(get_current_user),
 ):
     """Generate a presigned URL for GET/PUT against S3 storage."""
     try:
-        return s3.presign_storage(request)
+        return s3.presign_storage(
+            request,
+            owner_user_id=current_user.id,
+            is_admin=current_user.is_admin,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -328,11 +332,11 @@ def get_detections_file(request: Request):
 
 
 @app.get("/api/video")
-def get_video():
-    path = VIDEO_PATH
-    if not path or not path.exists():
-        raise HTTPException(status_code=404, detail=f"Video not found: {path}")
-    return FileResponse(path, media_type="video/mp4")
+def get_video(request: Request):
+    try:
+        return s3.video_stream_response(request)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error streaming video: {exc}")
 
 
 @app.get("/api/video/fusion")
