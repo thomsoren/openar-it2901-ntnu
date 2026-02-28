@@ -3,7 +3,7 @@
 #SBATCH --job-name="rtdetr-maritime"
 #SBATCH --time=24:00:00
 #SBATCH --partition=GPUQ
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:a100:1
 #SBATCH --mem=32GB
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
@@ -54,7 +54,7 @@ python -c "import optuna" 2>/dev/null || {
 echo "=========================================="
 echo "GPU Information:"
 nvidia-smi
-python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}, VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB' if torch.cuda.is_available() else 'No CUDA')"
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}, VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB' if torch.cuda.is_available() else 'No CUDA')"
 echo "=========================================="
 
 echo "Starting RT-DETR training..."
