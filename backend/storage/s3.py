@@ -121,6 +121,14 @@ def presign_put(raw_key: str, content_type: str | None = None, expires: int = 90
     return result if isinstance(result, tuple) else (result, {})
 
 
+def download_to_path(raw_key: str, destination: Path) -> Path:
+    """Download an S3 object key to a local path and return the destination."""
+    full_key, _ = _normalize_key(raw_key)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _client().download_file(S3_BUCKET, full_key, str(destination))
+    return destination
+
+
 def _stream_body(body, chunk_size: int = 1024 * 1024):
     try:
         for chunk in body.iter_chunks(chunk_size=chunk_size):

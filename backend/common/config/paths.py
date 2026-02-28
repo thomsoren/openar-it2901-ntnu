@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from dotenv import load_dotenv
+from settings._env import get_str
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(dotenv_path=BASE_DIR / ".env")
@@ -11,10 +12,8 @@ MODELS_DIR = BASE_DIR / "models"
 SAMPLES_CONFIG_PATH = BASE_DIR / "fusion" / "samples.json"
 
 # Default video paths (local fallback)
-DEFAULT_VIDEO_PATH = (
-    BASE_DIR / "data" / "raw" / "video"
-    / "Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4"
-)
+_default_video_filename = get_str("DEFAULT_VIDEO_FILENAME", "recording.mp4")
+DEFAULT_VIDEO_PATH = BASE_DIR / "data" / "raw" / "video" / _default_video_filename
 DEFAULT_FUSION_VIDEO_PATH = (
     BASE_DIR / "data" / "raw" / "fvessel" / "video-01" / "segment-001"
     / "2022_05_10_19_22_05_2022_05_10_19_25_04_b.mp4"

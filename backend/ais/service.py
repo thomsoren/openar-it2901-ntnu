@@ -9,7 +9,6 @@ from typing import Iterable
 
 from common.types import Vessel
 from storage import s3
-from .fetch_ais import fetch_ais
 
 
 def _load_ais_csv_from_lines(lines: Iterable[str]) -> tuple[list[dict], dict[str, dict]]:
@@ -85,7 +84,6 @@ def build_vessel_from_ais(mmsi: str) -> Vessel | None:
     )
 
 
-async def get_ais_data() -> list[dict]:
-    if AIS_SAMPLE_DATA:
-        return AIS_SAMPLE_DATA
-    return await fetch_ais()
+def get_ais_data() -> list[dict]:
+    """Return the cached AIS sample snapshot loaded at startup."""
+    return list(AIS_SAMPLE_DATA)
