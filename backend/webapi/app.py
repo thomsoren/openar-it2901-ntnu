@@ -16,6 +16,7 @@ from webapi.routes.detections import router as detections_router
 from webapi.routes.media import router as media_router
 from webapi.routes.streams import router as streams_router
 from webapi.routes.system import router as system_router
+from settings import app_settings
 from auth.config import settings as auth_settings
 from auth.routes import limiter, router as auth_router
 from common.config import create_async_redis_client
@@ -68,11 +69,11 @@ async def lifespan(_: FastAPI):
     init_db()
     app.state.redis_client = create_async_redis_client()
 
-    protected_stream_ids = {state.DEFAULT_STREAM_ID} if state.PROTECT_DEFAULT_STREAM else set()
+    protected_stream_ids = {app_settings.default_stream_id} if app_settings.protect_default_stream else set()
     state.orchestrator = WorkerOrchestrator(
-        max_workers=state.MAX_WORKERS,
-        idle_timeout_seconds=state.STREAM_IDLE_TIMEOUT_SECONDS,
-        no_viewer_timeout_seconds=state.STREAM_NO_VIEWER_TIMEOUT_SECONDS,
+        max_workers=app_settings.max_workers,
+        idle_timeout_seconds=app_settings.stream_idle_timeout_seconds,
+        no_viewer_timeout_seconds=app_settings.stream_no_viewer_timeout_seconds,
         protected_stream_ids=protected_stream_ids,
     )
     state.orchestrator.start_monitoring()
@@ -81,11 +82,11 @@ async def lifespan(_: FastAPI):
     if source_url:
         try:
             state.orchestrator.start_stream(
-                StreamConfig(stream_id=state.DEFAULT_STREAM_ID, source_url=source_url, loop=True)
+                StreamConfig(stream_id=app_settings.default_stream_id, source_url=source_url, loop=True)
             )
-            logger.info("Default stream '%s' started from %s", state.DEFAULT_STREAM_ID, source_url)
+            logger.info("Default stream '%s' started from %s", app_settings.default_stream_id, source_url)
         except (StreamAlreadyRunningError, ResourceLimitExceededError) as exc:
-            logger.warning("Default stream '%s' could not start: %s", state.DEFAULT_STREAM_ID, exc)
+            logger.warning("Default stream '%s' could not start: %s", app_settings.default_stream_id, exc)
     else:
         logger.warning("No default video source found; skipping default stream")
 

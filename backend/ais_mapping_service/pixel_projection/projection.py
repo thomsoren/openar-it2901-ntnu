@@ -1,8 +1,7 @@
 # projection.py
 from __future__ import annotations
 
-from typing import Any
-
+from .current_ship_config import CameraConfig, ShipConfig
 from .geo_utils import bearing_deg, haversine_distance, wrap_angle_deg
 
 HORIZON_Y_RATIO = 0.4  # fraction of image height where horizon sits
@@ -11,13 +10,15 @@ DISTANCE_SCALE_FACTOR = 10000  # scaling factor for distance-to-pixel conversion
 
 
 def project_ais_to_pixel(
-    ship_lat: float,
-    ship_lon: float,
-    ship_heading: float,
+    ship_cfg: ShipConfig,
     target_lat: float,
     target_lon: float,
-    cam_cfg: Any,
+    cam_cfg: CameraConfig,
 ) -> dict[str, float] | None:
+    ship_lat = ship_cfg.latitude
+    ship_lon = ship_cfg.longitude
+    ship_heading = ship_cfg.heading_deg
+
     dist_m = haversine_distance(ship_lat, ship_lon, target_lat, target_lon)
     bearing = bearing_deg(ship_lat, ship_lon, target_lat, target_lon)
     rel_bearing = wrap_angle_deg(bearing - ship_heading)

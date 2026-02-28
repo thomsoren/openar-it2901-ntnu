@@ -11,6 +11,9 @@ from storage import s3
 
 router = APIRouter()
 
+# API boundary note: handlers intentionally catch broad exceptions and map
+# them to HTTP errors so failures are returned consistently.
+
 
 @router.get("/")
 def read_root():
@@ -40,7 +43,7 @@ def health_check():
     try:
         return s3.health_status()
     except Exception as exc:
-        raise wrap_internal("Health check failed", exc)
+        wrap_internal("Health check failed", exc)
 
 
 @router.get("/api/samples")
@@ -48,7 +51,7 @@ def list_samples():
     try:
         return {"samples": load_samples()}
     except Exception as exc:
-        raise wrap_internal("Error loading samples", exc)
+        wrap_internal("Error loading samples", exc)
 
 
 @router.post("/api/fusion/reset")
@@ -57,7 +60,7 @@ def reset_fusion_timer():
         start = fusion.reset_sample_timer()
         return {"status": "ok", "start_mono": start}
     except Exception as exc:
-        raise wrap_internal("Error resetting fusion timer", exc)
+        wrap_internal("Error resetting fusion timer", exc)
 
 
 @router.post("/api/storage/presign")
@@ -68,6 +71,6 @@ def presign_storage(
     try:
         return s3.presign_storage(request)
     except ValueError as exc:
-        raise bad_request(str(exc))
+        bad_request(str(exc))
     except Exception as exc:
-        raise wrap_internal("Error generating presigned URL", exc)
+        wrap_internal("Error generating presigned URL", exc)

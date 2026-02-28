@@ -16,6 +16,7 @@ from webapi.errors import (
     wrap_internal,
 )
 from webapi import state
+from settings import app_settings
 from common.config import BASE_DIR
 from orchestrator import (
     ResourceLimitExceededError,
@@ -33,6 +34,9 @@ from services.stream_service import (
 
 router = APIRouter()
 
+# API boundary note: handlers intentionally catch broad exceptions and map
+# them to HTTP errors so failures are returned consistently.
+
 
 class StreamStartRequest(BaseModel):
     source_url: str | None = None
@@ -41,22 +45,22 @@ class StreamStartRequest(BaseModel):
 
 def _require_orchestrator() -> WorkerOrchestrator:
     if not state.orchestrator:
-        raise service_unavailable("Orchestrator not initialized")
+        service_unavailable("Orchestrator not initialized")
     return state.orchestrator
 
 
 def _validate_stream_id(stream_id: str) -> None:
-    if not state.STREAM_ID_PATTERN.fullmatch(stream_id):
-        raise bad_request("Invalid stream_id")
+    if not app_settings.stream_id_pattern.fullmatch(stream_id):
+        bad_request("Invalid stream_id")
 
 
 def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamConfig) -> StreamHandle:
     try:
         return orchestrator.start_stream(config)
     except StreamAlreadyRunningError as exc:
-        raise conflict(str(exc))
+        conflict(str(exc), cause=exc)
     except ResourceLimitExceededError as exc:
-        raise service_unavailable(str(exc))
+        service_unavailable(str(exc))
 
 
 @router.post("/api/streams/{stream_id}/start", status_code=201)
@@ -67,9 +71,9 @@ async def start_stream(stream_id: str, request: StreamStartRequest):
     try:
         source_url = resolve_stream_source(request.source_url)
     except RuntimeError as exc:
-        raise bad_gateway(str(exc))
+        bad_gateway(str(exc))
     if not source_url:
-        raise bad_request("source_url is required for this stream")
+        bad_request("source_url is required for this stream")
 
     config = StreamConfig(stream_id=stream_id, source_url=source_url, loop=request.loop)
     handle = _start_orchestrator_stream(orchestrator, config)
@@ -87,7 +91,7 @@ async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool =
     orchestrator = _require_orchestrator()
 
     if not file.filename:
-        raise bad_request("No file provided")
+        bad_request("No file provided")
 
     upload_dir = BASE_DIR / "data" / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -98,7 +102,7 @@ async def upload_and_start_stream(stream_id: str, file: UploadFile, loop: bool =
         with open(local_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
     except Exception as exc:
-        raise wrap_internal("Failed to save file", exc)
+        wrap_internal("Failed to save file", exc)
 
     config = StreamConfig(stream_id=stream_id, source_url=str(local_path), loop=loop)
     handle = _start_orchestrator_stream(orchestrator, config)
@@ -114,14 +118,14 @@ async def stop_stream(stream_id: str):
     try:
         orchestrator.stop_stream(stream_id)
     except StreamNotFoundError as exc:
-        raise not_found(str(exc))
+        not_found(str(exc))
 
 
 @router.get("/api/streams")
 async def list_streams():
     orchestrator = _require_orchestrator()
     streams = [augment_stream_payload(stream) for stream in orchestrator.list_streams()]
-    return {"streams": streams, "max_workers": state.MAX_WORKERS}
+    return {"streams": streams, "max_workers": app_settings.max_workers}
 
 
 @router.get("/api/streams/{stream_id}/playback")
@@ -132,7 +136,7 @@ async def get_stream_playback(stream_id: str):
     try:
         orchestrator.get_stream(stream_id)
     except StreamNotFoundError as exc:
-        raise not_found(str(exc))
+        not_found(str(exc))
 
     return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id)}
 

@@ -1,16 +1,16 @@
 """S3 configuration."""
-import os
+from settings._env import get_int, get_str
 
 # S3 connection settings
-S3_ENDPOINT = os.getenv("S3_ENDPOINT", "https://hel1.your-objectstorage.com").strip()
-S3_REGION = os.getenv("S3_REGION", "hel1").strip()
-S3_BUCKET = os.getenv("S3_BUCKET", "bridgable").strip()
-S3_PREFIX = os.getenv("S3_PREFIX", "openar").strip()
+S3_ENDPOINT = get_str("S3_ENDPOINT", "https://hel1.your-objectstorage.com")
+S3_REGION = get_str("S3_REGION", "hel1")
+S3_BUCKET = get_str("S3_BUCKET", "bridgable")
+S3_PREFIX = get_str("S3_PREFIX", "openar")
 S3_ALLOWED_PREFIXES = ["fvessel", "detection", "image", "video"]
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
-S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()
-S3_PUBLIC_BASE_URL = os.getenv("S3_PUBLIC_BASE_URL", "").strip()
-S3_PRESIGN_EXPIRES = int(os.getenv("S3_PRESIGN_EXPIRES", "900"))
+S3_ACCESS_KEY = get_str("S3_ACCESS_KEY", "")
+S3_SECRET_KEY = get_str("S3_SECRET_KEY", "")
+S3_PUBLIC_BASE_URL = get_str("S3_PUBLIC_BASE_URL", "")
+S3_PRESIGN_EXPIRES = get_int("S3_PRESIGN_EXPIRES", 900)
 
 # S3 object keys (relative to S3_PREFIX)
 VIDEO_S3_KEY = "video/hurtigruta-demo.mp4"

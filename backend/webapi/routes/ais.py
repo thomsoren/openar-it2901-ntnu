@@ -18,6 +18,9 @@ from ais.logger import AISSessionLogger
 
 router = APIRouter()
 
+# API boundary note: route/SSE handlers intentionally catch broad exceptions
+# to emit controlled error payloads instead of tearing down request handling.
+
 
 class AISStreamRequest(BaseModel):
     coordinates: list[list[float]]
@@ -27,16 +30,19 @@ class AISStreamRequest(BaseModel):
 _SSE_HEADERS = {
     "Cache-Control": "no-cache",
     "X-Accel-Buffering": "no",
-    "Access-Control-Allow-Origin": "*",
 }
+
+
+def _format_sse(payload: object) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 async def _sse_generator(source: AsyncIterator) -> AsyncIterator[str]:
     try:
         async for feature in source:
-            yield f"data: {json.dumps(feature)}\n"
+            yield _format_sse(feature)
     except Exception as exc:
-        yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
+        yield _format_sse({"error": f"{type(exc).__name__}: {exc}"})
 
 
 def _sse_response(source: AsyncIterator) -> StreamingResponse:
@@ -46,9 +52,9 @@ def _sse_response(source: AsyncIterator) -> StreamingResponse:
 @router.get("/api/ais")
 async def get_ais_data():
     try:
-        return await ais_service.get_ais_data()
+        return ais_service.get_ais_data()
     except Exception as exc:
-        raise wrap_internal("Error fetching AIS data", exc)
+        wrap_internal("Error fetching AIS data", exc)
 
 
 @router.post("/api/ais/stream")
@@ -60,9 +66,9 @@ async def stream_ais_geojson(body: AISStreamRequest):
             async for feature in fetch_ais_stream_geojson(coordinates=body.coordinates):
                 if session_logger:
                     session_logger.log(feature)
-                yield f"data: {json.dumps(feature)}\n"
+                yield _format_sse(feature)
         except Exception as exc:
-            yield f"data: {json.dumps({'error': f'{type(exc).__name__}: {exc}'})}\n"
+            yield _format_sse({"error": f"{type(exc).__name__}: {exc}"})
         finally:
             if session_logger:
                 metadata = session_logger.end_session()
@@ -74,7 +80,7 @@ async def stream_ais_geojson(body: AISStreamRequest):
                         "total_logged": metadata.get("total_records", 0),
                         "records_written": metadata.get("total_file_size_bytes", 0),
                     }
-                    yield f"data: {json.dumps(warning)}\n"
+                    yield _format_sse(warning)
                 elif metadata.get("total_splits", 1) > 1:
                     info = {
                         "type": "info",
@@ -84,7 +90,7 @@ async def stream_ais_geojson(body: AISStreamRequest):
                         "total_file_size_bytes": metadata.get("total_file_size_bytes", 0),
                         "log_files": metadata.get("log_files", []),
                     }
-                    yield f"data: {json.dumps(info)}\n"
+                    yield _format_sse(info)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=_SSE_HEADERS)
 

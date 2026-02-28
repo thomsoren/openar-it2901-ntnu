@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 from cv.config import DEFAULT_FPS, INITIAL_RECONNECT_BACKOFF_SEC, MAX_RECONNECT_BACKOFF_SEC
-from cv.runtime import STREAM_MAX_CATCHUP_SKIP, STREAM_MAX_RECONNECT_ATTEMPTS
+from settings import cv_runtime_settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ def _is_remote_stream_url(source_url: str) -> bool:
 
 
 def _jittered_backoff(current: float, maximum: float) -> float:
+    # Jitter avoids synchronized reconnect storms when many streams drop together.
     return min(current * 2.0 * random.uniform(0.8, 1.2), maximum)
 
 
@@ -113,8 +114,8 @@ class DecodeThread:
     def _reader_loop(self, cap: cv2.VideoCapture) -> None:
         source_fps = self._fps
         allow_catchup_skips = not self._is_remote
-        max_catchup_skip = STREAM_MAX_CATCHUP_SKIP
-        max_reconnect_attempts = STREAM_MAX_RECONNECT_ATTEMPTS
+        max_catchup_skip = cv_runtime_settings.stream_max_catchup_skip
+        max_reconnect_attempts = cv_runtime_settings.stream_max_reconnect_attempts
 
         frame_idx = -1
         start_mono = time.monotonic()

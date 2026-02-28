@@ -10,7 +10,7 @@ import numpy as np
 from cv.decode_thread import DecodeThread
 from cv.detectors import RTDETRDetector
 from cv.publisher import DetectionPublisher
-from cv.runtime import INFERENCE_WAIT_NO_FRAME_SEC, INFERENCE_WAIT_NO_STREAM_SEC
+from settings import cv_runtime_settings
 
 logger = logging.getLogger(__name__)
 
@@ -152,13 +152,15 @@ class InferenceThread:
 
     def _loop(self) -> None:
         last_time = time.monotonic()
+        wait_no_stream_sec = cv_runtime_settings.inference_wait_no_stream_sec
+        wait_no_frame_sec = cv_runtime_settings.inference_wait_no_frame_sec
         logger.info("Inference thread loop started, waiting for active stream")
 
         while not self._stopped.is_set():
             active_id, decode_thread = self._get_active_stream()
 
             if active_id is None or decode_thread is None:
-                time.sleep(INFERENCE_WAIT_NO_STREAM_SEC)
+                time.sleep(wait_no_stream_sec)
                 continue
 
             self._handle_stream_switch(active_id)
@@ -166,7 +168,7 @@ class InferenceThread:
 
             pending = self._next_pending_frame(active_id, decode_thread)
             if pending is None:
-                time.sleep(INFERENCE_WAIT_NO_FRAME_SEC)
+                time.sleep(wait_no_frame_sec)
                 continue
             frame, frame_idx, ts = pending
 

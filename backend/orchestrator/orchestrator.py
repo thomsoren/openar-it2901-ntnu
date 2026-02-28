@@ -10,7 +10,7 @@ from cv.decode_thread import DecodeThread
 from cv.detectors import get_shared_detector
 from cv.ffmpeg import FFmpegDirectPublisher
 from cv.inference_thread import InferenceThread
-from cv.publisher import DetectionPublisher
+from cv.publisher import get_fusion_publisher
 from orchestrator.exceptions import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -54,7 +54,7 @@ class WorkerOrchestrator:
         """Lazily create and start the inference thread if not injected."""
         if self._inference_thread is None:
             detector = get_shared_detector()
-            publisher = DetectionPublisher()
+            publisher = get_fusion_publisher()
             self._inference_thread = InferenceThread(detector, publisher)
             self._inference_thread.start()
         return self._inference_thread
@@ -198,11 +198,13 @@ class WorkerOrchestrator:
             handle.terminate()
         logger.info("Worker orchestrator shutdown complete")
 
-    def _compute_timeout_candidates(
+    def _compute_timeout_candidates_locked(
         self,
         now: float,
         snapshot: list[tuple[str, StreamHandle]],
     ) -> tuple[list[str], list[str]]:
+        """Compute idle/no-viewer candidates while holding `self._lock`."""
+        assert self._lock.locked(), "_compute_timeout_candidates_locked requires self._lock"
         no_viewer_ids: list[str] = []
         if self._no_viewer_timeout_seconds > 0:
             for sid, handle in snapshot:
@@ -226,17 +228,14 @@ class WorkerOrchestrator:
             ]
         return idle_ids, no_viewer_ids
 
-    def _should_stop_idle(self, sid: str, now: float) -> bool:
-        with self._lock:
-            handle = self._workers.get(sid)
-            if not handle:
-                return False
-            return (now - handle.last_heartbeat) > self._idle_timeout_seconds
-
     def _stop_idle_streams(self, now: float, idle_ids: list[str]) -> None:
         for sid in idle_ids:
-            if not self._should_stop_idle(sid, now):
-                continue
+            with self._lock:
+                handle = self._workers.get(sid)
+                if not handle:
+                    continue
+                if (now - handle.last_heartbeat) <= self._idle_timeout_seconds:
+                    continue
             logger.info(
                 "Stopping idle stream '%s' (no heartbeat for %.0fs)",
                 sid, self._idle_timeout_seconds,
@@ -246,17 +245,12 @@ class WorkerOrchestrator:
             except StreamNotFoundError:
                 pass
 
-    def _should_stop_no_viewer(self, sid: str) -> bool:
-        with self._lock:
-            handle = self._workers.get(sid)
-            if not handle:
-                return False
-            return handle.viewer_count == 0
-
     def _stop_no_viewer_streams(self, no_viewer_ids: list[str]) -> None:
         for sid in no_viewer_ids:
-            if not self._should_stop_no_viewer(sid):
-                continue
+            with self._lock:
+                handle = self._workers.get(sid)
+                if not handle or handle.viewer_count != 0:
+                    continue
             logger.info(
                 "Stopping stream '%s' (no active viewers for %.0fs)",
                 sid,
@@ -268,10 +262,6 @@ class WorkerOrchestrator:
             except StreamNotFoundError:
                 pass
 
-    def _is_current_handle(self, stream_id: str, handle: StreamHandle) -> bool:
-        with self._lock:
-            return self._workers.get(stream_id) is handle
-
     def _handle_ffmpeg_health(self, stream_id: str, handle: StreamHandle) -> None:
         if handle.ffmpeg_process is None or handle.ffmpeg_process.poll() is None:
             return
@@ -282,26 +272,24 @@ class WorkerOrchestrator:
         )
         handle.ffmpeg_process = self._start_ffmpeg(handle.config)
 
-    def _schedule_decode_restart(self, stream_id: str, handle: StreamHandle, now: float) -> bool:
-        if handle.next_restart_at != 0.0:
-            return False
-        handle.next_restart_at = now + handle.backoff_seconds
-        logger.warning(
-            "Decode thread dead for stream '%s'. Scheduling restart in %.1fs",
-            stream_id,
-            handle.backoff_seconds,
-        )
-        return True
+    def _handle_decode_health(self, stream_id: str, handle: StreamHandle, now: float) -> None:
+        if handle.is_alive:
+            handle.next_restart_at = 0.0
+            handle.backoff_seconds = self._initial_backoff_seconds
+            return
 
-    def _retry_later(self, stream_id: str, handle: StreamHandle, now: float, exc: BaseException | None = None) -> None:
-        handle.next_restart_at = now + handle.backoff_seconds
-        handle.backoff_seconds = min(
-            handle.backoff_seconds * 2,
-            self._max_backoff_seconds,
-        )
-        logger.warning("Restart failed for stream '%s': %s", stream_id, exc)
+        if handle.next_restart_at == 0.0:
+            handle.next_restart_at = now + handle.backoff_seconds
+            logger.warning(
+                "Decode thread dead for stream '%s'. Scheduling restart in %.1fs",
+                stream_id,
+                handle.backoff_seconds,
+            )
+            return
 
-    def _attempt_decode_restart(self, stream_id: str, handle: StreamHandle, now: float) -> None:
+        if now < handle.next_restart_at:
+            return
+
         logger.warning("Restarting decode thread for stream '%s' now", stream_id)
         try:
             new_decode = DecodeThread(
@@ -315,7 +303,9 @@ class WorkerOrchestrator:
             logger.error("Permanent failure for stream '%s', will not retry: %s", stream_id, exc)
             return
         except Exception as exc:
-            self._retry_later(stream_id, handle, now, exc)
+            handle.next_restart_at = now + handle.backoff_seconds
+            handle.backoff_seconds = min(handle.backoff_seconds * 2, self._max_backoff_seconds)
+            logger.warning("Restart failed for stream '%s': %s", stream_id, exc)
             return
 
         with self._lock:
@@ -326,26 +316,12 @@ class WorkerOrchestrator:
             handle.decode_thread = new_decode
             handle.restart_count += 1
             handle.started_at = time.monotonic()
-            handle.backoff_seconds = min(
-                handle.backoff_seconds * 2,
-                self._max_backoff_seconds,
-            )
+            handle.backoff_seconds = min(handle.backoff_seconds * 2, self._max_backoff_seconds)
             handle.next_restart_at = 0.0
 
         if self._inference_thread:
             self._inference_thread.register_stream(stream_id, new_decode)
         logger.info("Restarted decode thread for stream '%s'", stream_id)
-
-    def _handle_decode_health(self, stream_id: str, handle: StreamHandle, now: float) -> None:
-        if handle.is_alive:
-            handle.next_restart_at = 0.0
-            handle.backoff_seconds = self._initial_backoff_seconds
-            return
-        if self._schedule_decode_restart(stream_id, handle, now):
-            return
-        if now < handle.next_restart_at:
-            return
-        self._attempt_decode_restart(stream_id, handle, now)
 
     def _monitor_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -354,13 +330,14 @@ class WorkerOrchestrator:
 
             with self._lock:
                 snapshot = list(self._workers.items())
-                idle_ids, no_viewer_ids = self._compute_timeout_candidates(now, snapshot)
+                idle_ids, no_viewer_ids = self._compute_timeout_candidates_locked(now, snapshot)
 
             self._stop_idle_streams(now, idle_ids)
             self._stop_no_viewer_streams(no_viewer_ids)
 
             for stream_id, handle in snapshot:
-                if not self._is_current_handle(stream_id, handle):
-                    continue
+                with self._lock:
+                    if self._workers.get(stream_id) is not handle:
+                        continue
                 self._handle_ffmpeg_health(stream_id, handle)
                 self._handle_decode_health(stream_id, handle, now)

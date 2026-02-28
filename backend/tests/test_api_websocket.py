@@ -43,7 +43,7 @@ class TestWebSocketValidation:
 
 class TestWebSocketViewerCounting:
     def test_connect_acquires_viewer(self, stream_app_client, redis_available):
-        import api
+        from webapi import state
 
         stream_app_client.post(
             "/api/streams/ws-vc/start",
@@ -51,7 +51,8 @@ class TestWebSocketViewerCounting:
         )
         # Connect WebSocket and check viewer_count increased
         with stream_app_client.websocket_connect("/api/detections/ws/ws-vc"):
-            handle = api.orchestrator.get_stream("ws-vc")
+            assert state.orchestrator is not None
+            handle = state.orchestrator.get_stream("ws-vc")
             assert handle.viewer_count >= 1
 
     def test_viewer_release_is_tested_at_orchestrator_level(self):

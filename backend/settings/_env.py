@@ -46,4 +46,7 @@ def get_float(name: str, default: float, minimum: float | None = None) -> float:
 
 
 def get_str(name: str, default: str) -> str:
-    return os.getenv(name, default)
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip()
