@@ -137,7 +137,6 @@ function PoiOverlay({
             display: "block",
             width: "100%",
             height: "100%",
-            "--obc-poi-controller-stack-top": "15%",
           } as React.CSSProperties
         }
       >
@@ -155,31 +154,43 @@ function PoiOverlay({
             <source src={videoSource} type="video/mp4" />
           </video>
         )}
-        <ObcPoiLayerStack
+        <div
           slot="stack"
-          selection-mode="multi"
-          className="poi-layer-stack"
-          style={{ transform: "none", height: "auto" }}
+          style={{
+            height: "100%",
+            display: "flex",
+            flexDirection: "column-reverse",
+          }}
         >
-          <ObcPoiLayer
-            overlap-mode="crossing"
-            label="Second Layer"
-            className="poi-layer"
-            is-selected
-            debug
+          <div style={{ height: "60%" }} />
+          <ObcPoiLayerStack
+            selection-mode="multi"
+            className="poi-layer-stack"
+            style={{
+              transform: "none",
+              height: "auto",
+            }}
           >
-            {/* Second layer content - can add different POIs here */}
-          </ObcPoiLayer>
-          <ObcPoiLayer
-            debug
-            ref={layerRefCallback}
-            overlap-mode="crossing"
-            label="Vessel Layer"
-            className="poi-layer"
-          >
-            {vesselElements}
-          </ObcPoiLayer>
-        </ObcPoiLayerStack>
+            <ObcPoiLayer
+              overlap-mode="crossing"
+              label="Second Layer"
+              className="poi-layer"
+              is-selected
+              debug
+            >
+              {/* Second layer content - can add different POIs here */}
+            </ObcPoiLayer>
+            <ObcPoiLayer
+              debug
+              ref={layerRefCallback}
+              overlap-mode="crossing"
+              label="Vessel Layer"
+              className="poi-layer"
+            >
+              {vesselElements}
+            </ObcPoiLayer>
+          </ObcPoiLayerStack>
+        </div>
       </ObcPoiController>
     </div>
   );

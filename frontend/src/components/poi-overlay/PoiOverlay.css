@@ -12,6 +12,7 @@
 
 .poi-layer-stack {
   gap: 8px;
+  align-self: flex-end;
 }
 
 .poi-layer {
