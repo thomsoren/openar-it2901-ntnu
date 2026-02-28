@@ -59,7 +59,7 @@ optuna:
   trial_epochs: 25
   trial_patience: 8
   # Use a subset of training data for faster HPO trials
-  trial_fraction: 0.5
+  trial_fraction: 0.2
   # Search space (log = log-uniform, uniform = linear, categorical = discrete choices)
   search_space:
     lr0: { low: 0.00001, high: 0.001, log: true }
