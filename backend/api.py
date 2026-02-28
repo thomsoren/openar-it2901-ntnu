@@ -52,6 +52,7 @@ from orchestrator import (
     StreamNotFoundError,
     WorkerOrchestrator,
 )
+from cv.idun.config import IDUN_ENABLED
 from storage import s3
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,11 @@ app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
+
+if IDUN_ENABLED:
+    from cv.idun.routes import router as idun_router
+    app.include_router(idun_router)
+    logger.info("IDUN remote inference enabled")
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "8"))
 STREAM_IDLE_TIMEOUT_SECONDS = float(os.getenv("STREAM_IDLE_TIMEOUT_SECONDS", "300"))
@@ -200,11 +206,27 @@ async def lifespan(_: FastAPI):
     init_db()
     app.state.redis_client = create_async_redis_client()
     protected_stream_ids = {DEFAULT_STREAM_ID} if PROTECT_DEFAULT_STREAM else set()
+
+    # When IDUN is enabled, use a no-op inference thread (no local GPU needed)
+    # and wire up the IDUN bridge for remote inference.
+    inference_thread = None
+    if IDUN_ENABLED:
+        from cv.idun.bridge import IdunBridge
+        from cv.idun.noop_inference import NoopInferenceThread
+        from cv.idun.routes import init_bridge
+        from cv.publisher import DetectionPublisher
+
+        noop = NoopInferenceThread()
+        inference_thread = noop
+        bridge = IdunBridge(noop, DetectionPublisher())
+        init_bridge(bridge)
+
     orchestrator = WorkerOrchestrator(
         max_workers=MAX_WORKERS,
         idle_timeout_seconds=STREAM_IDLE_TIMEOUT_SECONDS,
         no_viewer_timeout_seconds=STREAM_NO_VIEWER_TIMEOUT_SECONDS,
         protected_stream_ids=protected_stream_ids,
+        inference_thread=inference_thread,
     )
     orchestrator.start_monitoring()
 
