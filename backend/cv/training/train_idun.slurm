@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --account=ie-idi
+#SBATCH --account=studiegrupper-cogito
 #SBATCH --job-name="rtdetr-maritime"
 #SBATCH --time=24:00:00
 #SBATCH --partition=GPUQ
