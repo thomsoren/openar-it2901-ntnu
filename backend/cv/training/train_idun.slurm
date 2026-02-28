@@ -3,7 +3,7 @@
 #SBATCH --job-name="rtdetr-maritime"
 #SBATCH --time=24:00:00
 #SBATCH --partition=GPUQ
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:V100:1
 #SBATCH --mem=32GB
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
