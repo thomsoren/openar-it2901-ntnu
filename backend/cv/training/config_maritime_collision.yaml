@@ -8,7 +8,7 @@ model: rtdetr-l.pt
 
 # Training
 epochs: 250
-batch: -1
+batch: 16
 imgsz: 640
 device: "0"
 
