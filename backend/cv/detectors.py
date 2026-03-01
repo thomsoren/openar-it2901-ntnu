@@ -17,9 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class RTDETRDetector:
-    DEFAULT_MODEL = "best.pt"  # Custom trained on CombinedShips
-    # All classes are boats in our custom model, no filtering needed
-    BOAT_CLASSES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+    DEFAULT_MODEL = "maritime_collision/weights/best.pt"
+    BOAT_CLASSES = {0, 1, 2, 3, 4}  # obstacle, power-driven vessel, sailboat, seamark, seaplane
 
     def __init__(
         self,
