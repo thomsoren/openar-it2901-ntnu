@@ -40,6 +40,16 @@ const buildFovPolygon = (
   fovDegrees: number,
   steps = 32
 ): [number, number][] => {
+  if (fovDegrees >= 360) {
+    const ring: [number, number][] = [];
+    for (let i = 0; i <= steps; i++) {
+      const bearing = (360 * i) / steps;
+      const [lat, lon] = destinationPoint(shipLat, shipLon, bearing, offsetMeters);
+      ring.push([lon, lat]);
+    }
+    return ring;
+  }
+
   const half = fovDegrees / 2;
   const arc: [number, number][] = [];
   for (let i = 0; i <= steps; i++) {
