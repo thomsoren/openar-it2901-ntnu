@@ -23,17 +23,17 @@ amp: true
 patience: 15
 save_period: 25
 
-# LR schedule
-lr0: 0.0001
+# LR schedule (best params from Optuna trial 3, mAP50-95: 0.3718)
+lr0: 0.0002547
 lrf: 0.01
-cos_lr: true
-warmup_epochs: 3
+cos_lr: false
+warmup_epochs: 4
 warmup_momentum: 0.8
 
-# Regularization
-weight_decay: 0.0005
-label_smoothing: 0.05
-dropout: 0.0
+# Regularization (from Optuna trial 3)
+weight_decay: 0.00003104
+label_smoothing: 0.0598
+dropout: 0.0793
 
 # Disable built-in augmentation — images are pre-augmented offline
 mosaic: 0.0
@@ -53,7 +53,7 @@ resume: false
 
 # --- Optuna Hyperparameter Search ---
 optuna:
-  enabled: true
+  enabled: false
   n_trials: 15
   # Shorter runs for HPO trials — just enough to see relative ranking
   trial_epochs: 25
