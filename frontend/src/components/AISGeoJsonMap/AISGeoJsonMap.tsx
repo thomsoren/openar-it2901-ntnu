@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import type { Map, Marker, Polygon, LeafletEvent } from "leaflet";
-import type * as LeafletType from "leaflet";
+import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./AISGeoJsonMap.css";
 import { useObcPalette } from "../../hooks/useOBCTheme";
-import getTilemapURL from "./AISGeoJsonMapTilemap";
+import { getMapLibreStyle } from "./AISGeoJsonMapTilemap";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { AISData } from "../../types/aisData";
@@ -23,34 +23,11 @@ interface AISGeoJsonMapProps {
   ) => void;
 }
 
-// Convert GeoJSON [lon, lat] polygon to Leaflet [lat, lon] format for rendering.
-function toLeafletLatLngs(geoJsonCoords: [number, number][]): [number, number][] {
-  return geoJsonCoords.map(([lon, lat]) => [lat, lon]);
-}
-
-/**  Leaflet CDN loader  **/
-
-type LeafletLib = typeof LeafletType;
-let leafletPromise: Promise<LeafletLib> | null = null;
-
-async function loadLeaflet(): Promise<LeafletLib> {
-  if (leafletPromise) return leafletPromise;
-  leafletPromise = new Promise((resolve, reject) => {
-    if ((window as Window & { L?: LeafletLib }).L) {
-      resolve((window as Window & { L: LeafletLib }).L);
-      return;
-    }
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
-    document.head.appendChild(link);
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
-    script.onload = () => resolve((window as Window & { L: LeafletLib }).L);
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-  return leafletPromise;
+/** Create an HTML element for a draggable marker */
+function createMarkerElement(className: string): HTMLDivElement {
+  const element = document.createElement("div");
+  element.className = className;
+  return element;
 }
 
 export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
@@ -63,28 +40,27 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   onChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<Map | null>(null);
-  const wedgeRef = useRef<Polygon | null>(null);
-  const originRef = useRef<Marker | null>(null);
-  const rangeRef = useRef<Marker | null>(null);
-  const vesselMarkersRef = useRef<Marker[]>([]);
-  const tileLayerRef = useRef<LeafletType.TileLayer | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const originRef = useRef<maplibregl.Marker | null>(null);
+  const rangeRef = useRef<maplibregl.Marker | null>(null);
+  const vesselMarkersRef = useRef<maplibregl.Marker[]>([]);
+
   const theme = useObcPalette();
   const [followMode, setFollowMode] = useState(true);
   const [selectedVessel, setSelectedVessel] = useState<AISData | null>(null);
 
+  // Mutable refs so drag handlers always see latest props without re-binding
+  const propsRef = useRef({ shipLat, shipLon, heading, offsetMeters, fovDegrees });
+  propsRef.current = { shipLat, shipLon, heading, offsetMeters, fovDegrees };
+  const addWedgeLayersRef = useRef<(() => void) | null>(null);
+
   const centerMap = useCallback(() => {
     if (!mapRef.current) return;
-    mapRef.current.panTo([shipLat, shipLon], {
-      animate: true,
-      // Travel time from current to new position (in seconds).
-      duration: 0.5,
-    });
+    mapRef.current.panTo([shipLon, shipLat], { duration: 500 });
   }, [shipLat, shipLon]);
 
   const toggleFollowMode = () => {
     if (!followMode) {
-      // Snap back to the vessel before enabling follow mode
       centerMap();
     }
     setFollowMode((prev) => !prev);
@@ -92,185 +68,232 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
   // Initialize map on first render
   useEffect(() => {
-    let alive = true;
-    loadLeaflet().then((L) => {
-      if (!alive || !containerRef.current || mapRef.current) return;
+    if (!containerRef.current || mapRef.current) return;
 
-      const map = L.map(containerRef.current, { center: [shipLat, shipLon], zoom: 14 });
-
-      const tileLayer = L.tileLayer(getTilemapURL(theme), {
-        maxZoom: 19,
-      }).addTo(map);
-      tileLayerRef.current = tileLayer;
-
-      // Build wedge polygon
-      wedgeRef.current = L.polygon(
-        toLeafletLatLngs(buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees)),
-        {
-          color: "#00d4ff",
-          fillColor: "#00d4ff",
-          fillOpacity: 0.1,
-          weight: 1.5,
-          dashArray: "6 4",
-        }
-      ).addTo(map);
-
-      // Origin handle
-      const originIcon = L.divIcon({
-        html: `<div class="geojson-map-origin-icon"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-        className: "",
-      });
-      const originMarker = L.marker([shipLat, shipLon], {
-        icon: originIcon,
-        draggable: true,
-        zIndexOffset: 100,
-      })
-        .addTo(map)
-        .bindTooltip("Drag to move origin", { direction: "top", offset: [0, -10] });
-
-      originMarker.on("drag", (e: LeafletEvent) => {
-        const { lat, lng } = (e.target as Marker).getLatLng();
-        wedgeRef.current?.setLatLngs(
-          toLeafletLatLngs(buildFovPolygon(lat, lng, heading, offsetMeters, fovDegrees))
-        );
-        const [rLat, rLon] = destinationPoint(lat, lng, heading, offsetMeters);
-        rangeRef.current?.setLatLng([rLat, rLon]);
-      });
-      originMarker.on("dragend", (e: LeafletEvent) => {
-        const { lat, lng } = (e.target as Marker).getLatLng();
-        onChange?.({ shipLat: lat, shipLon: lng });
-      });
-      originRef.current = originMarker;
-
-      // Range / heading handle
-      const [newLat, newLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
-      const rangeIcon = L.divIcon({
-        html: `<div class="geojson-map-range-icon"></div>`,
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
-        className: "",
-      });
-      const rangeMarker = L.marker([newLat, newLon], {
-        icon: rangeIcon,
-        draggable: true,
-        zIndexOffset: 100,
-      })
-        .addTo(map)
-        .bindTooltip("Drag to set heading & range", { direction: "top", offset: [0, -10] });
-
-      rangeMarker.on("drag", (e: LeafletEvent) => {
-        const { lat, lng } = (e.target as Marker).getLatLng();
-        const origin = originRef.current?.getLatLng();
-        if (!origin) return;
-        wedgeRef.current?.setLatLngs(
-          toLeafletLatLngs(
-            buildFovPolygon(
-              origin.lat,
-              origin.lng,
-              headingTo(origin.lat, origin.lng, lat, lng),
-              distanceTo(origin.lat, origin.lng, lat, lng),
-              fovDegrees
-            )
-          )
-        );
-      });
-      rangeMarker.on("dragend", (e: LeafletEvent) => {
-        const { lat, lng } = (e.target as Marker).getLatLng();
-        const origin = originRef.current?.getLatLng();
-        if (!origin) return;
-        onChange?.({
-          heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)),
-          offsetMeters: Math.round(distanceTo(origin.lat, origin.lng, lat, lng)),
-        });
-      });
-      rangeRef.current = rangeMarker;
-
-      // Detect panning and disable follow mode
-      map.on("drag", () => {
-        setFollowMode(false);
-      });
-      mapRef.current = map;
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: getMapLibreStyle(theme),
+      center: [shipLon, shipLat],
+      zoom: 14,
     });
 
-    // Cleanup on unmount
-    return () => {
-      alive = false;
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
+    const addWedgeLayers = () => {
+      // Only proceed if style is loaded
+      if (!map.isStyleLoaded()) return;
+
+      // Remove existing layers/source if present
+      if (map.getLayer("fov-wedge-outline")) map.removeLayer("fov-wedge-outline");
+      if (map.getLayer("fov-wedge-fill")) map.removeLayer("fov-wedge-fill");
+      if (map.getSource("fov-wedge")) map.removeSource("fov-wedge");
+
+      const { shipLat, shipLon, heading, offsetMeters, fovDegrees } = propsRef.current;
+
+      // Add GeoJSON source with polygon geometry
+      map.addSource("fov-wedge", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees)],
+          },
+        },
+      });
+
+      // Find the first symbol layer in the style to ensure our layers are added below labels/icons
+      const layers = map.getStyle().layers;
+      const firstSymbolLayerId = layers?.find((l) => l.type === "symbol")?.id;
+
+      // Add outline first
+      map.addLayer(
+        {
+          id: "fov-wedge-outline",
+          type: "line",
+          source: "fov-wedge",
+          paint: {
+            "line-color": "#00d4ff",
+            "line-width": 3,
+            "line-dasharray": [6, 4],
+          },
+        },
+        firstSymbolLayerId
+      );
+
+      // Add fill last so it renders above the outline and any opaque tile layers
+      map.addLayer(
+        {
+          id: "fov-wedge-fill",
+          type: "fill",
+          source: "fov-wedge",
+          paint: {
+            "fill-color": "#00d4ff",
+            "fill-opacity": 0.15,
+          },
+        },
+        firstSymbolLayerId
+      );
+    };
+    addWedgeLayersRef.current = addWedgeLayers;
+
+    map.on("load", () => {
+      addWedgeLayers();
+    });
+
+    // Origin draggable marker
+    const originEl = createMarkerElement("geojson-map-origin-icon");
+    const originMarker = new maplibregl.Marker({ element: originEl, draggable: true })
+      .setLngLat([shipLon, shipLat])
+      .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to move origin"))
+      .addTo(map);
+
+    originMarker.on("drag", () => {
+      const { lng, lat } = originMarker.getLngLat();
+      const { heading, offsetMeters, fovDegrees } = propsRef.current;
+      const src = map.getSource("fov-wedge") as maplibregl.GeoJSONSource | undefined;
+      if (src) {
+        src.setData({
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [buildFovPolygon(lat, lng, heading, offsetMeters, fovDegrees)],
+          },
+        });
       }
+      const [rLat, rLon] = destinationPoint(lat, lng, heading, offsetMeters);
+      rangeRef.current?.setLngLat([rLon, rLat]);
+    });
+    originMarker.on("dragend", () => {
+      const { lng, lat } = originMarker.getLngLat();
+      onChange?.({ shipLat: lat, shipLon: lng });
+    });
+    originRef.current = originMarker;
+
+    // Range / heading draggable marker
+    const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
+    const rangeEl = createMarkerElement("geojson-map-range-icon");
+    const rangeMarker = new maplibregl.Marker({ element: rangeEl, draggable: true })
+      .setLngLat([rLon, rLat])
+      .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to set heading & range"))
+      .addTo(map);
+
+    rangeMarker.on("drag", () => {
+      const { lng, lat } = rangeMarker.getLngLat();
+      const origin = originRef.current?.getLngLat();
+      if (!origin) return;
+      const { fovDegrees } = propsRef.current;
+      const src = map.getSource("fov-wedge") as maplibregl.GeoJSONSource | undefined;
+      if (src) {
+        src.setData({
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              buildFovPolygon(
+                origin.lat,
+                origin.lng,
+                headingTo(origin.lat, origin.lng, lat, lng),
+                distanceTo(origin.lat, origin.lng, lat, lng),
+                fovDegrees
+              ),
+            ],
+          },
+        });
+      }
+    });
+    rangeMarker.on("dragend", () => {
+      const { lng, lat } = rangeMarker.getLngLat();
+      const origin = originRef.current?.getLngLat();
+      if (!origin) return;
+      onChange?.({
+        heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)),
+        offsetMeters: Math.round(distanceTo(origin.lat, origin.lng, lat, lng)),
+      });
+    });
+    rangeRef.current = rangeMarker;
+
+    // Detect user panning and disable follow mode
+    map.on("dragstart", () => setFollowMode(false));
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync layers when props change from the input fields
+  // Sync wedge + markers when props change
   useEffect(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
 
-    wedgeRef.current?.setLatLngs(
-      toLeafletLatLngs(buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees))
-    );
-    originRef.current?.setLatLng([shipLat, shipLon]);
+    const src = map.getSource("fov-wedge") as maplibregl.GeoJSONSource | undefined;
+    if (src) {
+      src.setData({
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "Polygon",
+          coordinates: [buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees)],
+        },
+      });
+    } else if (map.isStyleLoaded()) {
+      // Only try to create layers if style is ready
+      addWedgeLayersRef.current?.();
+    }
+
+    originRef.current?.setLngLat([shipLon, shipLat]);
     const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
-    rangeRef.current?.setLatLng([rLat, rLon]);
+    rangeRef.current?.setLngLat([rLon, rLat]);
 
     if (followMode) centerMap();
   }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap, followMode]);
 
   // Sync vessel markers when vessels data changes
   useEffect(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
 
-    // Remove all existing vessel markers
+    // Remove existing vessel markers
     vesselMarkersRef.current.forEach((marker) => marker.remove());
     vesselMarkersRef.current = [];
 
-    // Add new vessel markers
-    loadLeaflet().then((L) => {
-      if (!mapRef.current || !vessels) return;
+    if (!vessels) return;
 
-      vessels.forEach((vessel) => {
-        if (!vessel.latitude || !vessel.longitude) return;
+    vessels.forEach((vessel) => {
+      if (!vessel.latitude || !vessel.longitude) return;
 
-        const vesselMarker = L.marker([vessel.latitude, vessel.longitude], {
-          icon: L.divIcon({
-            html: `<div class="geojson-map-vessel-icon"></div>`,
-            iconSize: [10, 10],
-            iconAnchor: [5, 5],
-            className: "",
-          }),
-          interactive: true,
-        })
-          .addTo(mapRef.current!)
-          .bindTooltip(`MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`, {
-            direction: "top",
-            offset: [0, -10],
-          })
-          .on("click", () => {
-            setSelectedVessel(vessel);
-            mapRef.current?.panTo([vessel.latitude!, vessel.longitude!], {
-              animate: true,
-              duration: 0.5,
-            });
-          });
-        vesselMarkersRef.current.push(vesselMarker);
+      const el = createMarkerElement("geojson-map-vessel-icon");
+
+      const popup = new maplibregl.Popup({ offset: 10 }).setText(
+        `MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`
+      );
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([vessel.longitude, vessel.latitude])
+        .setPopup(popup)
+        .addTo(map);
+
+      el.addEventListener("click", () => {
+        setSelectedVessel(vessel);
+        map.panTo([vessel.longitude!, vessel.latitude!], { duration: 500 });
       });
+
+      vesselMarkersRef.current.push(marker);
     });
   }, [vessels]);
 
-  // Refresh tile layer when theme changes
+  // Update map style on theme change, re-adding wedge layers after style loads
   useEffect(() => {
-    loadLeaflet().then((L) => {
-      if (!mapRef.current) return;
-      const newUrl = getTilemapURL(theme);
-      if (tileLayerRef.current) {
-        tileLayerRef.current.setUrl(newUrl);
-        return;
-      }
-
-      tileLayerRef.current = L.tileLayer(newUrl, { maxZoom: 19 }).addTo(mapRef.current);
+    const map = mapRef.current;
+    if (!map) return;
+    map.setStyle(getMapLibreStyle(theme));
+    map.once("styledata", () => {
+      addWedgeLayersRef.current?.();
     });
   }, [theme]);
 

@@ -9,19 +9,6 @@
   overflow: hidden;
 }
 
-/* Trap z-index layers within leaflet-container to avoid clipping */
-.geojson-map-container .leaflet-container {
-  isolation: isolate;
-}
-
-.geojson-map-container .leaflet-interactive {
-  cursor: grab !important;
-}
-
-.geojson-map-container .leaflet-interactive:active {
-  cursor: grabbing !important;
-}
-
 .geojson-map-header {
   padding: 8px 14px;
   background: #0d1526;
