@@ -31,31 +31,44 @@
 }
 
 .geojson-map-range-icon {
-  width: 12px;
-  height: 12px;
-  background: #facc15;
-  border: 2px solid #0a0e1a;
   cursor: pointer;
-  transform: rotate(45deg);
-  box-shadow: 0 0 6px #facc1588;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d6efd;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  box-shadow: 0 2px 8px rgba(13, 110, 253, 0.4);
+}
+
+.geojson-map-container obi-placeholder-device-static {
+  width: 20px;
+  height: 20px;
+  color: white;
+  filter: brightness(0) invert(1);
 }
 
 .geojson-map-origin-icon {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #00d4ff;
-  border: 2px solid #0a0e1a;
   cursor: pointer;
-  box-shadow: 0 0 6px #00d4ff88;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d6efd;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  box-shadow: 0 2px 8px rgba(13, 110, 253, 0.4);
 }
 
 .geojson-map-vessel-icon {
-  width: 10px;
-  height: 10px;
-  background: #ff5722;
-  border: 2px solid #0a0e1a;
-  border-radius: 50%;
-  box-shadow: 0 0 6px #ff572288;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geojson-map-vessel-icon [class*="obi-vessel-type"] {
+  width: 28px;
+  height: 28px;
 }

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./AISGeoJsonMap.css";
@@ -9,6 +10,8 @@ import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcompo
 import { AISData } from "../../types/aisData";
 import { destinationPoint, headingTo, distanceTo, buildFovPolygon } from "../../utils/geometryMath";
 import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
+import getVesselIcon from "../../utils/vesselIconMapper";
+import { ObiPlaceholderDeviceStatic } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder-device-static";
 
 interface AISGeoJsonMapProps {
   shipLat: number;
@@ -24,9 +27,25 @@ interface AISGeoJsonMapProps {
 }
 
 /** Create an HTML element for a draggable marker */
-function createMarkerElement(className: string): HTMLDivElement {
+function createMarkerElement(
+  className: string,
+  vessel?: AISData,
+  icon?: React.ReactElement
+): HTMLDivElement {
   const element = document.createElement("div");
   element.className = className;
+
+  if (icon) {
+    // Render provided icon
+    const root = createRoot(element);
+    root.render(icon);
+  } else if (vessel) {
+    // Add OpenBridge AIS target icon by rendering the appropriate React component
+    const root = createRoot(element);
+    const vesselIcon = getVesselIcon(vessel.shipType);
+    root.render(vesselIcon);
+  }
+
   return element;
 }
 
@@ -112,9 +131,8 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           type: "line",
           source: "fov-wedge",
           paint: {
-            "line-color": "#00d4ff",
+            "line-color": "#0d6efd",
             "line-width": 3,
-            "line-dasharray": [6, 4],
           },
         },
         firstSymbolLayerId
@@ -127,7 +145,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           type: "fill",
           source: "fov-wedge",
           paint: {
-            "fill-color": "#00d4ff",
+            "fill-color": "#7dadf5",
             "fill-opacity": 0.15,
           },
         },
@@ -141,7 +159,11 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     });
 
     // Origin draggable marker
-    const originEl = createMarkerElement("geojson-map-origin-icon");
+    const originEl = createMarkerElement(
+      "geojson-map-origin-icon",
+      undefined,
+      <ObiPlaceholderDeviceStatic />
+    );
     const originMarker = new maplibregl.Marker({ element: originEl, draggable: true })
       .setLngLat([shipLon, shipLat])
       .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to move origin"))
@@ -172,7 +194,11 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
     // Range / heading draggable marker
     const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
-    const rangeEl = createMarkerElement("geojson-map-range-icon");
+    const rangeEl = createMarkerElement(
+      "geojson-map-range-icon",
+      undefined,
+      <ObiPlaceholderDeviceStatic />
+    );
     const rangeMarker = new maplibregl.Marker({ element: rangeEl, draggable: true })
       .setLngLat([rLon, rLat])
       .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to set heading & range"))
@@ -267,14 +293,19 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     vessels.forEach((vessel) => {
       if (!vessel.latitude || !vessel.longitude) return;
 
-      const el = createMarkerElement("geojson-map-vessel-icon");
+      const el = createMarkerElement("geojson-map-vessel-icon", vessel);
 
       const popup = new maplibregl.Popup({ offset: 10 }).setText(
         `MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`
       );
 
-      const marker = new maplibregl.Marker({ element: el })
+      const marker = new maplibregl.Marker({
+        element: el,
+        rotationAlignment: "map",
+        pitchAlignment: "map",
+      })
         .setLngLat([vessel.longitude, vessel.latitude])
+        .setRotation(vessel.courseOverGround || 0)
         .setPopup(popup)
         .addTo(map);
 
