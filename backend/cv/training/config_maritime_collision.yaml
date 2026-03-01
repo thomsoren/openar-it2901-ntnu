@@ -58,9 +58,9 @@ resume: false
 # --- Optuna Hyperparameter Search ---
 optuna:
   enabled: true
-  n_trials: 15
+  n_trials: 40
   # Shorter runs for HPO trials — just enough to see relative ranking
-  trial_epochs: 25
+  trial_epochs: 20
   trial_patience: 8
   # Use a subset of training data for faster HPO trials
   trial_fraction: 0.2
