@@ -2,6 +2,7 @@ import json
 import logging
 import shutil
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
@@ -24,6 +25,63 @@ TRAIN_KEYS = [
     "mosaic", "close_mosaic", "mixup", "degrees", "translate", "scale",
     "fliplr", "flipud", "hsv_h", "hsv_s", "hsv_v",
 ]
+
+
+@contextmanager
+def hide_augmented_files(data_yaml):
+    """Temporarily move _aug_ images and labels out of training directories.
+
+    Ultralytics reads directly from the directories listed in the dataset YAML,
+    so the only reliable way to exclude files is to move them aside.  On exit
+    (including exceptions) the files are moved back.
+    """
+    with open(data_yaml) as f:
+        ds = yaml.safe_load(f)
+
+    base = Path(ds["path"])
+    train_images = base / ds["train"]  # e.g. images/train
+    train_labels = base / ds["train"].replace("images", "labels")  # labels/train
+
+    holding_dir = base / "_aug_holding"
+    holding_images = holding_dir / "images"
+    holding_labels = holding_dir / "labels"
+
+    aug_files = sorted(train_images.glob("*_aug_*"))
+    if not aug_files:
+        logger.info("No augmented files found — nothing to hide")
+        yield
+        return
+
+    holding_images.mkdir(parents=True, exist_ok=True)
+    holding_labels.mkdir(parents=True, exist_ok=True)
+
+    moved = []
+    for img in aug_files:
+        # Move image
+        dest_img = holding_images / img.name
+        img.rename(dest_img)
+
+        # Move matching label (.txt with same stem)
+        lbl = train_labels / f"{img.stem}.txt"
+        dest_lbl = holding_labels / lbl.name
+        if lbl.exists():
+            lbl.rename(dest_lbl)
+            moved.append((dest_img, img, dest_lbl, lbl))
+        else:
+            moved.append((dest_img, img, None, None))
+
+    logger.info("Hid %d augmented files → %s", len(moved), holding_dir)
+
+    try:
+        yield
+    finally:
+        # Restore all files
+        for dest_img, orig_img, dest_lbl, orig_lbl in moved:
+            dest_img.rename(orig_img)
+            if dest_lbl is not None and dest_lbl.exists():
+                dest_lbl.rename(orig_lbl)
+        shutil.rmtree(holding_dir, ignore_errors=True)
+        logger.info("Restored %d augmented files", len(moved))
 
 
 def resolve_data_yaml(config, config_path):
@@ -196,17 +254,26 @@ def main():
         evaluate_on_test(model, data_yaml, config)
         return
 
-    # Phase 1: Optuna HPO (if enabled)
-    best_params = None
-    optuna_cfg = config.get("optuna", {})
-    if optuna_cfg.get("enabled", False):
-        best_params = run_optuna_search(config, data_yaml)
+    exclude_aug = config.get("exclude_augmented", False)
 
-    # Phase 2: Final training with best params
-    model, _ = run_final_training(config, data_yaml, best_params)
+    def _run_pipeline():
+        # Phase 1: Optuna HPO (if enabled)
+        best_params = None
+        optuna_cfg = config.get("optuna", {})
+        if optuna_cfg.get("enabled", False):
+            best_params = run_optuna_search(config, data_yaml)
 
-    # Phase 3: Evaluate on test set
-    evaluate_on_test(model, data_yaml, config)
+        # Phase 2: Final training with best params
+        model, _ = run_final_training(config, data_yaml, best_params)
+
+        # Phase 3: Evaluate on test set
+        evaluate_on_test(model, data_yaml, config)
+
+    if exclude_aug:
+        with hide_augmented_files(data_yaml):
+            _run_pipeline()
+    else:
+        _run_pipeline()
 
 
 if __name__ == "__main__":

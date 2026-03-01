@@ -47,13 +47,17 @@ hsv_h: 0.0
 hsv_s: 0.0
 hsv_v: 0.0
 
+# Exclude augmented images (*_aug_*) from training
+# When true, augmented files are temporarily moved aside during training
+exclude_augmented: true
+
 # Resume from last checkpoint if job was interrupted
 # Set to path of last.pt to resume, or false for fresh start
 resume: false
 
 # --- Optuna Hyperparameter Search ---
 optuna:
-  enabled: false
+  enabled: true
   n_trials: 15
   # Shorter runs for HPO trials — just enough to see relative ranking
   trial_epochs: 25
