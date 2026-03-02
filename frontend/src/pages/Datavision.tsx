@@ -9,6 +9,7 @@ import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import VideoPlayer from "../components/video-player/VideoPlayer";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useARControls } from "../components/ar-control-panel/useARControls";
@@ -87,6 +88,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     url: wsUrl,
     enabled: wsEnabled,
   });
+  const interpolatedVessels = useInterpolatedDetections(vessels);
 
   const videoTransform = useVideoTransform(
     videoRef,
@@ -222,7 +224,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
 
                 {arControls.detectionVisible && (
                   <PoiOverlay
-                    vessels={vessels}
+                    vessels={interpolatedVessels}
                     videoTransform={videoTransform}
                     detectionFrame={
                       videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null

@@ -29,7 +29,9 @@ class RTDETRDetector:
     ):
         self.confidence = confidence
         self.filter_boats = filter_boats
+        self.device = "cpu"
         self._use_half = False
+        self._logged_runtime_device = False
         self.model = self._load_model(model_path)
 
     def _select_device(self) -> str:
@@ -44,6 +46,7 @@ class RTDETRDetector:
 
     def _load_model(self, model_path: str | None) -> RTDETR:
         device = self._select_device()
+        self.device = device
         self._use_half = device == "cuda"
         logger.info("PyTorch device: %s", device)
 
@@ -71,6 +74,7 @@ class RTDETRDetector:
         if track:
             results = self.model.track(
                 frame,
+                device=self.device,
                 conf=self.confidence,
                 iou=IOU_THRESHOLD,
                 imgsz=MODEL_INPUT_SIZE,
@@ -83,6 +87,7 @@ class RTDETRDetector:
         else:
             results = self.model(
                 frame,
+                device=self.device,
                 conf=self.confidence,
                 iou=IOU_THRESHOLD,
                 imgsz=MODEL_INPUT_SIZE,
@@ -95,6 +100,9 @@ class RTDETRDetector:
         boxes = results.boxes
         if boxes is None or len(boxes) == 0:
             return detections
+        if not self._logged_runtime_device and boxes.data is not None:
+            logger.info("Detection tensors are on device: %s", boxes.data.device)
+            self._logged_runtime_device = True
 
         # Batch GPU→CPU transfer: one PCIe round-trip instead of per-box
         xyxy_all = boxes.xyxy.cpu().numpy()
