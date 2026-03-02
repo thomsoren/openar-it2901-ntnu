@@ -8,7 +8,13 @@ import { getMapLibreStyle } from "./AISGeoJsonMapTilemap";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { AISData } from "../../types/aisData";
-import { destinationPoint, headingTo, distanceTo, buildFovPolygon } from "../../utils/geometryMath";
+import {
+  destinationPoint,
+  headingTo,
+  distanceTo,
+  buildFovPolygon,
+  buildRectPolygon,
+} from "../../utils/geometryMath";
 import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
 import getVesselIcon from "../../utils/vesselIconMapper";
 import { ObiPlaceholderDeviceStatic } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder-device-static";
@@ -19,6 +25,9 @@ interface AISGeoJsonMapProps {
   heading: number;
   offsetMeters: number;
   fovDegrees: number;
+  shapeMode: "wedge" | "rect";
+  rectLength: number;
+  rectWidth: number;
   vessels?: AISData[];
   // Called when the user drags adjust-anchor on the map
   onChange?: (
@@ -28,6 +37,9 @@ interface AISGeoJsonMapProps {
       heading: number;
       offsetMeters: number;
       fovDegrees: number;
+      shapeMode: "wedge" | "rect";
+      rectLength: number;
+      rectWidth: number;
     }>
   ) => void;
 }
@@ -61,6 +73,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   heading,
   offsetMeters,
   fovDegrees,
+  shapeMode,
+  rectLength,
+  rectWidth,
   vessels,
   onChange,
 }) => {
@@ -80,6 +95,10 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   // Mutable refs so drag handlers always see latest props without re-binding
   const propsRef = useRef({ shipLat, shipLon, heading, offsetMeters, fovDegrees });
   propsRef.current = { shipLat, shipLon, heading, offsetMeters, fovDegrees };
+  const shapeModeRef = useRef(shapeMode);
+  shapeModeRef.current = shapeMode;
+  const rectDimsRef = useRef({ length: rectLength, width: rectWidth });
+  rectDimsRef.current = { length: rectLength, width: rectWidth };
   const addWedgeLayersRef = useRef<(() => void) | null>(null);
 
   const centerMap = useCallback(() => {
@@ -127,6 +146,11 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       if (map.getSource("fov-wedge")) map.removeSource("fov-wedge");
 
       const { shipLat, shipLon, heading, offsetMeters, fovDegrees } = propsRef.current;
+      const { length: rLen, width: rWid } = rectDimsRef.current;
+      const coords =
+        shapeModeRef.current === "rect"
+          ? buildRectPolygon(shipLat, shipLon, heading, rLen, rWid)
+          : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
 
       // Add GeoJSON source with polygon geometry
       map.addSource("fov-wedge", {
@@ -136,7 +160,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           properties: {},
           geometry: {
             type: "Polygon",
-            coordinates: [buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees)],
+            coordinates: [coords],
           },
         },
       });
@@ -181,16 +205,28 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       originLon: number,
       headingDegrees: number,
       rangeMeters: number,
-      fov: number
+      fov: number,
+      overrideRectLen?: number,
+      overrideRectWid?: number
     ) => {
       const src = map.getSource("fov-wedge") as maplibregl.GeoJSONSource | undefined;
       if (!src) return;
+      const coords =
+        shapeModeRef.current === "rect"
+          ? buildRectPolygon(
+              originLat,
+              originLon,
+              headingDegrees,
+              overrideRectLen ?? rectDimsRef.current.length,
+              overrideRectWid ?? rectDimsRef.current.width
+            )
+          : buildFovPolygon(originLat, originLon, headingDegrees, rangeMeters, fov);
       src.setData({
         type: "Feature",
         properties: {},
         geometry: {
           type: "Polygon",
-          coordinates: [buildFovPolygon(originLat, originLon, headingDegrees, rangeMeters, fov)],
+          coordinates: [coords],
         },
       });
     };
@@ -200,32 +236,62 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       originLon: number,
       headingDegrees: number,
       rangeMeters: number,
-      fov: number
+      fov: number,
+      overrideRectLen?: number,
+      overrideRectWid?: number
     ) => {
-      const [rangeLat, rangeLon] = destinationPoint(
-        originLat,
-        originLon,
-        headingDegrees,
-        rangeMeters
-      );
-      rangeRef.current?.setLngLat([rangeLon, rangeLat]);
+      if (shapeModeRef.current === "rect") {
+        const rLen = overrideRectLen ?? rectDimsRef.current.length;
+        const rWid = overrideRectWid ?? rectDimsRef.current.width;
 
-      const headingHandleDistance = Math.max(150, Math.round(rangeMeters * 0.7));
-      const [headingLat, headingLon] = destinationPoint(
-        originLat,
-        originLon,
-        headingDegrees,
-        headingHandleDistance
-      );
-      headingRef.current?.setLngLat([headingLon, headingLat]);
+        // Forward anchor at front edge center (half-length ahead of origin)
+        const [fwdLat, fwdLon] = destinationPoint(originLat, originLon, headingDegrees, rLen / 2);
+        rangeRef.current?.setLngLat([fwdLon, fwdLat]);
 
-      const [fovLat, fovLon] = destinationPoint(
-        originLat,
-        originLon,
-        headingDegrees + fov / 2,
-        rangeMeters
-      );
-      fovRef.current?.setLngLat([fovLon, fovLat]);
+        // Heading handle
+        const headingHandleDist = Math.max(150, Math.round((rLen / 2) * 0.7));
+        const [hLat, hLon] = destinationPoint(
+          originLat,
+          originLon,
+          headingDegrees,
+          headingHandleDist
+        );
+        headingRef.current?.setLngLat([hLon, hLat]);
+
+        // Side anchor at right edge midpoint
+        const [sideLat, sideLon] = destinationPoint(
+          originLat,
+          originLon,
+          headingDegrees + 90,
+          rWid / 2
+        );
+        fovRef.current?.setLngLat([sideLon, sideLat]);
+      } else {
+        const [rangeLat, rangeLon] = destinationPoint(
+          originLat,
+          originLon,
+          headingDegrees,
+          rangeMeters
+        );
+        rangeRef.current?.setLngLat([rangeLon, rangeLat]);
+
+        const headingHandleDistance = Math.max(150, Math.round(rangeMeters * 0.7));
+        const [headingLat, headingLon] = destinationPoint(
+          originLat,
+          originLon,
+          headingDegrees,
+          headingHandleDistance
+        );
+        headingRef.current?.setLngLat([headingLon, headingLat]);
+
+        const [fovLat, fovLon] = destinationPoint(
+          originLat,
+          originLon,
+          headingDegrees + fov / 2,
+          rangeMeters
+        );
+        fovRef.current?.setLngLat([fovLon, fovLat]);
+      }
     };
 
     addWedgeLayersRef.current = addWedgeLayers;
@@ -257,7 +323,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     });
     originRef.current = originMarker;
 
-    // Range draggable marker (range-only; constrained to current heading ray)
+    // Range draggable marker (range-only, constrained to current heading ray)
     const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
     const rangeEl = createMarkerElement(
       "geojson-map-range-icon",
@@ -277,21 +343,30 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
       const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
       const alongTrackDistance = Math.max(
-        400,
+        100,
         dragDistance *
           Math.max(0, Math.cos((normalizeAngleDelta(dragBearing - heading) * Math.PI) / 180))
       );
 
-      const [constrainedLat, constrainedLon] = destinationPoint(
-        origin.lat,
-        origin.lng,
-        heading,
-        alongTrackDistance
-      );
-
-      rangeMarker.setLngLat([constrainedLon, constrainedLat]);
-      updateWedgeGeometry(origin.lat, origin.lng, heading, alongTrackDistance, fovDegrees);
-      updateAnchorPositions(origin.lat, origin.lng, heading, alongTrackDistance, fovDegrees);
+      if (shapeModeRef.current === "rect") {
+        // alongTrackDistance is distance from origin to marker = half the length
+        const newLength = Math.max(100, alongTrackDistance * 2);
+        const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, newLength / 2);
+        rangeMarker.setLngLat([cLon, cLat]);
+        updateWedgeGeometry(origin.lat, origin.lng, heading, 0, 0, newLength);
+        updateAnchorPositions(origin.lat, origin.lng, heading, 0, 0, newLength);
+      } else {
+        const constrainedDist = Math.max(400, alongTrackDistance);
+        const [constrainedLat, constrainedLon] = destinationPoint(
+          origin.lat,
+          origin.lng,
+          heading,
+          constrainedDist
+        );
+        rangeMarker.setLngLat([constrainedLon, constrainedLat]);
+        updateWedgeGeometry(origin.lat, origin.lng, heading, constrainedDist, fovDegrees);
+        updateAnchorPositions(origin.lat, origin.lng, heading, constrainedDist, fovDegrees);
+      }
     });
 
     rangeMarker.on("dragend", () => {
@@ -302,13 +377,17 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
       const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
       const alongTrackDistance = Math.max(
-        400,
+        100,
         dragDistance *
           Math.max(0, Math.cos((normalizeAngleDelta(dragBearing - heading) * Math.PI) / 180))
       );
-      onChange?.({
-        offsetMeters: Math.round(alongTrackDistance),
-      });
+      if (shapeModeRef.current === "rect") {
+        onChange?.({ rectLength: Math.round(Math.max(100, alongTrackDistance * 2)) });
+      } else {
+        onChange?.({
+          offsetMeters: Math.round(Math.max(400, alongTrackDistance)),
+        });
+      }
     });
     rangeRef.current = rangeMarker;
 
@@ -365,29 +444,52 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       const { lng, lat } = fovMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
-      const { heading, offsetMeters } = propsRef.current;
-      const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
-      const nextFovDegrees = Math.min(
-        360,
-        Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
-      );
-      updateWedgeGeometry(origin.lat, origin.lng, heading, offsetMeters, nextFovDegrees);
-      updateAnchorPositions(origin.lat, origin.lng, heading, offsetMeters, nextFovDegrees);
+
+      if (shapeModeRef.current === "rect") {
+        const { heading } = propsRef.current;
+        const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
+        const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
+        const angleDiffRad = ((dragBearing - heading) * Math.PI) / 180;
+        const crossTrackDist = Math.abs(dragDistance * Math.sin(angleDiffRad));
+        const newWidth = Math.max(50, crossTrackDist * 2);
+        updateWedgeGeometry(origin.lat, origin.lng, heading, 0, 0, undefined, newWidth);
+        updateAnchorPositions(origin.lat, origin.lng, heading, 0, 0, undefined, newWidth);
+      } else {
+        const { heading, offsetMeters } = propsRef.current;
+        const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
+        const nextFovDegrees = Math.min(
+          360,
+          Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
+        );
+        updateWedgeGeometry(origin.lat, origin.lng, heading, offsetMeters, nextFovDegrees);
+        updateAnchorPositions(origin.lat, origin.lng, heading, offsetMeters, nextFovDegrees);
+      }
     });
 
     fovMarker.on("dragend", () => {
       const { lng, lat } = fovMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
-      const { heading } = propsRef.current;
-      const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
-      const nextFovDegrees = Math.min(
-        360,
-        Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
-      );
-      onChange?.({
-        fovDegrees: Math.round(nextFovDegrees),
-      });
+
+      if (shapeModeRef.current === "rect") {
+        const { heading } = propsRef.current;
+        const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
+        const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
+        const angleDiffRad = ((dragBearing - heading) * Math.PI) / 180;
+        const crossTrackDist = Math.abs(dragDistance * Math.sin(angleDiffRad));
+        const newWidth = Math.max(50, crossTrackDist * 2);
+        onChange?.({ rectWidth: Math.round(newWidth) });
+      } else {
+        const { heading } = propsRef.current;
+        const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
+        const nextFovDegrees = Math.min(
+          360,
+          Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
+        );
+        onChange?.({
+          fovDegrees: Math.round(nextFovDegrees),
+        });
+      }
     });
     fovRef.current = fovMarker;
 
@@ -413,12 +515,16 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
     const src = map.getSource("fov-wedge") as maplibregl.GeoJSONSource | undefined;
     if (src) {
+      const coords =
+        shapeMode === "rect"
+          ? buildRectPolygon(shipLat, shipLon, heading, rectLength, rectWidth)
+          : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
       src.setData({
         type: "Feature",
         properties: {},
         geometry: {
           type: "Polygon",
-          coordinates: [buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees)],
+          coordinates: [coords],
         },
       });
     } else if (map.isStyleLoaded()) {
@@ -427,20 +533,51 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     }
 
     originRef.current?.setLngLat([shipLon, shipLat]);
-    const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
-    rangeRef.current?.setLngLat([rLon, rLat]);
-    const [hLat, hLon] = destinationPoint(
-      shipLat,
-      shipLon,
-      heading,
-      Math.max(150, Math.round(offsetMeters * 0.7))
-    );
-    headingRef.current?.setLngLat([hLon, hLat]);
-    const [fLat, fLon] = destinationPoint(shipLat, shipLon, heading + fovDegrees / 2, offsetMeters);
-    fovRef.current?.setLngLat([fLon, fLat]);
+
+    if (shapeMode === "rect") {
+      const [fwdLat, fwdLon] = destinationPoint(shipLat, shipLon, heading, rectLength / 2);
+      rangeRef.current?.setLngLat([fwdLon, fwdLat]);
+      const [hLat, hLon] = destinationPoint(
+        shipLat,
+        shipLon,
+        heading,
+        Math.max(150, Math.round((rectLength / 2) * 0.7))
+      );
+      headingRef.current?.setLngLat([hLon, hLat]);
+      const [sideLat, sideLon] = destinationPoint(shipLat, shipLon, heading + 90, rectWidth / 2);
+      fovRef.current?.setLngLat([sideLon, sideLat]);
+    } else {
+      const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
+      rangeRef.current?.setLngLat([rLon, rLat]);
+      const [hLat, hLon] = destinationPoint(
+        shipLat,
+        shipLon,
+        heading,
+        Math.max(150, Math.round(offsetMeters * 0.7))
+      );
+      headingRef.current?.setLngLat([hLon, hLat]);
+      const [fLat, fLon] = destinationPoint(
+        shipLat,
+        shipLon,
+        heading + fovDegrees / 2,
+        offsetMeters
+      );
+      fovRef.current?.setLngLat([fLon, fLat]);
+    }
 
     if (followMode) centerMap();
-  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, centerMap, followMode]);
+  }, [
+    shipLat,
+    shipLon,
+    heading,
+    offsetMeters,
+    fovDegrees,
+    centerMap,
+    followMode,
+    shapeMode,
+    rectLength,
+    rectWidth,
+  ]);
 
   useEffect(() => {
     setAdjustmentAnchorsVisibility(editMode);
@@ -509,7 +646,10 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         <span className="geojson-map-text">
           {Math.abs(shipLat).toFixed(4)}
           {shipLat >= 0 ? "N" : "S"} . {Math.abs(shipLon).toFixed(4)}
-          {shipLon >= 0 ? "E" : "W"} . {heading}° . {offsetMeters}m . FOV {fovDegrees}°
+          {shipLon >= 0 ? "E" : "W"} . {heading}° .{" "}
+          {shapeMode === "rect"
+            ? `${rectLength}m x ${rectWidth}m`
+            : `${offsetMeters}m . FOV ${fovDegrees}°`}
         </span>
       </div>
       <div ref={containerRef} style={{ height: "420px", width: "100%" }} />
@@ -525,6 +665,12 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           onClick={toggleEditMode}
         >
           {editMode ? "Editing" : "Edit"}
+        </ObcButton>
+        <ObcButton
+          variant={shapeMode === "rect" ? ButtonVariant.flat : ButtonVariant.normal}
+          onClick={() => onChange?.({ shapeMode: shapeMode === "wedge" ? "rect" : "wedge" })}
+        >
+          {shapeMode === "rect" ? "Rect" : "Wedge"}
         </ObcButton>
       </div>
 

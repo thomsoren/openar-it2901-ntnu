@@ -40,7 +40,7 @@ const buildFovPolygon = (
   fovDegrees: number,
   steps = 32
 ): [number, number][] => {
-  if (fovDegrees >= 360) {
+  if (fovDegrees >= 359) {
     const ring: [number, number][] = [];
     for (let i = 0; i <= steps; i++) {
       const bearing = (360 * i) / steps;
@@ -62,6 +62,39 @@ const buildFovPolygon = (
     arc.push([lon, lat]); // GeoJSON uses [lon, lat]
   }
   return [[shipLon, shipLat], ...arc, [shipLon, shipLat]];
+};
+
+// Build a polygon representing a heading-aligned rectangle centred on origin, returns [lon, lat] pairs in GeoJSON format
+const buildRectPolygon = (
+  shipLat: number,
+  shipLon: number,
+  heading: number,
+  length: number,
+  width: number
+): [number, number][] => {
+  const halfL = length / 2;
+  const halfW = width / 2;
+
+  // Back center point (behind origin along heading)
+  const [bcLat, bcLon] = destinationPoint(shipLat, shipLon, (heading + 180) % 360, halfL);
+  // Front center point (ahead of origin along heading)
+  const [fcLat, fcLon] = destinationPoint(shipLat, shipLon, heading, halfL);
+
+  // Back-left / back-right corners
+  const [blLat, blLon] = destinationPoint(bcLat, bcLon, heading - 90, halfW);
+  const [brLat, brLon] = destinationPoint(bcLat, bcLon, heading + 90, halfW);
+  // Front-left / front-right corners
+  const [flLat, flLon] = destinationPoint(fcLat, fcLon, heading - 90, halfW);
+  const [frLat, frLon] = destinationPoint(fcLat, fcLon, heading + 90, halfW);
+
+  // GeoJSON [lon, lat], closed ring
+  return [
+    [blLon, blLat],
+    [brLon, brLat],
+    [frLon, frLat],
+    [flLon, flLat],
+    [blLon, blLat],
+  ];
 };
 
 // Check if a point (lon, lat) is inside a polygon using ray casting algorithm.
@@ -97,4 +130,11 @@ function isPointInPolygon(
   return inside;
 }
 
-export { destinationPoint, headingTo, distanceTo, isPointInPolygon, buildFovPolygon };
+export {
+  destinationPoint,
+  headingTo,
+  distanceTo,
+  isPointInPolygon,
+  buildFovPolygon,
+  buildRectPolygon,
+};

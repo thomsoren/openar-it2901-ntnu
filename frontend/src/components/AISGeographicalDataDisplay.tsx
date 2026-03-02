@@ -21,6 +21,9 @@ export const AISGeographicalDataDisplay: React.FC = () => {
   const [heading, setHeading] = useState(0);
   const [offsetMeters, setOffsetMeters] = useState(1000);
   const [fovDegrees, setFovDegrees] = useState(60);
+  const [shapeMode, setShapeMode] = useState<"wedge" | "rect">("wedge");
+  const [rectLength, setRectLength] = useState(1000);
+  const [rectWidth, setRectWidth] = useState(600);
   const [isLoadingGPS, setIsLoadingGPS] = useState(false);
 
   const parseNumberInput = (event: Event, fallback: number) => {
@@ -35,7 +38,10 @@ export const AISGeographicalDataDisplay: React.FC = () => {
     shipLon,
     heading,
     offsetMeters,
-    fovDegrees
+    fovDegrees,
+    shapeMode,
+    rectLength,
+    rectWidth
   );
 
   // Get browser GPS location to autofill ship position
@@ -166,6 +172,9 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         heading={heading}
         offsetMeters={offsetMeters}
         fovDegrees={fovDegrees}
+        shapeMode={shapeMode}
+        rectLength={rectLength}
+        rectWidth={rectWidth}
         vessels={features}
         onChange={(updates) => {
           if (updates.shipLat !== undefined) setShipLat(updates.shipLat);
@@ -173,6 +182,9 @@ export const AISGeographicalDataDisplay: React.FC = () => {
           if (updates.heading !== undefined) setHeading(updates.heading);
           if (updates.offsetMeters !== undefined) setOffsetMeters(updates.offsetMeters);
           if (updates.fovDegrees !== undefined) setFovDegrees(updates.fovDegrees);
+          if (updates.shapeMode !== undefined) setShapeMode(updates.shapeMode);
+          if (updates.rectLength !== undefined) setRectLength(updates.rectLength);
+          if (updates.rectWidth !== undefined) setRectWidth(updates.rectWidth);
         }}
       />
 

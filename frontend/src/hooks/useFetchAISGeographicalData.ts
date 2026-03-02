@@ -1,12 +1,27 @@
 import { useEffect, useState, useRef } from "react";
 import { AISData } from "../types/aisData";
 import { API_CONFIG } from "../config/video";
-import { isPointInPolygon, buildFovPolygon } from "../utils/geometryMath";
+import { isPointInPolygon, buildFovPolygon, buildRectPolygon } from "../utils/geometryMath";
 
 const isVesselInFov = (vessel: AISData, polygon: [number, number][]): boolean => {
   if (!vessel.latitude || !vessel.longitude) return false;
   return isPointInPolygon(vessel.longitude, vessel.latitude, polygon);
 };
+
+function buildScanPolygon(
+  shipLat: number,
+  shipLon: number,
+  heading: number,
+  offsetMeters: number,
+  fovDegrees: number,
+  shapeMode: "wedge" | "rect",
+  rectLength: number,
+  rectWidth: number
+): [number, number][] {
+  return shapeMode === "rect"
+    ? buildRectPolygon(shipLat, shipLon, heading, rectLength, rectWidth)
+    : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+}
 
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,
@@ -14,7 +29,10 @@ export const useFetchAISGeographicalData = (
   shipLon: number = 10.3835,
   heading: number = 0,
   offsetMeters: number = 1000,
-  fovDegrees: number = 60
+  fovDegrees: number = 60,
+  shapeMode: "wedge" | "rect" = "wedge",
+  rectLength: number = 1000,
+  rectWidth: number = 600
 ) => {
   // All received vessels unfiltered
   const vesselCacheRef = useRef<Map<number, AISData>>(new Map());
@@ -26,12 +44,21 @@ export const useFetchAISGeographicalData = (
 
   // Re-filter cached vessels whenever parameters change or vessels are out of bounds
   useEffect(() => {
-    const polygon = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+    const polygon = buildScanPolygon(
+      shipLat,
+      shipLon,
+      heading,
+      offsetMeters,
+      fovDegrees,
+      shapeMode,
+      rectLength,
+      rectWidth
+    );
     const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
       isVesselInFov(vessel, polygon)
     );
     setFeatures(inFov.slice(0, 50));
-  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees]);
+  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, shapeMode, rectLength, rectWidth]);
 
   useEffect(() => {
     if (!shouldStream) {
@@ -41,7 +68,16 @@ export const useFetchAISGeographicalData = (
       return;
     }
 
-    const polygon = buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+    const polygon = buildScanPolygon(
+      shipLat,
+      shipLon,
+      heading,
+      offsetMeters,
+      fovDegrees,
+      shapeMode,
+      rectLength,
+      rectWidth
+    );
 
     setError(null);
     setIsStreaming(true);
@@ -78,12 +114,15 @@ export const useFetchAISGeographicalData = (
 
               vesselCacheRef.current.set(data.mmsi, data);
 
-              const currentPolygon = buildFovPolygon(
+              const currentPolygon = buildScanPolygon(
                 shipLat,
                 shipLon,
                 heading,
                 offsetMeters,
-                fovDegrees
+                fovDegrees,
+                shapeMode,
+                rectLength,
+                rectWidth
               );
               const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
                 isVesselInFov(vessel, currentPolygon)
@@ -111,7 +150,17 @@ export const useFetchAISGeographicalData = (
       controller.abort();
       abortRef.current = null;
     };
-  }, [shouldStream, shipLat, shipLon, heading, offsetMeters, fovDegrees]);
+  }, [
+    shouldStream,
+    shipLat,
+    shipLon,
+    heading,
+    offsetMeters,
+    fovDegrees,
+    shapeMode,
+    rectLength,
+    rectWidth,
+  ]);
 
   return { features, isStreaming, error };
 };
