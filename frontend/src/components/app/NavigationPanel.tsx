@@ -69,6 +69,11 @@ export function NavigationPanel({
           checked={currentPage === "components"}
           onClick={() => onNavigate("components")}
         />
+        <ObcNavigationItem
+          label="Control Customization"
+          checked={currentPage === "control-customization"}
+          onClick={() => onNavigate("control-customization")}
+        />
 
         <div className="navigation-stream-panel">
           <div className="navigation-stream-panel__title">Stream Access</div>

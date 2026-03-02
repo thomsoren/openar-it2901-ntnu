@@ -79,12 +79,10 @@ function FusionInner() {
   );
 }
 
-function Fusion() {
+export default function Fusion() {
   return (
     <ARControlProvider>
       <FusionInner />
     </ARControlProvider>
   );
 }
-
-export default Fusion;
