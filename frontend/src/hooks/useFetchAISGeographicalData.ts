@@ -1,27 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { AISData } from "../types/aisData";
 import { API_CONFIG } from "../config/video";
-import { isPointInPolygon, buildFovPolygon, buildRectPolygon } from "../utils/geometryMath";
+import { isPointInPolygon, buildScanPolygon } from "../utils/geometryMath";
 
 const isVesselInFov = (vessel: AISData, polygon: [number, number][]): boolean => {
   if (!vessel.latitude || !vessel.longitude) return false;
   return isPointInPolygon(vessel.longitude, vessel.latitude, polygon);
 };
-
-function buildScanPolygon(
-  shipLat: number,
-  shipLon: number,
-  heading: number,
-  offsetMeters: number,
-  fovDegrees: number,
-  shapeMode: "wedge" | "rect",
-  rectLength: number,
-  rectWidth: number
-): [number, number][] {
-  return shapeMode === "rect"
-    ? buildRectPolygon(shipLat, shipLon, heading, rectLength, rectWidth)
-    : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
-}
 
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,

@@ -130,6 +130,59 @@ function isPointInPolygon(
   return inside;
 }
 
+// Normalize angle delta to range [-180, 180]
+function normalizeAngleDelta(angle: number): number {
+  return ((angle + 540) % 360) - 180;
+}
+
+// Build the scan area polygon for the current shape mode
+function buildScanPolygon(
+  shipLat: number,
+  shipLon: number,
+  heading: number,
+  offsetMeters: number,
+  fovDegrees: number,
+  shapeMode: "wedge" | "rect",
+  rectLength: number,
+  rectWidth: number
+): [number, number][] {
+  return shapeMode === "rect"
+    ? buildRectPolygon(shipLat, shipLon, heading, rectLength, rectWidth)
+    : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+}
+
+// Project a drag vector onto the heading axis and return the along-track distance (min-clamped)
+function computeAlongTrackDistance(
+  originLat: number,
+  originLon: number,
+  targetLat: number,
+  targetLon: number,
+  heading: number,
+  minDistance: number = 100
+): number {
+  const dragBearing = headingTo(originLat, originLon, targetLat, targetLon);
+  const dragDistance = distanceTo(originLat, originLon, targetLat, targetLon);
+  return Math.max(
+    minDistance,
+    dragDistance *
+      Math.max(0, Math.cos((normalizeAngleDelta(dragBearing - heading) * Math.PI) / 180))
+  );
+}
+
+// Compute perpendicular distance from the heading axis through origin to target point
+function computeCrossTrackDistance(
+  originLat: number,
+  originLon: number,
+  targetLat: number,
+  targetLon: number,
+  heading: number
+): number {
+  const dragBearing = headingTo(originLat, originLon, targetLat, targetLon);
+  const dragDistance = distanceTo(originLat, originLon, targetLat, targetLon);
+  const angleDiffRad = ((dragBearing - heading) * Math.PI) / 180;
+  return Math.abs(dragDistance * Math.sin(angleDiffRad));
+}
+
 export {
   destinationPoint,
   headingTo,
@@ -137,4 +190,8 @@ export {
   isPointInPolygon,
   buildFovPolygon,
   buildRectPolygon,
+  buildScanPolygon,
+  normalizeAngleDelta,
+  computeAlongTrackDistance,
+  computeCrossTrackDistance,
 };

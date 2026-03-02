@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./AISGeoJsonMap.css";
@@ -11,15 +10,26 @@ import { AISData } from "../../types/aisData";
 import {
   destinationPoint,
   headingTo,
-  distanceTo,
-  buildFovPolygon,
-  buildRectPolygon,
+  buildScanPolygon,
+  normalizeAngleDelta,
+  computeAlongTrackDistance,
+  computeCrossTrackDistance,
 } from "../../utils/geometryMath";
 import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
-import getVesselIcon from "../../utils/vesselIconMapper";
 import { ObiPlaceholderDeviceStatic } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder-device-static";
+import {
+  addScanAreaLayers,
+  updateScanAreaData,
+  getScanAreaSource,
+  createAnchorMarker,
+} from "./mapHelpers";
+import { useVesselMarkers } from "../../hooks/useVesselMarkers";
 
-interface AISGeoJsonMapProps {
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface ScanAreaParams {
   shipLat: number;
   shipLon: number;
   heading: number;
@@ -28,44 +38,74 @@ interface AISGeoJsonMapProps {
   shapeMode: "wedge" | "rect";
   rectLength: number;
   rectWidth: number;
-  vessels?: AISData[];
-  // Called when the user drags adjust-anchor on the map
-  onChange?: (
-    updates: Partial<{
-      shipLat: number;
-      shipLon: number;
-      heading: number;
-      offsetMeters: number;
-      fovDegrees: number;
-      shapeMode: "wedge" | "rect";
-      rectLength: number;
-      rectWidth: number;
-    }>
-  ) => void;
 }
 
-/** Create an HTML element for a draggable marker */
-function createMarkerElement(
-  className: string,
-  vessel?: AISData,
-  icon?: React.ReactElement
-): HTMLDivElement {
-  const element = document.createElement("div");
-  element.className = className;
+interface AISGeoJsonMapProps extends ScanAreaParams {
+  vessels?: AISData[];
+  onChange?: (updates: Partial<ScanAreaParams>) => void;
+}
 
-  if (icon) {
-    // Render provided icon
-    const root = createRoot(element);
-    root.render(icon);
-  } else if (vessel) {
-    // Add OpenBridge AIS target icon by rendering the appropriate React component
-    const root = createRoot(element);
-    const vesselIcon = getVesselIcon(vessel.shipType);
-    root.render(vesselIcon);
+// ---------------------------------------------------------------------------
+// Anchor-position computation (shared by init + sync)
+// ---------------------------------------------------------------------------
+
+interface AnchorPositions {
+  range: [number, number]; // [lon, lat]
+  heading: [number, number];
+  fov: [number, number];
+}
+
+function computeAnchorPositions(
+  lat: number,
+  lon: number,
+  heading: number,
+  shapeMode: "wedge" | "rect",
+  offsetMeters: number,
+  fovDegrees: number,
+  rectLength: number,
+  rectWidth: number
+): AnchorPositions {
+  if (shapeMode === "rect") {
+    const halfLen = rectLength / 2;
+    const [fwdLat, fwdLon] = destinationPoint(lat, lon, heading, halfLen);
+    const headingDist = Math.max(150, Math.round(halfLen * 0.7));
+    const [hLat, hLon] = destinationPoint(lat, lon, heading, headingDist);
+    const [sideLat, sideLon] = destinationPoint(lat, lon, heading + 90, rectWidth / 2);
+    return {
+      range: [fwdLon, fwdLat],
+      heading: [hLon, hLat],
+      fov: [sideLon, sideLat],
+    };
   }
 
-  return element;
+  const [rLat, rLon] = destinationPoint(lat, lon, heading, offsetMeters);
+  const headingDist = Math.max(150, Math.round(offsetMeters * 0.7));
+  const [hLat, hLon] = destinationPoint(lat, lon, heading, headingDist);
+  const [fLat, fLon] = destinationPoint(lat, lon, heading + fovDegrees / 2, offsetMeters);
+  return {
+    range: [rLon, rLat],
+    heading: [hLon, hLat],
+    fov: [fLon, fLat],
+  };
 }
+
+/** Apply computed positions to the marker refs. */
+function applyAnchorPositions(
+  positions: AnchorPositions,
+  rangeRef: React.RefObject<maplibregl.Marker | null>,
+  headingRef: React.RefObject<maplibregl.Marker | null>,
+  fovRef: React.RefObject<maplibregl.Marker | null>
+): void {
+  rangeRef.current?.setLngLat(positions.range);
+  headingRef.current?.setLngLat(positions.heading);
+  fovRef.current?.setLngLat(positions.fov);
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+const ANCHOR_ICON = <ObiPlaceholderDeviceStatic />;
 
 export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   shipLat,
@@ -85,47 +125,60 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const rangeRef = useRef<maplibregl.Marker | null>(null);
   const headingRef = useRef<maplibregl.Marker | null>(null);
   const fovRef = useRef<maplibregl.Marker | null>(null);
-  const vesselMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   const theme = useObcPalette();
   const [followMode, setFollowMode] = useState(true);
   const [editMode, setEditMode] = useState(true);
   const [selectedVessel, setSelectedVessel] = useState<AISData | null>(null);
 
-  // Mutable refs so drag handlers always see latest props without re-binding
-  const propsRef = useRef({ shipLat, shipLon, heading, offsetMeters, fovDegrees });
-  propsRef.current = { shipLat, shipLon, heading, offsetMeters, fovDegrees };
-  const shapeModeRef = useRef(shapeMode);
-  shapeModeRef.current = shapeMode;
-  const rectDimsRef = useRef({ length: rectLength, width: rectWidth });
-  rectDimsRef.current = { length: rectLength, width: rectWidth };
-  const addWedgeLayersRef = useRef<(() => void) | null>(null);
+  // Mutable ref so drag handlers always see latest props
+  const paramsRef = useRef<ScanAreaParams>({
+    shipLat,
+    shipLon,
+    heading,
+    offsetMeters,
+    fovDegrees,
+    shapeMode,
+    rectLength,
+    rectWidth,
+  });
+  paramsRef.current = {
+    shipLat,
+    shipLon,
+    heading,
+    offsetMeters,
+    fovDegrees,
+    shapeMode,
+    rectLength,
+    rectWidth,
+  };
+
+  // Ref for re-creating layers after style swap
+  const rebuildLayersRef = useRef<(() => void) | null>(null);
+
+  // ---- Callbacks ----
 
   const centerMap = useCallback(() => {
-    if (!mapRef.current) return;
-    mapRef.current.panTo([shipLon, shipLat], { duration: 500 });
+    mapRef.current?.panTo([shipLon, shipLat], { duration: 500 });
   }, [shipLat, shipLon]);
 
-  const toggleFollowMode = () => {
-    if (!followMode) {
-      centerMap();
-    }
-    setFollowMode((prev) => !prev);
-  };
+  const handleVesselClick = useCallback((vessel: AISData) => {
+    setSelectedVessel(vessel);
+  }, []);
 
-  const toggleEditMode = () => {
-    setEditMode((prev) => !prev);
-  };
-
-  const setAdjustmentAnchorsVisibility = useCallback((visible: boolean) => {
+  const setAnchorVisibility = useCallback((visible: boolean) => {
     const display = visible ? "flex" : "none";
-    [originRef.current, rangeRef.current, headingRef.current, fovRef.current].forEach((marker) => {
-      if (!marker) return;
-      marker.getElement().style.display = display;
+    [originRef, rangeRef, headingRef, fovRef].forEach((ref) => {
+      if (ref.current) ref.current.getElement().style.display = display;
     });
   }, []);
 
-  // Initialize map on first render
+  // Keep vessel markers in sync with vessels data + selected vessel
+
+  useVesselMarkers(mapRef.current, vessels, handleVesselClick);
+
+  // Map initialisation (runs once)
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -136,186 +189,78 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       zoom: 14,
     });
 
-    const addWedgeLayers = () => {
-      // Only proceed if style is loaded
-      if (!map.isStyleLoaded()) return;
+    // Add scan area layers on style load, and save a ref to re-add them after future style changes
 
-      // Remove existing layers/source if present
-      if (map.getLayer("fov-wedge-outline")) map.removeLayer("fov-wedge-outline");
-      if (map.getLayer("fov-wedge-fill")) map.removeLayer("fov-wedge-fill");
-      if (map.getSource("fov-wedge")) map.removeSource("fov-wedge");
-
-      const { shipLat, shipLon, heading, offsetMeters, fovDegrees } = propsRef.current;
-      const { length: rLen, width: rWid } = rectDimsRef.current;
-      const coords =
-        shapeModeRef.current === "rect"
-          ? buildRectPolygon(shipLat, shipLon, heading, rLen, rWid)
-          : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
-
-      // Add GeoJSON source with polygon geometry
-      map.addSource("fov-wedge", {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "Polygon",
-            coordinates: [coords],
-          },
-        },
-      });
-
-      // Find the first symbol layer in the style to ensure our layers are added below labels/icons
-      const layers = map.getStyle().layers;
-      const firstSymbolLayerId = layers?.find((l) => l.type === "symbol")?.id;
-
-      // Add outline first
-      map.addLayer(
-        {
-          id: "fov-wedge-outline",
-          type: "line",
-          source: "fov-wedge",
-          paint: {
-            "line-color": "#0d6efd",
-            "line-width": 3,
-          },
-        },
-        firstSymbolLayerId
+    const rebuildLayers = () => {
+      const p = paramsRef.current;
+      const coords = buildScanPolygon(
+        p.shipLat,
+        p.shipLon,
+        p.heading,
+        p.offsetMeters,
+        p.fovDegrees,
+        p.shapeMode,
+        p.rectLength,
+        p.rectWidth
       );
-
-      // Add fill last so it renders above the outline and any opaque tile layers
-      map.addLayer(
-        {
-          id: "fov-wedge-fill",
-          type: "fill",
-          source: "fov-wedge",
-          paint: {
-            "fill-color": "#7dadf5",
-            "fill-opacity": 0.15,
-          },
-        },
-        firstSymbolLayerId
-      );
+      addScanAreaLayers(map, coords);
     };
 
-    const normalizeAngleDelta = (angle: number) => ((angle + 540) % 360) - 180;
+    rebuildLayersRef.current = rebuildLayers;
+    map.on("load", rebuildLayers);
 
-    const updateWedgeGeometry = (
-      originLat: number,
-      originLon: number,
-      headingDegrees: number,
-      rangeMeters: number,
-      fov: number,
-      overrideRectLen?: number,
-      overrideRectWid?: number
-    ) => {
-      const src = map.getSource("fov-wedge") as maplibregl.GeoJSONSource | undefined;
-      if (!src) return;
-      const coords =
-        shapeModeRef.current === "rect"
-          ? buildRectPolygon(
-              originLat,
-              originLon,
-              headingDegrees,
-              overrideRectLen ?? rectDimsRef.current.length,
-              overrideRectWid ?? rectDimsRef.current.width
-            )
-          : buildFovPolygon(originLat, originLon, headingDegrees, rangeMeters, fov);
-      src.setData({
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "Polygon",
-          coordinates: [coords],
-        },
-      });
-    };
+    // --- Shared drag utility ------------------------------------------------
 
-    const updateAnchorPositions = (
-      originLat: number,
-      originLon: number,
-      headingDegrees: number,
-      rangeMeters: number,
-      fov: number,
-      overrideRectLen?: number,
-      overrideRectWid?: number
-    ) => {
-      if (shapeModeRef.current === "rect") {
-        const rLen = overrideRectLen ?? rectDimsRef.current.length;
-        const rWid = overrideRectWid ?? rectDimsRef.current.width;
-
-        // Forward anchor at front edge center (half-length ahead of origin)
-        const [fwdLat, fwdLon] = destinationPoint(originLat, originLon, headingDegrees, rLen / 2);
-        rangeRef.current?.setLngLat([fwdLon, fwdLat]);
-
-        // Heading handle
-        const headingHandleDist = Math.max(150, Math.round((rLen / 2) * 0.7));
-        const [hLat, hLon] = destinationPoint(
-          originLat,
-          originLon,
-          headingDegrees,
-          headingHandleDist
-        );
-        headingRef.current?.setLngLat([hLon, hLat]);
-
-        // Side anchor at right edge midpoint
-        const [sideLat, sideLon] = destinationPoint(
-          originLat,
-          originLon,
-          headingDegrees + 90,
-          rWid / 2
-        );
-        fovRef.current?.setLngLat([sideLon, sideLat]);
-      } else {
-        const [rangeLat, rangeLon] = destinationPoint(
-          originLat,
-          originLon,
-          headingDegrees,
-          rangeMeters
-        );
-        rangeRef.current?.setLngLat([rangeLon, rangeLat]);
-
-        const headingHandleDistance = Math.max(150, Math.round(rangeMeters * 0.7));
-        const [headingLat, headingLon] = destinationPoint(
-          originLat,
-          originLon,
-          headingDegrees,
-          headingHandleDistance
-        );
-        headingRef.current?.setLngLat([headingLon, headingLat]);
-
-        const [fovLat, fovLon] = destinationPoint(
-          originLat,
-          originLon,
-          headingDegrees + fov / 2,
-          rangeMeters
-        );
-        fovRef.current?.setLngLat([fovLon, fovLat]);
+    /** Rebuild polygon + reposition anchors during a drag. */
+    const syncVisuals = (
+      lat: number,
+      lon: number,
+      hdg: number,
+      overrides?: {
+        offsetMeters?: number;
+        fovDegrees?: number;
+        rectLength?: number;
+        rectWidth?: number;
       }
+    ) => {
+      const p = paramsRef.current;
+      const coords = buildScanPolygon(
+        lat,
+        lon,
+        hdg,
+        overrides?.offsetMeters ?? p.offsetMeters,
+        overrides?.fovDegrees ?? p.fovDegrees,
+        p.shapeMode,
+        overrides?.rectLength ?? p.rectLength,
+        overrides?.rectWidth ?? p.rectWidth
+      );
+      updateScanAreaData(map, coords);
+
+      const positions = computeAnchorPositions(
+        lat,
+        lon,
+        hdg,
+        p.shapeMode,
+        overrides?.offsetMeters ?? p.offsetMeters,
+        overrides?.fovDegrees ?? p.fovDegrees,
+        overrides?.rectLength ?? p.rectLength,
+        overrides?.rectWidth ?? p.rectWidth
+      );
+      applyAnchorPositions(positions, rangeRef, headingRef, fovRef);
     };
 
-    addWedgeLayersRef.current = addWedgeLayers;
+    // --- Origin marker -------------------------------------------------------
 
-    map.on("load", () => {
-      addWedgeLayers();
+    const originMarker = createAnchorMarker(map, {
+      className: "geojson-map-origin-icon",
+      lngLat: [shipLon, shipLat],
+      popupText: "Drag to move origin",
+      icon: ANCHOR_ICON,
     });
-
-    // Origin draggable marker
-    const originEl = createMarkerElement(
-      "geojson-map-origin-icon",
-      undefined,
-      <ObiPlaceholderDeviceStatic />
-    );
-    const originMarker = new maplibregl.Marker({ element: originEl, draggable: true })
-      .setLngLat([shipLon, shipLat])
-      .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to move origin"))
-      .addTo(map);
 
     originMarker.on("drag", () => {
       const { lng, lat } = originMarker.getLngLat();
-      const { heading, offsetMeters, fovDegrees } = propsRef.current;
-      updateWedgeGeometry(lat, lng, heading, offsetMeters, fovDegrees);
-      updateAnchorPositions(lat, lng, heading, offsetMeters, fovDegrees);
+      syncVisuals(lat, lng, paramsRef.current.heading);
     });
     originMarker.on("dragend", () => {
       const { lng, lat } = originMarker.getLngLat();
@@ -323,49 +268,43 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     });
     originRef.current = originMarker;
 
-    // Range draggable marker (range-only, constrained to current heading ray)
-    const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
-    const rangeEl = createMarkerElement(
-      "geojson-map-range-icon",
-      undefined,
-      <ObiPlaceholderDeviceStatic />
+    // --- Range marker (constrained to heading ray) ---------------------------
+
+    const initAnchors = computeAnchorPositions(
+      shipLat,
+      shipLon,
+      heading,
+      shapeMode,
+      offsetMeters,
+      fovDegrees,
+      rectLength,
+      rectWidth
     );
-    const rangeMarker = new maplibregl.Marker({ element: rangeEl, draggable: true })
-      .setLngLat([rLon, rLat])
-      .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to set range"))
-      .addTo(map);
+
+    const rangeMarker = createAnchorMarker(map, {
+      className: "geojson-map-range-icon",
+      lngLat: initAnchors.range,
+      popupText: "Drag to set range",
+      icon: ANCHOR_ICON,
+    });
 
     rangeMarker.on("drag", () => {
       const { lng, lat } = rangeMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
-      const { heading, fovDegrees } = propsRef.current;
-      const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
-      const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
-      const alongTrackDistance = Math.max(
-        100,
-        dragDistance *
-          Math.max(0, Math.cos((normalizeAngleDelta(dragBearing - heading) * Math.PI) / 180))
-      );
+      const { heading, shapeMode } = paramsRef.current;
+      const along = computeAlongTrackDistance(origin.lat, origin.lng, lat, lng, heading, 100);
 
-      if (shapeModeRef.current === "rect") {
-        // alongTrackDistance is distance from origin to marker = half the length
-        const newLength = Math.max(100, alongTrackDistance * 2);
-        const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, newLength / 2);
+      if (shapeMode === "rect") {
+        const newLen = Math.max(100, along * 2);
+        const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, newLen / 2);
         rangeMarker.setLngLat([cLon, cLat]);
-        updateWedgeGeometry(origin.lat, origin.lng, heading, 0, 0, newLength);
-        updateAnchorPositions(origin.lat, origin.lng, heading, 0, 0, newLength);
+        syncVisuals(origin.lat, origin.lng, heading, { rectLength: newLen });
       } else {
-        const constrainedDist = Math.max(400, alongTrackDistance);
-        const [constrainedLat, constrainedLon] = destinationPoint(
-          origin.lat,
-          origin.lng,
-          heading,
-          constrainedDist
-        );
-        rangeMarker.setLngLat([constrainedLon, constrainedLat]);
-        updateWedgeGeometry(origin.lat, origin.lng, heading, constrainedDist, fovDegrees);
-        updateAnchorPositions(origin.lat, origin.lng, heading, constrainedDist, fovDegrees);
+        const dist = Math.max(400, along);
+        const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, dist);
+        rangeMarker.setLngLat([cLon, cLat]);
+        syncVisuals(origin.lat, origin.lng, heading, { offsetMeters: dist });
       }
     });
 
@@ -373,96 +312,68 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       const { lng, lat } = rangeMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
-      const { heading } = propsRef.current;
-      const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
-      const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
-      const alongTrackDistance = Math.max(
-        100,
-        dragDistance *
-          Math.max(0, Math.cos((normalizeAngleDelta(dragBearing - heading) * Math.PI) / 180))
-      );
-      if (shapeModeRef.current === "rect") {
-        onChange?.({ rectLength: Math.round(Math.max(100, alongTrackDistance * 2)) });
+      const { heading, shapeMode } = paramsRef.current;
+      const along = computeAlongTrackDistance(origin.lat, origin.lng, lat, lng, heading, 100);
+
+      if (shapeMode === "rect") {
+        onChange?.({ rectLength: Math.round(Math.max(100, along * 2)) });
       } else {
-        onChange?.({
-          offsetMeters: Math.round(Math.max(400, alongTrackDistance)),
-        });
+        onChange?.({ offsetMeters: Math.round(Math.max(400, along)) });
       }
     });
     rangeRef.current = rangeMarker;
 
-    // Heading draggable marker (heading-only)
-    const [hLat, hLon] = destinationPoint(
-      shipLat,
-      shipLon,
-      heading,
-      Math.max(150, Math.round(offsetMeters * 0.7))
-    );
-    const headingEl = createMarkerElement(
-      "geojson-map-heading-icon",
-      undefined,
-      <ObiPlaceholderDeviceStatic />
-    );
-    const headingMarker = new maplibregl.Marker({ element: headingEl, draggable: true })
-      .setLngLat([hLon, hLat])
-      .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to set heading"))
-      .addTo(map);
+    // --- Heading marker (heading-only) ---------------------------------------
+
+    const headingMarker = createAnchorMarker(map, {
+      className: "geojson-map-heading-icon",
+      lngLat: initAnchors.heading,
+      popupText: "Drag to set heading",
+      icon: ANCHOR_ICON,
+    });
 
     headingMarker.on("drag", () => {
       const { lng, lat } = headingMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
-      const { offsetMeters, fovDegrees } = propsRef.current;
       const nextHeading = headingTo(origin.lat, origin.lng, lat, lng);
-      updateWedgeGeometry(origin.lat, origin.lng, nextHeading, offsetMeters, fovDegrees);
-      updateAnchorPositions(origin.lat, origin.lng, nextHeading, offsetMeters, fovDegrees);
+      syncVisuals(origin.lat, origin.lng, nextHeading);
     });
 
     headingMarker.on("dragend", () => {
       const { lng, lat } = headingMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
-      onChange?.({
-        heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)),
-      });
+      onChange?.({ heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)) });
     });
     headingRef.current = headingMarker;
 
-    // FOV draggable marker (fov-only)
-    const [fLat, fLon] = destinationPoint(shipLat, shipLon, heading + fovDegrees / 2, offsetMeters);
-    const fovEl = createMarkerElement(
-      "geojson-map-fov-icon",
-      undefined,
-      <ObiPlaceholderDeviceStatic />
-    );
-    const fovMarker = new maplibregl.Marker({ element: fovEl, draggable: true })
-      .setLngLat([fLon, fLat])
-      .setPopup(new maplibregl.Popup({ offset: 10 }).setText("Drag to set FOV"))
-      .addTo(map);
+    // --- FOV / Width marker --------------------------------------------------
+
+    const fovMarker = createAnchorMarker(map, {
+      className: "geojson-map-fov-icon",
+      lngLat: initAnchors.fov,
+      popupText: "Drag to set FOV / width",
+      icon: ANCHOR_ICON,
+    });
 
     fovMarker.on("drag", () => {
       const { lng, lat } = fovMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
+      const { heading, shapeMode } = paramsRef.current;
 
-      if (shapeModeRef.current === "rect") {
-        const { heading } = propsRef.current;
-        const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
-        const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
-        const angleDiffRad = ((dragBearing - heading) * Math.PI) / 180;
-        const crossTrackDist = Math.abs(dragDistance * Math.sin(angleDiffRad));
-        const newWidth = Math.max(50, crossTrackDist * 2);
-        updateWedgeGeometry(origin.lat, origin.lng, heading, 0, 0, undefined, newWidth);
-        updateAnchorPositions(origin.lat, origin.lng, heading, 0, 0, undefined, newWidth);
+      if (shapeMode === "rect") {
+        const cross = computeCrossTrackDistance(origin.lat, origin.lng, lat, lng, heading);
+        const newWidth = Math.max(50, cross * 2);
+        syncVisuals(origin.lat, origin.lng, heading, { rectWidth: newWidth });
       } else {
-        const { heading, offsetMeters } = propsRef.current;
         const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
-        const nextFovDegrees = Math.min(
+        const nextFov = Math.min(
           360,
           Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
         );
-        updateWedgeGeometry(origin.lat, origin.lng, heading, offsetMeters, nextFovDegrees);
-        updateAnchorPositions(origin.lat, origin.lng, heading, offsetMeters, nextFovDegrees);
+        syncVisuals(origin.lat, origin.lng, heading, { fovDegrees: nextFov });
       }
     });
 
@@ -470,35 +381,26 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       const { lng, lat } = fovMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
+      const { heading, shapeMode } = paramsRef.current;
 
-      if (shapeModeRef.current === "rect") {
-        const { heading } = propsRef.current;
-        const dragBearing = headingTo(origin.lat, origin.lng, lat, lng);
-        const dragDistance = distanceTo(origin.lat, origin.lng, lat, lng);
-        const angleDiffRad = ((dragBearing - heading) * Math.PI) / 180;
-        const crossTrackDist = Math.abs(dragDistance * Math.sin(angleDiffRad));
-        const newWidth = Math.max(50, crossTrackDist * 2);
-        onChange?.({ rectWidth: Math.round(newWidth) });
+      if (shapeMode === "rect") {
+        const cross = computeCrossTrackDistance(origin.lat, origin.lng, lat, lng, heading);
+        onChange?.({ rectWidth: Math.round(Math.max(50, cross * 2)) });
       } else {
-        const { heading } = propsRef.current;
         const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
-        const nextFovDegrees = Math.min(
+        const nextFov = Math.min(
           360,
           Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
         );
-        onChange?.({
-          fovDegrees: Math.round(nextFovDegrees),
-        });
+        onChange?.({ fovDegrees: Math.round(nextFov) });
       }
     });
     fovRef.current = fovMarker;
 
-    updateAnchorPositions(shipLat, shipLon, heading, offsetMeters, fovDegrees);
-    setAdjustmentAnchorsVisibility(editMode);
+    // Initially show anchors if in edit mode, hide if not
 
-    // Detect user panning and disable follow mode
+    setAnchorVisibility(editMode);
     map.on("dragstart", () => setFollowMode(false));
-
     mapRef.current = map;
 
     return () => {
@@ -508,62 +410,42 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync wedge + markers when props change
+  // ---- Sync polygon + anchors when props change ----------------------------
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const src = map.getSource("fov-wedge") as maplibregl.GeoJSONSource | undefined;
-    if (src) {
-      const coords =
-        shapeMode === "rect"
-          ? buildRectPolygon(shipLat, shipLon, heading, rectLength, rectWidth)
-          : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
-      src.setData({
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "Polygon",
-          coordinates: [coords],
-        },
-      });
+    const coords = buildScanPolygon(
+      shipLat,
+      shipLon,
+      heading,
+      offsetMeters,
+      fovDegrees,
+      shapeMode,
+      rectLength,
+      rectWidth
+    );
+
+    if (getScanAreaSource(map)) {
+      updateScanAreaData(map, coords);
     } else if (map.isStyleLoaded()) {
-      // Only try to create layers if style is ready
-      addWedgeLayersRef.current?.();
+      rebuildLayersRef.current?.();
     }
 
     originRef.current?.setLngLat([shipLon, shipLat]);
 
-    if (shapeMode === "rect") {
-      const [fwdLat, fwdLon] = destinationPoint(shipLat, shipLon, heading, rectLength / 2);
-      rangeRef.current?.setLngLat([fwdLon, fwdLat]);
-      const [hLat, hLon] = destinationPoint(
-        shipLat,
-        shipLon,
-        heading,
-        Math.max(150, Math.round((rectLength / 2) * 0.7))
-      );
-      headingRef.current?.setLngLat([hLon, hLat]);
-      const [sideLat, sideLon] = destinationPoint(shipLat, shipLon, heading + 90, rectWidth / 2);
-      fovRef.current?.setLngLat([sideLon, sideLat]);
-    } else {
-      const [rLat, rLon] = destinationPoint(shipLat, shipLon, heading, offsetMeters);
-      rangeRef.current?.setLngLat([rLon, rLat]);
-      const [hLat, hLon] = destinationPoint(
-        shipLat,
-        shipLon,
-        heading,
-        Math.max(150, Math.round(offsetMeters * 0.7))
-      );
-      headingRef.current?.setLngLat([hLon, hLat]);
-      const [fLat, fLon] = destinationPoint(
-        shipLat,
-        shipLon,
-        heading + fovDegrees / 2,
-        offsetMeters
-      );
-      fovRef.current?.setLngLat([fLon, fLat]);
-    }
+    const positions = computeAnchorPositions(
+      shipLat,
+      shipLon,
+      heading,
+      shapeMode,
+      offsetMeters,
+      fovDegrees,
+      rectLength,
+      rectWidth
+    );
+    applyAnchorPositions(positions, rangeRef, headingRef, fovRef);
 
     if (followMode) centerMap();
   }, [
@@ -572,73 +454,56 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     heading,
     offsetMeters,
     fovDegrees,
-    centerMap,
-    followMode,
     shapeMode,
     rectLength,
     rectWidth,
+    centerMap,
+    followMode,
   ]);
 
+  // ---- Anchor visibility ---------------------------------------------------
+
   useEffect(() => {
-    setAdjustmentAnchorsVisibility(editMode);
-  }, [editMode, setAdjustmentAnchorsVisibility]);
+    setAnchorVisibility(editMode);
+  }, [editMode, setAnchorVisibility]);
 
-  // Sync vessel markers when vessels data changes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+  // ---- Theme sync ----------------------------------------------------------
 
-    // Remove existing vessel markers
-    vesselMarkersRef.current.forEach((marker) => marker.remove());
-    vesselMarkersRef.current = [];
-
-    if (!vessels) return;
-
-    vessels.forEach((vessel) => {
-      if (!vessel.latitude || !vessel.longitude) return;
-
-      const el = createMarkerElement("geojson-map-vessel-icon", vessel);
-
-      const popup = new maplibregl.Popup({ offset: 10 }).setText(
-        `MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`
-      );
-
-      const marker = new maplibregl.Marker({
-        element: el,
-        rotationAlignment: "map",
-        pitchAlignment: "map",
-      })
-        .setLngLat([vessel.longitude, vessel.latitude])
-        .setRotation(vessel.courseOverGround || 0)
-        .setPopup(popup)
-        .addTo(map);
-
-      el.addEventListener("click", () => {
-        setSelectedVessel(vessel);
-        map.panTo([vessel.longitude!, vessel.latitude!], { duration: 500 });
-      });
-
-      vesselMarkersRef.current.push(marker);
-    });
-  }, [vessels]);
-
-  // Update map style on theme change, re-adding wedge layers after style loads
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    let disposed = false;
+
+    const rebuildLayers = () => {
+      if (disposed) return;
+      if (!map.isStyleLoaded()) return;
+      rebuildLayersRef.current?.();
+    };
+
+    map.once("idle", rebuildLayers);
     map.setStyle(getMapLibreStyle(theme));
-    map.once("styledata", () => {
-      addWedgeLayersRef.current?.();
-    });
+
+    return () => {
+      disposed = true;
+      map.off("idle", rebuildLayers);
+    };
   }, [theme]);
 
-  // Keep selected vessel data in sync when AIS updates arrive
+  // ---- Keep selected vessel in sync ----------------------------------------
+
   useEffect(() => {
     if (!selectedVessel || !vessels) return;
-
     const updated = vessels.find((v) => v.mmsi === selectedVessel.mmsi);
     if (updated) setSelectedVessel(updated);
   }, [vessels, selectedVessel]);
+
+  // ---- Render --------------------------------------------------------------
+
+  const headerInfo =
+    shapeMode === "rect"
+      ? `${rectLength}m x ${rectWidth}m`
+      : `${offsetMeters}m . FOV ${fovDegrees}°`;
 
   return (
     <div className="geojson-map-container">
@@ -646,23 +511,25 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         <span className="geojson-map-text">
           {Math.abs(shipLat).toFixed(4)}
           {shipLat >= 0 ? "N" : "S"} . {Math.abs(shipLon).toFixed(4)}
-          {shipLon >= 0 ? "E" : "W"} . {heading}° .{" "}
-          {shapeMode === "rect"
-            ? `${rectLength}m x ${rectWidth}m`
-            : `${offsetMeters}m . FOV ${fovDegrees}°`}
+          {shipLon >= 0 ? "E" : "W"} . {heading}° . {headerInfo}
         </span>
       </div>
+
       <div ref={containerRef} style={{ height: "420px", width: "100%" }} />
+
       <div className="geojson-map-controls">
         <ObcButton
           variant={followMode ? ButtonVariant.flat : ButtonVariant.normal}
-          onClick={toggleFollowMode}
+          onClick={() => {
+            if (!followMode) centerMap();
+            setFollowMode((prev) => !prev);
+          }}
         >
           {followMode ? "Following" : "Follow"}
         </ObcButton>
         <ObcButton
           variant={editMode ? ButtonVariant.flat : ButtonVariant.normal}
-          onClick={toggleEditMode}
+          onClick={() => setEditMode((prev) => !prev)}
         >
           {editMode ? "Editing" : "Edit"}
         </ObcButton>
@@ -674,17 +541,8 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         </ObcButton>
       </div>
 
-      {/* 
-          Selected vessel card 
-          TODO: Change with OBC-Poi-Card component
-      */}
       {selectedVessel && (
-        <AISDataPanel
-          vessel={selectedVessel}
-          onClose={() => {
-            setSelectedVessel(null);
-          }}
-        />
+        <AISDataPanel vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
       )}
     </div>
   );
