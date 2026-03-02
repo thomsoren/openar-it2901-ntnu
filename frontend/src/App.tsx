@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
-import { ARControlProvider } from "./components/ar-control-panel/ARControlProvider";
 import "./App.css";
 import Ais from "./pages/Ais";
 import Fusion from "./pages/Fusion";
@@ -185,25 +184,23 @@ function App() {
           </div>
         )}
 
-        <ARControlProvider>
-          <Routes>
-            <Route
-              path="/datavision"
-              element={
-                <Datavision
-                  externalStreamId={externalStreamId}
-                  onAuthGateVisibleChange={handleAuthGateVisibleChange}
-                />
-              }
-            />
-            <Route path="/ais" element={<Ais />} />
-            <Route path="/components" element={<Components />} />
-            <Route path="/fusion" element={<Fusion />} />
-            <Route path="/control-customization" element={<ControlCustomization />} />
-            <Route path="/" element={<Navigate to="/datavision" replace />} />
-            <Route path="*" element={<Navigate to="/datavision" replace />} />
-          </Routes>
-        </ARControlProvider>
+        <Routes>
+          <Route
+            path="/datavision"
+            element={
+              <Datavision
+                externalStreamId={externalStreamId}
+                onAuthGateVisibleChange={handleAuthGateVisibleChange}
+              />
+            }
+          />
+          <Route path="/ais" element={<Ais />} />
+          <Route path="/components" element={<Components />} />
+          <Route path="/fusion" element={<Fusion />} />
+          <Route path="/control-customization" element={<ControlCustomization />} />
+          <Route path="/" element={<Navigate to="/datavision" replace />} />
+          <Route path="*" element={<Navigate to="/datavision" replace />} />
+        </Routes>
       </main>
     </>
   );

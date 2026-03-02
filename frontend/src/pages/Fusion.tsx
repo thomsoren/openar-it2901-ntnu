@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
-
+import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
@@ -80,5 +80,9 @@ function FusionInner() {
 }
 
 export default function Fusion() {
-  return <FusionInner />;
+  return (
+    <ARControlProvider>
+      <FusionInner />
+    </ARControlProvider>
+  );
 }
