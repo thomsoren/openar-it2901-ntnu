@@ -13,7 +13,6 @@ function ControlCustomizationInner() {
     <section className="page control-customization-page">
       <div className="control-customization-page__content">
         <div className="control-customization-page__hero">
-          <p className="page-subtitle control-customization-page__eyebrow">AR Panel</p>
           <h2 className="page-title control-customization-page__title">Control Customization</h2>
           <p className="page-subtitle control-customization-page__subtitle">
             Choose which controls are shown in the AR panel. Changes are saved automatically.
@@ -28,7 +27,7 @@ function ControlCustomizationInner() {
           <div className="control-customization-preview__frame">
             <div className="control-customization-preview__panel" inert={true}>
               {hasVisibleControls ? (
-                <ARControlPanel interactive={false} />
+                <ARControlPanel />
               ) : (
                 <div className="control-customization-preview__empty">No controls visible</div>
               )}
@@ -39,7 +38,7 @@ function ControlCustomizationInner() {
         <section className="control-customization-table" aria-label="AR panel control visibility">
           <div className="control-customization-table__header" aria-hidden="true">
             <div className="control-customization-table__heading">Control</div>
-            <div className="control-customization-table__heading">Type</div>
+            <div className="control-customization-table__heading">Description</div>
             <div className="control-customization-table__heading control-customization-table__heading--state">
               Visibility
             </div>
@@ -52,9 +51,6 @@ function ControlCustomizationInner() {
               </div>
               <p className="control-customization-row__description">{item.description}</p>
               <div className="control-customization-row__toggle">
-                <span className="control-customization-row__state">
-                  {panelVisibility[item.key] ? "Visible" : "Hidden"}
-                </span>
                 <ObcToggleSwitch
                   label={panelVisibility[item.key] ? "On" : "Off"}
                   checked={panelVisibility[item.key]}

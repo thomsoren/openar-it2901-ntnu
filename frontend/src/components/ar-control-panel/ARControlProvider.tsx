@@ -23,6 +23,8 @@ const POI_DROPDOWN_VALUES: ReadonlySet<PoiDropdownValue> = new Set([
 const VIDEO_FIT_MODES: ReadonlySet<VideoFitMode> = new Set(["contain", "cover"]);
 
 interface StoredARControlState extends Partial<ARControlState> {
+  // Legacy: old localStorage format stored rangeVisible as a top-level boolean.
+  // Kept for backwards-compat so existing users get a sensible range default on upgrade.
   rangeVisible?: boolean;
   panelVisibility?: Partial<ARControlPanelVisibilityState>;
 }

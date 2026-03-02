@@ -37,14 +37,25 @@
   min-width: 0;
 }
 
+.stream-tabs-controls {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .stream-tabs-bar--stacked {
   flex-wrap: wrap;
+  align-items: flex-start;
   row-gap: 8px;
 }
 
 .stream-tabs-bar--stacked .stream-tab-row {
   flex: 1 1 100%;
   min-width: 100%;
+}
+
+.stream-tabs-bar--stacked .stream-tabs-controls {
+  flex: 1 1 100%;
 }
 
 .stream-card-content {

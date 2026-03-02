@@ -7,16 +7,36 @@ export interface ARPanelControlDefinition {
 }
 
 export const AR_PANEL_CONTROL_DEFINITIONS: readonly ARPanelControlDefinition[] = [
-  { key: "rangeVisible", label: "Range selector", description: "Range dropdown" },
-  { key: "rulerVisible", label: "Ruler", description: "Ruler toggle" },
+  {
+    key: "rangeVisible",
+    label: "Range selector",
+    description: "Dropdown to set range ring distance (NM)",
+  },
+  { key: "rulerVisible", label: "Ruler", description: "On-screen measurement ruler overlay" },
   {
     key: "buoyLightsVisible",
     label: "Buoy + lighthouse",
-    description: "Buoy and lighthouse control",
+    description: "Show buoy and lighthouse markers on the AR view",
   },
-  { key: "vesselVisible", label: "Boat", description: "Vessel layer toggle" },
-  { key: "aisDataVisible", label: "AIS Data", description: "AIS data toggle" },
-  { key: "imageDataVisible", label: "Image Data", description: "Image data toggle" },
-  { key: "poiSettingsVisible", label: "POI settings", description: "POI settings menu" },
-  { key: "videoFitVisible", label: "Video fit", description: "Fit mode toggle" },
+  {
+    key: "vesselVisible",
+    label: "Vessel",
+    description: "Vessel layer with detected ship outlines",
+  },
+  {
+    key: "aisDataVisible",
+    label: "AIS Data",
+    description: "AIS identification cards and MOB markers",
+  },
+  { key: "imageDataVisible", label: "Image Data", description: "Camera feed metadata overlay" },
+  {
+    key: "poiSettingsVisible",
+    label: "POI settings",
+    description: "Point-of-interest display and icon options",
+  },
+  {
+    key: "videoFitVisible",
+    label: "Video fit",
+    description: "Toggle between fill-screen (crop) and letterbox",
+  },
 ] as const;

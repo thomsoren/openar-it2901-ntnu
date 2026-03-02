@@ -19,21 +19,13 @@ const pageLabels: Record<PageId, string> = {
   "control-customization": "Control Customization",
 };
 
+const PATH_TO_PAGE = new Map(
+  (Object.entries(PAGE_PATHS) as [PageId, string][]).map(([id, path]) => [path.slice(1), id])
+);
+
 const getPageFromPath = (pathname: string): PageId => {
   const rootSegment = pathname.replace(/^\/+/, "").split("/")[0];
-  switch (rootSegment) {
-    case "ais":
-      return "ais";
-    case "components":
-      return "components";
-    case "fusion":
-      return "fusion";
-    case "control-customization":
-      return "control-customization";
-    case "datavision":
-    default:
-      return "datavision";
-  }
+  return PATH_TO_PAGE.get(rootSegment) ?? "datavision";
 };
 
 /**

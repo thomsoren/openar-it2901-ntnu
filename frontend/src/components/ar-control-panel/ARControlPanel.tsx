@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
 import { ObcDropdownButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/dropdown-button/dropdown-button";
 import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
@@ -11,11 +10,7 @@ import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObiTargetSettingsProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-target-settings-proposal";
 import { ObiExpand } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-expand";
 import { useARControls } from "./useARControls";
-import type {
-  ARControlPanelVisibilityKey,
-  PoiDropdownValue,
-  RangeValue,
-} from "./ar-control-context";
+import type { PoiDropdownValue, RangeValue } from "./ar-control-context";
 import { AR_PANEL_CONTROL_DEFINITIONS } from "./panel-controls";
 import "./ARControlPanel.css";
 
@@ -33,11 +28,7 @@ const POI_OPTIONS: { value: PoiDropdownValue; label: string }[] = [
   { value: "poi-icon", label: "POI icon type" },
 ];
 
-interface ARControlPanelProps {
-  interactive?: boolean;
-}
-
-export function ARControlPanel({ interactive = true }: ARControlPanelProps) {
+export function ARControlPanel() {
   const { state, panelVisibility, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode } =
     useARControls();
 
@@ -52,138 +43,112 @@ export function ARControlPanel({ interactive = true }: ARControlPanelProps) {
     if (state[second] !== next) toggle(second);
   };
 
-  const renderControl = (key: ARControlPanelVisibilityKey) => {
-    switch (key) {
-      case "rangeVisible":
-        return (
-          <div className="obc-component-size-regular">
-            <ObcDropdownButton
-              className="ar-control-bar__range"
-              title="Range selection"
-              type={DropdownButtonType.labelIcon}
-              options={RANGE_OPTIONS}
-              value={state.rangeValue}
-              onChange={
-                interactive ? (event) => setRangeValue(event.detail.value as RangeValue) : undefined
-              }
-            >
-              <ObiRadarRangeProposal slot="icon" />
-            </ObcDropdownButton>
-          </div>
-        );
-      case "rulerVisible":
-        return (
-          <ObcIconButton
-            variant={IconButtonVariant.flat}
-            activated={state.rulerVisible}
-            title="Ruler"
-            onClick={interactive ? () => toggle("rulerVisible") : undefined}
-          >
-            <ObiRadarRangeProposal />
-          </ObcIconButton>
-        );
-      case "buoyLightsVisible":
-        return (
-          <ObcIconButton
-            variant={IconButtonVariant.flat}
-            activated={buoyAndLightOn}
-            title="Buoy + lighthouse"
-            onClick={
-              interactive
-                ? () => setPair("buoyLayerVisible", "flotsamLayerVisible", !buoyAndLightOn)
-                : undefined
-            }
-          >
-            <ObiBuoySparEast />
-          </ObcIconButton>
-        );
-      case "vesselVisible":
-        return (
-          <ObcIconButton
-            variant={IconButtonVariant.flat}
-            activated={state.vesselLayerVisible}
-            title="Boat"
-            onClick={interactive ? () => toggle("vesselLayerVisible") : undefined}
-          >
-            <ObiVesselTypeGenericOutlined />
-          </ObcIconButton>
-        );
-      case "aisDataVisible":
-        return (
-          <ObcIconButton
-            variant={IconButtonVariant.flat}
-            activated={aisDataOn}
-            title="AIS Data"
-            onClick={
-              interactive
-                ? () => setPair("aisCardsVisible", "mobLayerVisible", !aisDataOn)
-                : undefined
-            }
-          >
-            <ObiAisProposal />
-          </ObcIconButton>
-        );
-      case "imageDataVisible":
-        return (
-          <ObcIconButton
-            variant={IconButtonVariant.flat}
-            activated={state.imageDataVisible}
-            title="Image Data"
-            onClick={interactive ? () => toggle("imageDataVisible") : undefined}
-          >
-            <ObiCamera />
-          </ObcIconButton>
-        );
-      case "poiSettingsVisible":
-        return (
-          <div className="obc-component-size-regular">
-            <ObcDropdownButton
-              className="ar-control-bar__poi-dropdown"
-              title="POI settings"
-              type={DropdownButtonType.labelIcon}
-              options={POI_OPTIONS}
-              value={state.poiDropdownValue}
-              onChange={
-                interactive
-                  ? (event) => {
-                      const value = event.detail.value as PoiDropdownValue;
-                      setPoiDropdownValue(value);
-                      if (value === "poi-show" && !state.poiVisible) toggle("poiVisible");
-                      if (value === "poi-hide" && state.poiVisible) toggle("poiVisible");
-                    }
-                  : undefined
-              }
-            >
-              <ObiTargetSettingsProposal slot="icon" />
-            </ObcDropdownButton>
-          </div>
-        );
-      case "videoFitVisible":
-        return (
-          <ObcIconButton
-            variant={IconButtonVariant.flat}
-            activated={state.videoFitMode === "cover"}
-            title={
-              state.videoFitMode === "cover" ? "Fill Screen (Crop)" : "Fit to Screen (Letterbox)"
-            }
-            onClick={
-              interactive
-                ? () => setVideoFitMode(state.videoFitMode === "cover" ? "contain" : "cover")
-                : undefined
-            }
-          >
-            <ObiExpand />
-          </ObcIconButton>
-        );
-    }
-  };
+  const controls = {
+    rangeVisible: (
+      <div key="rangeVisible" className="obc-component-size-regular">
+        <ObcDropdownButton
+          className="ar-control-bar__range"
+          title="Range selection"
+          type={DropdownButtonType.labelIcon}
+          options={RANGE_OPTIONS}
+          value={state.rangeValue}
+          onChange={(event) => setRangeValue(event.detail.value as RangeValue)}
+        >
+          <ObiRadarRangeProposal slot="icon" />
+        </ObcDropdownButton>
+      </div>
+    ),
+    rulerVisible: (
+      <ObcIconButton
+        key="rulerVisible"
+        variant={IconButtonVariant.flat}
+        activated={state.rulerVisible}
+        title="Ruler"
+        onClick={() => toggle("rulerVisible")}
+      >
+        <ObiRadarRangeProposal />
+      </ObcIconButton>
+    ),
+    buoyLightsVisible: (
+      <ObcIconButton
+        key="buoyLightsVisible"
+        variant={IconButtonVariant.flat}
+        activated={buoyAndLightOn}
+        title="Buoy + lighthouse"
+        onClick={() => setPair("buoyLayerVisible", "flotsamLayerVisible", !buoyAndLightOn)}
+      >
+        <ObiBuoySparEast />
+      </ObcIconButton>
+    ),
+    vesselVisible: (
+      <ObcIconButton
+        key="vesselVisible"
+        variant={IconButtonVariant.flat}
+        activated={state.vesselLayerVisible}
+        title="Boat"
+        onClick={() => toggle("vesselLayerVisible")}
+      >
+        <ObiVesselTypeGenericOutlined />
+      </ObcIconButton>
+    ),
+    aisDataVisible: (
+      <ObcIconButton
+        key="aisDataVisible"
+        variant={IconButtonVariant.flat}
+        activated={aisDataOn}
+        title="AIS Data"
+        onClick={() => setPair("aisCardsVisible", "mobLayerVisible", !aisDataOn)}
+      >
+        <ObiAisProposal />
+      </ObcIconButton>
+    ),
+    imageDataVisible: (
+      <ObcIconButton
+        key="imageDataVisible"
+        variant={IconButtonVariant.flat}
+        activated={state.imageDataVisible}
+        title="Image Data"
+        onClick={() => toggle("imageDataVisible")}
+      >
+        <ObiCamera />
+      </ObcIconButton>
+    ),
+    poiSettingsVisible: (
+      <div key="poiSettingsVisible" className="obc-component-size-regular">
+        <ObcDropdownButton
+          className="ar-control-bar__poi-dropdown"
+          title="POI settings"
+          type={DropdownButtonType.labelIcon}
+          options={POI_OPTIONS}
+          value={state.poiDropdownValue}
+          onChange={(event) => {
+            const value = event.detail.value as PoiDropdownValue;
+            setPoiDropdownValue(value);
+            if (value === "poi-show" && !state.poiVisible) toggle("poiVisible");
+            if (value === "poi-hide" && state.poiVisible) toggle("poiVisible");
+          }}
+        >
+          <ObiTargetSettingsProposal slot="icon" />
+        </ObcDropdownButton>
+      </div>
+    ),
+    videoFitVisible: (
+      <ObcIconButton
+        key="videoFitVisible"
+        variant={IconButtonVariant.flat}
+        activated={state.videoFitMode === "cover"}
+        title={state.videoFitMode === "cover" ? "Fill Screen (Crop)" : "Fit to Screen (Letterbox)"}
+        onClick={() => setVideoFitMode(state.videoFitMode === "cover" ? "contain" : "cover")}
+      >
+        <ObiExpand />
+      </ObcIconButton>
+    ),
+  } as const;
 
   return (
     <div className="ar-control-bar">
-      {AR_PANEL_CONTROL_DEFINITIONS.map((control) =>
-        panelVisibility[control.key] ? (
-          <Fragment key={control.key}>{renderControl(control.key)}</Fragment>
-        ) : null
+      {AR_PANEL_CONTROL_DEFINITIONS.map(
+        (control) => panelVisibility[control.key] && controls[control.key]
       )}
     </div>
   );
