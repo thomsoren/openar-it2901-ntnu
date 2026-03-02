@@ -36,39 +36,18 @@ export function StreamWorkspaceHeader({
     let frame = 0;
 
     const computeLayout = () => {
+      const wasStacked = shell.classList.contains("stream-tabs-bar--stacked");
+      if (wasStacked) shell.classList.remove("stream-tabs-bar--stacked");
+
       const shellWidth = shell.clientWidth;
-      const previousTabRow = {
-        flex: tabRow.style.flex,
-        minWidth: tabRow.style.minWidth,
-        width: tabRow.style.width,
-      };
-      const previousControls = {
-        flex: controls.style.flex,
-        minWidth: controls.style.minWidth,
-        width: controls.style.width,
-      };
-
-      tabRow.style.flex = "0 0 auto";
-      tabRow.style.minWidth = "0";
-      tabRow.style.width = "max-content";
-
-      controls.style.flex = "0 0 auto";
-      controls.style.minWidth = "0";
-      controls.style.width = "max-content";
-
-      const tabsWidth = Math.ceil(tabRow.getBoundingClientRect().width);
-      const controlsWidth = Math.ceil(controls.getBoundingClientRect().width);
+      const tabsWidth = tabRow.scrollWidth;
+      const controlsWidth = controls.scrollWidth;
       const gap = parseFloat(getComputedStyle(shell).columnGap || "0");
+      const shouldStack = shellWidth > 0 && tabsWidth + controlsWidth + gap > shellWidth;
 
-      tabRow.style.flex = previousTabRow.flex;
-      tabRow.style.minWidth = previousTabRow.minWidth;
-      tabRow.style.width = previousTabRow.width;
+      if (wasStacked && shouldStack) shell.classList.add("stream-tabs-bar--stacked");
 
-      controls.style.flex = previousControls.flex;
-      controls.style.minWidth = previousControls.minWidth;
-      controls.style.width = previousControls.width;
-
-      setShouldStackTabsBar(shellWidth > 0 && tabsWidth + controlsWidth + gap > shellWidth);
+      setShouldStackTabsBar(shouldStack);
     };
 
     const scheduleLayout = () => {
@@ -87,7 +66,7 @@ export function StreamWorkspaceHeader({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [tabs, activeTabId, showAddButton, showCloseButtons]);
+  }, []);
 
   return (
     <div

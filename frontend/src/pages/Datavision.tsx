@@ -7,7 +7,7 @@ import {
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import VideoPlayer from "../components/video-player/VideoPlayer";
-import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
+
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { useStreamTabs } from "../hooks/useStreamTabs";
@@ -224,12 +224,6 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   );
 }
 
-function Datavision(props: DatavisionProps) {
-  return (
-    <ARControlProvider>
-      <DatavisionInner {...props} />
-    </ARControlProvider>
-  );
+export default function Datavision(props: DatavisionProps) {
+  return <DatavisionInner {...props} />;
 }
-
-export default Datavision;

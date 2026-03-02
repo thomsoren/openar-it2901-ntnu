@@ -23,15 +23,6 @@
   margin-bottom: 1.75rem;
 }
 
-.control-customization-page__eyebrow {
-  margin-bottom: 0.55rem;
-  color: var(--element-neutral-color, #5f7385);
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
 .control-customization-page__title {
   margin-bottom: 0.6rem;
   color: var(--element-active-color, #182430);

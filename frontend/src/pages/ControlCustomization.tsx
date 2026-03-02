@@ -1,11 +1,10 @@
 import { ObcToggleSwitch } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/toggle-switch/toggle-switch";
-import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { ARControlPanel } from "../components/ar-control-panel/ARControlPanel";
 import { AR_PANEL_CONTROL_DEFINITIONS } from "../components/ar-control-panel/panel-controls";
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import "./ControlCustomization.css";
 
-function ControlCustomizationInner() {
+export default function ControlCustomization() {
   const { panelVisibility, setPanelControlVisibility } = useARControls();
   const hasVisibleControls = Object.values(panelVisibility).some(Boolean);
 
@@ -64,13 +63,3 @@ function ControlCustomizationInner() {
     </section>
   );
 }
-
-function ControlCustomization() {
-  return (
-    <ARControlProvider>
-      <ControlCustomizationInner />
-    </ARControlProvider>
-  );
-}
-
-export default ControlCustomization;

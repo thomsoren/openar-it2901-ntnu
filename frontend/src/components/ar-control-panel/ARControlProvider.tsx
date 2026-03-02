@@ -57,40 +57,30 @@ function asVideoFitMode(value: unknown, fallback: VideoFitMode): VideoFitMode {
 }
 
 function readPanelVisibility(value: unknown): ARControlPanelVisibilityState {
-  const parsed = typeof value === "object" && value !== null ? value : {};
-  const visibility = parsed as Partial<ARControlPanelVisibilityState>;
+  const obj = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 
   return {
-    rangeVisible: asBoolean(
-      visibility.rangeVisible,
-      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.rangeVisible
-    ),
-    rulerVisible: asBoolean(
-      visibility.rulerVisible,
-      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.rulerVisible
-    ),
+    rangeVisible: asBoolean(obj.rangeVisible, AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.rangeVisible),
+    rulerVisible: asBoolean(obj.rulerVisible, AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.rulerVisible),
     buoyLightsVisible: asBoolean(
-      visibility.buoyLightsVisible,
+      obj.buoyLightsVisible,
       AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.buoyLightsVisible
     ),
-    vesselVisible: asBoolean(
-      visibility.vesselVisible,
-      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.vesselVisible
-    ),
+    vesselVisible: asBoolean(obj.vesselVisible, AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.vesselVisible),
     aisDataVisible: asBoolean(
-      visibility.aisDataVisible,
+      obj.aisDataVisible,
       AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.aisDataVisible
     ),
     imageDataVisible: asBoolean(
-      visibility.imageDataVisible,
+      obj.imageDataVisible,
       AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.imageDataVisible
     ),
     poiSettingsVisible: asBoolean(
-      visibility.poiSettingsVisible,
+      obj.poiSettingsVisible,
       AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.poiSettingsVisible
     ),
     videoFitVisible: asBoolean(
-      visibility.videoFitVisible,
+      obj.videoFitVisible,
       AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.videoFitVisible
     ),
   };

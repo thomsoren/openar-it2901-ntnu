@@ -147,8 +147,8 @@ export function ARControlPanel() {
 
   return (
     <div className="ar-control-bar">
-      {AR_PANEL_CONTROL_DEFINITIONS.map(
-        (control) => panelVisibility[control.key] && controls[control.key]
+      {AR_PANEL_CONTROL_DEFINITIONS.filter((c) => panelVisibility[c.key]).map(
+        (c) => controls[c.key]
       )}
     </div>
   );
