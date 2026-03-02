@@ -5,6 +5,26 @@ import { useWhepConnection } from "../../hooks/useWhepConnection";
 
 type VideoTransport = "webrtc" | "hls";
 type VideoConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
+const WHEP_COOLDOWN_MS = 120_000;
+const GLOBAL_WHEP_COOLDOWN_KEY = "video:whep-cooldown-until";
+
+const getWhepCooldownUntil = (): number => {
+  try {
+    const raw = window.localStorage.getItem(GLOBAL_WHEP_COOLDOWN_KEY);
+    const parsed = raw ? Number(raw) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const setWhepCooldown = (untilMs: number): void => {
+  try {
+    window.localStorage.setItem(GLOBAL_WHEP_COOLDOWN_KEY, String(untilMs));
+  } catch {
+    // Ignore storage write failures.
+  }
+};
 
 export interface VideoPlayerState {
   transport: VideoTransport;
@@ -48,7 +68,6 @@ function VideoPlayer({
   const [transport, setTransport] = useState<VideoTransport>("webrtc");
   const [hlsState, setHlsState] = useState<VideoConnectionStatus>("idle");
   const [hlsError, setHlsError] = useState<string | null>(null);
-  const whepRetryCount = useRef(0);
 
   const resolvedWhepUrl = useMemo(() => {
     if (whepUrl) {
@@ -64,11 +83,20 @@ function VideoPlayer({
     return VIDEO_CONFIG.MEDIAMTX_HLS_URL(streamId, mediamtxBaseUrl);
   }, [hlsUrl, mediamtxBaseUrl, streamId]);
 
+  const shouldBypassWhep = useMemo(() => {
+    if (!resolvedHlsUrl) {
+      return false;
+    }
+    const now = Date.now();
+    const cooldownUntil = getWhepCooldownUntil();
+    return cooldownUntil > now;
+  }, [resolvedHlsUrl, sessionToken]);
+
   useEffect(() => {
-    setTransport("webrtc");
+    setTransport(shouldBypassWhep ? "hls" : "webrtc");
     setHlsState("idle");
     setHlsError(null);
-  }, [streamId, sessionToken, resolvedWhepUrl, resolvedHlsUrl]);
+  }, [resolvedHlsUrl, resolvedWhepUrl, sessionToken, shouldBypassWhep, streamId]);
 
   useEffect(() => {
     if (videoRef.current && onVideoReady) {
@@ -91,6 +119,8 @@ function VideoPlayer({
       return;
     }
     if (resolvedHlsUrl) {
+      const cooldownUntil = Date.now() + WHEP_COOLDOWN_MS;
+      setWhepCooldown(cooldownUntil);
       setTransport("hls");
       return;
     }
@@ -99,33 +129,7 @@ function VideoPlayer({
       status: "error",
       error: whepError || "WebRTC failed and no HLS fallback URL is available",
     });
-  }, [onStatusChange, resolvedHlsUrl, transport, whepError, whepStatus]);
-
-  // Always prefer WebRTC: if we are on HLS fallback, periodically retry WHEP.
-  // Stop retrying after 30 attempts to avoid infinite teardown/rebuild of HLS.
-  useEffect(() => {
-    if (transport !== "hls") {
-      whepRetryCount.current = 0;
-      return;
-    }
-    if (!resolvedWhepUrl) {
-      return;
-    }
-    if (whepRetryCount.current >= 30) {
-      return;
-    }
-
-    const retryTimer = window.setTimeout(() => {
-      whepRetryCount.current += 1;
-      setTransport("webrtc");
-      setHlsState("idle");
-      setHlsError(null);
-    }, 5000);
-
-    return () => {
-      window.clearTimeout(retryTimer);
-    };
-  }, [resolvedWhepUrl, sessionToken, transport]);
+  }, [onStatusChange, resolvedHlsUrl, streamId, transport, whepError, whepStatus]);
 
   useEffect(() => {
     if (transport !== "hls") {

@@ -23,7 +23,7 @@ interface RecoveryState {
   controlError: string | null;
 }
 
-const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 10_000;
+const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 25_000;
 
 type RecoveryAction =
   | { type: "RESET_STREAM" }
@@ -88,6 +88,7 @@ export function useVideoSessionRecovery({
 
   const imageLoadedRef = useRef(false);
   const controlErrorRef = useRef<string | null>(null);
+  const videoStateRef = useRef<VideoPlayerState>(videoState);
   const reconnectCountRef = useRef(0);
   const firstFrameRetryDoneRef = useRef(false);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -165,11 +166,26 @@ export function useVideoSessionRecovery({
   }, [controlError]);
 
   useEffect(() => {
+    videoStateRef.current = videoState;
+  }, [videoState]);
+
+  useEffect(() => {
     imageLoadedRef.current = false;
     clearReconnectTimers();
 
     firstFrameWatchdogRef.current = window.setTimeout(() => {
       if (imageLoadedRef.current || firstFrameRetryDoneRef.current) {
+        return;
+      }
+
+      const currentVideoState = videoStateRef.current;
+      if (currentVideoState.transport !== "webrtc") {
+        // HLS fallback can legitimately take longer than first WebRTC setup.
+        // Avoid thrashing sessions while fallback is in progress.
+        return;
+      }
+      if (currentVideoState.status === "error") {
+        // Error path has its own reconnect scheduling.
         return;
       }
 
@@ -190,6 +206,7 @@ export function useVideoSessionRecovery({
 
   const handleVideoStatusChange = useCallback(
     (next: VideoPlayerState) => {
+      videoStateRef.current = next;
       dispatch({ type: "SET_VIDEO_STATE", payload: next });
 
       if (next.status === "playing") {
