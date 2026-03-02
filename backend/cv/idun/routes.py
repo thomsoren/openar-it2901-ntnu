@@ -32,6 +32,8 @@ async def websocket_idun_worker(websocket: WebSocket) -> None:
     Authentication is via a shared API key in the Authorization header.
     Only one worker connection is accepted at a time.
     """
+    await websocket.accept()
+
     if _bridge is None:
         await websocket.close(code=1011, reason="IDUN bridge not initialized")
         return
@@ -44,5 +46,4 @@ async def websocket_idun_worker(websocket: WebSocket) -> None:
         logger.warning("IDUN worker rejected: invalid API key")
         return
 
-    await websocket.accept()
     await _bridge.handle_worker_connection(websocket)

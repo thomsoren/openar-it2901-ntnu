@@ -24,6 +24,7 @@ from cv.idun.config import (
 )
 from cv.idun.noop_inference import NoopInferenceThread
 from cv.publisher import DetectionPublisher
+from common.types import Detection as DetectionModel
 
 logger = logging.getLogger(__name__)
 
@@ -218,8 +219,6 @@ class IdunBridge:
                 # Enrich with AIS data
                 raw_vessels = msg.get("vessels", [])
                 if self._ais_matcher.enabled and raw_vessels:
-                    from common.types import Detection as DetectionModel
-
                     detections = [
                         DetectionModel(**v["detection"]) for v in raw_vessels
                     ]

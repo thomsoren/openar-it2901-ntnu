@@ -28,8 +28,14 @@ source "${ENV_DIR}/bin/activate"
 
 pip install -q -r requirements.txt
 
-export COOLIFY_WS_URL="wss://api.demo.bridgable.ai/api/idun/ws"
-export IDUN_API_KEY="${IDUN_API_KEY}"
+if [ -z "${COOLIFY_WS_URL}" ]; then
+    echo "Error: COOLIFY_WS_URL is not set. Export it before calling sbatch." >&2
+    exit 1
+fi
+if [ -z "${IDUN_API_KEY}" ]; then
+    echo "Error: IDUN_API_KEY is not set. Export it before calling sbatch." >&2
+    exit 1
+fi
 
 echo "Starting inference worker at $(date)"
 echo "COOLIFY_WS_URL=${COOLIFY_WS_URL}"

@@ -39,6 +39,8 @@ class Detection(BaseModel):
 class RTDETRDetector:
     """RT-DETR boat detector for IDUN."""
 
+    # best.pt is a custom single-class model where all 10 class indices map to
+    # vessel detections. This set accepts every class the model can produce.
     BOAT_CLASSES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
     def __init__(
