@@ -130,6 +130,14 @@ export const uploadStreamSource = async (
   });
 };
 
+export const startStreamFromKey = async (
+  streamId: string,
+  s3Key: string,
+  loop: boolean = true
+): Promise<void> => {
+  await startStream(streamId, { sourceUrl: `s3://${s3Key}`, loop });
+};
+
 export const toStreamError = (err: unknown, fallback: string): string => {
   return explainFetchError(err, fallback);
 };

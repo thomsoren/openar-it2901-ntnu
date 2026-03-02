@@ -12,6 +12,7 @@ export interface AuthContextType {
   authBridgeStatus: "idle" | "loading" | "ready" | "error";
   authBridgeError: string;
   isSigningOut: boolean;
+  isAdmin: boolean;
   userMenuState: UserMenuState;
   userLabel: string;
   userInitials: string;

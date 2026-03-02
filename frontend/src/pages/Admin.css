@@ -1,0 +1,190 @@
+.admin-page {
+  padding: 2rem;
+  max-width: 1200px;
+  color: var(--obc-color-text-primary, #fff);
+}
+
+.admin-page__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 2rem;
+}
+
+.admin-access-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 4rem;
+}
+
+.admin-section {
+  background: var(--obc-color-surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.admin-section__title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.admin-dropzone {
+  border: 2px dashed var(--obc-color-border, rgba(255, 255, 255, 0.2));
+  border-radius: 6px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  margin-bottom: 1rem;
+  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.admin-dropzone:hover,
+.admin-dropzone--active {
+  border-color: var(--obc-color-primary, #0ea5e9);
+  color: var(--obc-color-text-primary, #fff);
+}
+
+.admin-dropzone__filename {
+  font-weight: 600;
+  color: var(--obc-color-text-primary, #fff);
+}
+
+.admin-upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.admin-label select {
+  background: var(--obc-color-surface-3, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.15));
+  color: inherit;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+}
+
+.admin-upload-progress {
+  font-size: 0.875rem;
+  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.admin-upload-success {
+  font-size: 0.875rem;
+  color: #4ade80;
+}
+
+.admin-upload-error {
+  font-size: 0.875rem;
+  color: #f87171;
+}
+
+.admin-error {
+  color: #f87171;
+  margin-bottom: 1rem;
+}
+
+.admin-empty {
+  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.admin-button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: opacity 0.2s;
+  background: var(--obc-color-primary, #0ea5e9);
+  color: #fff;
+}
+
+.admin-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-button:not(:disabled):hover {
+  opacity: 0.85;
+}
+
+.admin-button--primary {
+  background: var(--obc-color-primary, #0ea5e9);
+}
+
+.admin-button--danger {
+  background: #ef4444;
+}
+
+.admin-button--small {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.admin-table-wrapper {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.1));
+}
+
+.admin-table th {
+  font-weight: 600;
+  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+  white-space: nowrap;
+}
+
+.admin-table__row--system {
+  opacity: 0.7;
+}
+
+.admin-table__key {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.admin-table__actions {
+  display: flex;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.admin-table select {
+  background: var(--obc-color-surface-3, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.15));
+  color: inherit;
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+}

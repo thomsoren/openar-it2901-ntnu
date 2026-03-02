@@ -11,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from webapi import state
+from webapi.routes.admin_media import router as admin_media_router
 from webapi.routes.ais import router as ais_router
 from webapi.routes.detections import router as detections_router
 from webapi.routes.media import router as media_router
@@ -57,6 +58,7 @@ app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
 
+app.include_router(admin_media_router)
 app.include_router(system_router)
 app.include_router(media_router)
 app.include_router(ais_router)

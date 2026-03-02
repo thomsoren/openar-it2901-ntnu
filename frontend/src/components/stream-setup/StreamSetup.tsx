@@ -14,7 +14,8 @@ import {
   ProgressBarMode,
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar";
-import { startStream, toStreamError, uploadStreamSource } from "../../services/streams";
+import { startStream, startStreamFromKey, toStreamError } from "../../services/streams";
+import { presignUpload, uploadFileToS3 } from "../../services/media";
 import "./StreamSetup.css";
 
 type StreamSetupProps = {
@@ -103,7 +104,11 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setStatus("starting");
     setMessage(null);
     try {
-      await startStream(tabId, { sourceUrl: source, loop: true });
+      if (source) {
+        await startStreamFromKey(tabId, source.replace(/^s3:\/\//, ""), true);
+      } else {
+        await startStream(tabId, { loop: true });
+      }
       onStreamReady(tabId);
     } catch (err) {
       setStatus("error");
@@ -117,8 +122,11 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setMessage(null);
 
     try {
-      await uploadStreamSource(
-        tabId,
+      const { url, headers, key } = await presignUpload(file.name, file.type, "private");
+
+      await uploadFileToS3(
+        url,
+        headers,
         file,
         (percentage) => setUploadProgress(percentage),
         (request) => {
@@ -128,6 +136,8 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
 
       xhrRef.current = null;
       setUploadProgress(100);
+      setStatus("starting");
+      await startStreamFromKey(tabId, key, true);
       onStreamReady(tabId);
     } catch (err) {
       xhrRef.current = null;
@@ -188,7 +198,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
   };
 
   const handleUseDefault = () => {
-    void startStreamWithSource();
+    void startStreamWithSource(undefined);
   };
 
   const dragProps = {
@@ -346,7 +356,9 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
             )}
 
             {status === "starting" && (
-              <div className="stream-setup__status">Starting stream...</div>
+              <div className="stream-setup__status">
+                Preparing stream — downloading to server cache, please wait…
+              </div>
             )}
 
             <div className="stream-setup__modal-footer">
@@ -399,7 +411,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
           <ObiUpIec slot="trailing-icon" />
         </ObcRichButton>
 
-        {status === "starting" && <div className="stream-setup__status">Starting stream...</div>}
+        {status === "starting" && <div className="stream-setup__status">Starting stream…</div>}
 
         {message && (
           <div className="stream-setup__message" data-status={status}>

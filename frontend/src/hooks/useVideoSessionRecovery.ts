@@ -139,6 +139,12 @@ export function useVideoSessionRecovery({
         return;
       }
 
+      // Don't restart a stream that is already playing — switching browser
+      // windows should never interrupt an active video connection.
+      if (imageLoadedRef.current) {
+        return;
+      }
+
       reconnectCountRef.current = 0;
       firstFrameRetryDoneRef.current = false;
       dispatch({ type: "BUMP_SESSION" });

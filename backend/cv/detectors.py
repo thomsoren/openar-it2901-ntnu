@@ -45,6 +45,7 @@ class RTDETRDetector:
     def _load_model(self, model_path: str | None) -> RTDETR:
         device = self._select_device()
         self._use_half = device == "cuda"
+        self._device = device
         logger.info("PyTorch device: %s", device)
 
         if model_path:
@@ -75,6 +76,7 @@ class RTDETRDetector:
                 iou=IOU_THRESHOLD,
                 imgsz=MODEL_INPUT_SIZE,
                 half=half,
+                device=self._device,
                 persist=True,
                 tracker=str(BYTETRACK_YAML),
                 agnostic_nms=AGNOSTIC_NMS,
@@ -87,6 +89,7 @@ class RTDETRDetector:
                 iou=IOU_THRESHOLD,
                 imgsz=MODEL_INPUT_SIZE,
                 half=half,
+                device=self._device,
                 agnostic_nms=AGNOSTIC_NMS,
                 verbose=False,
             )[0]

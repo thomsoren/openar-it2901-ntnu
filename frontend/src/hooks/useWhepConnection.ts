@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useState } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
 
 export type WhepConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
 
@@ -76,9 +76,19 @@ const waitForIceGathering = (pc: RTCPeerConnection): Promise<void> => {
   });
 };
 
+// Retry WHEP offer every 2s while the stream is starting up (FFmpeg/MediaMTX not ready yet).
+// After MAX_WHEP_RETRIES the hook reports error so VideoPlayer can fall back to HLS.
+const MAX_WHEP_RETRIES = 5;
+const WHEP_RETRY_DELAY_MS = 2000;
+
+// If WebRTC ICE hasn't connected within this window, give up and fall back to HLS.
+// Chrome's own ICE failure timeout is ~30s; this forces a faster fallback.
+const ICE_CONNECTION_TIMEOUT_MS = 8000;
+
 /**
  * Hook for establishing and managing a WHEP/WebRTC receive-only session.
  * Negotiates SDP against MediaMTX WHEP endpoint and maps connection/media events to UI state.
+ * Retries the WHEP offer automatically when the stream is not yet available (404/503).
  *
  * @param whepUrl - WHEP endpoint URL; when null the hook stays idle
  * @param videoRef - Target video element ref for attaching remote stream
@@ -103,6 +113,9 @@ export function useWhepConnection({
 }: UseWhepConnectionOptions): UseWhepConnectionResult {
   const [status, setStatus] = useState<WhepConnectionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
+  const iceTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!enabled || !whepUrl) {
@@ -121,6 +134,7 @@ export function useWhepConnection({
     let cancelled = false;
     let pc: RTCPeerConnection | null = null;
     let sessionUrl: string | null = null;
+    retryCountRef.current = 0;
 
     const markError = (message: string) => {
       if (cancelled) {
@@ -161,6 +175,14 @@ export function useWhepConnection({
     videoEl.addEventListener("error", handleError);
 
     const connect = async () => {
+      if (cancelled) return;
+
+      // Close any RTCPeerConnection from a previous failed attempt before retrying.
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+
       try {
         setStatus("connecting");
         setError(null);
@@ -169,13 +191,27 @@ export function useWhepConnection({
         const iceServers = parseIceServers(optionsResponse.headers.get("Link"));
         pc = new RTCPeerConnection({ iceServers });
 
+        const clearIceTimeout = () => {
+          if (iceTimeoutRef.current !== null) {
+            window.clearTimeout(iceTimeoutRef.current);
+            iceTimeoutRef.current = null;
+          }
+        };
+
+        // Set when ontrack fires — media flowing means ICE succeeded regardless
+        // of whether connectionState has caught up to "connected" yet.
+        let mediaReceived = false;
+
         pc.onconnectionstatechange = () => {
           if (cancelled) {
             return;
           }
-          if (pc?.connectionState === "disconnected") {
+          if (pc?.connectionState === "connected") {
+            clearIceTimeout();
+          } else if (pc?.connectionState === "disconnected") {
             setStatus("stalled");
           } else if (pc?.connectionState === "failed") {
+            clearIceTimeout();
             markError("WebRTC connection failed");
           }
         };
@@ -184,6 +220,8 @@ export function useWhepConnection({
           if (cancelled) {
             return;
           }
+          mediaReceived = true;
+          clearIceTimeout(); // no-op if timeout not set yet; flag handles that case
           // Chromium can default to a larger jitter/playout buffer than Safari.
           // Request minimum playout delay when supported to keep glass-to-glass latency low.
           try {
@@ -225,8 +263,26 @@ export function useWhepConnection({
           headers: { "Content-Type": "application/sdp" },
           body: localSdp,
         });
+
         if (!offerResponse.ok) {
-          throw new Error(`WHEP offer rejected (${offerResponse.status})`);
+          if (cancelled) return;
+
+          // Stream not ready yet (MediaMTX returns 404/503 before FFmpeg publishes).
+          // Close this PC and retry after a short delay rather than immediately erroring.
+          pc.close();
+          pc = null;
+
+          if (retryCountRef.current < MAX_WHEP_RETRIES) {
+            retryCountRef.current++;
+            retryTimerRef.current = window.setTimeout(() => {
+              retryTimerRef.current = null;
+              void connect();
+            }, WHEP_RETRY_DELAY_MS);
+            return;
+          }
+
+          markError(`WHEP offer rejected (${offerResponse.status})`);
+          return;
         }
 
         const location = offerResponse.headers.get("Location");
@@ -236,8 +292,20 @@ export function useWhepConnection({
 
         const answerSdp = await offerResponse.text();
         await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+        // Start ICE connection watchdog. If the peer connection hasn't reached
+        // "connected" within the timeout, Chrome would otherwise wait ~30s on
+        // its own before declaring failure. We fail fast and fall back to HLS.
+        iceTimeoutRef.current = window.setTimeout(() => {
+          iceTimeoutRef.current = null;
+          if (!cancelled && !mediaReceived && pc?.connectionState !== "connected") {
+            markError("WebRTC ICE connection timeout");
+          }
+        }, ICE_CONNECTION_TIMEOUT_MS);
       } catch (err) {
-        markError(err instanceof Error ? err.message : "WebRTC session setup failed");
+        if (!cancelled) {
+          markError(err instanceof Error ? err.message : "WebRTC session setup failed");
+        }
       }
     };
 
@@ -245,6 +313,16 @@ export function useWhepConnection({
 
     return () => {
       cancelled = true;
+
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+
+      if (iceTimeoutRef.current !== null) {
+        window.clearTimeout(iceTimeoutRef.current);
+        iceTimeoutRef.current = null;
+      }
 
       videoEl.removeEventListener("loadeddata", handleLoadedData);
       videoEl.removeEventListener("playing", handlePlaying);

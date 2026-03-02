@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func, text
+from sqlalchemy import Boolean, DateTime, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.database import Base
@@ -44,7 +44,6 @@ class MediaAsset(Base):
     visibility: Mapped[str] = mapped_column(String(20), nullable=False, default="private", server_default=text("'private'"))
     owner_user_id: Mapped[str | None] = mapped_column(
         String(255),
-        ForeignKey("user.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

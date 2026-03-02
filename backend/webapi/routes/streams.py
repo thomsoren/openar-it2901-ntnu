@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import shutil
 import uuid
 from pathlib import PurePath
@@ -70,14 +71,18 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
     orchestrator = _require_orchestrator()
 
     try:
-        source_url = resolve_stream_source(request.source_url)
+        source_url = await asyncio.get_event_loop().run_in_executor(
+            None, resolve_stream_source, request.source_url
+        )
     except RuntimeError as exc:
         bad_gateway(str(exc))
     if not source_url:
         bad_request("source_url is required for this stream")
 
     config = StreamConfig(stream_id=stream_id, source_url=source_url, loop=request.loop)
-    handle = _start_orchestrator_stream(orchestrator, config)
+    handle = await asyncio.get_event_loop().run_in_executor(
+        None, _start_orchestrator_stream, orchestrator, config
+    )
 
     return {
         "status": "started",
@@ -145,6 +150,7 @@ async def get_stream_playback(stream_id: str) -> dict[str, Any]:
         not_found(str(exc))
 
     return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id)}
+
 
 
 @router.post("/api/streams/{stream_id}/heartbeat", status_code=204, response_class=Response)
