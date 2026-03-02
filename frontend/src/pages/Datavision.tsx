@@ -116,25 +116,11 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
 
   const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
-  //detections
-  const {
-    vessels,
-    isLoading,
-    error,
-    isConnected,
-    videoInfo,
-    detectionTimestampMs,
-    detectionFrameSentAtMs,
-  } = useDetectionsWebSocket({
+  const { vessels, isLoading, error, isConnected, videoInfo } = useDetectionsWebSocket({
     url: wsUrl,
     enabled: wsEnabled,
   });
-  //interpolation of detections
-  const interpolatedVessels = useInterpolatedDetections(
-    vessels,
-    detectionFrameSentAtMs,
-    detectionTimestampMs
-  );
+  const interpolatedVessels = useInterpolatedDetections(vessels);
 
   const videoTransform = useVideoTransform(
     videoRef,

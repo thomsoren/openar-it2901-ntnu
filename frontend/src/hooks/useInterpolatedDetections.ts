@@ -39,11 +39,11 @@ const DEFAULT_OPTIONS = {
   anonMatchDistancePx: 240,
 } satisfies Required<InterpolatedDetectionOptions>;
 
-const PROCESS_NOISE_POS = 80;
-const PROCESS_NOISE_VEL = 250;
-const MEASUREMENT_NOISE_XY = 36;
-const MEASUREMENT_NOISE_WH = 64;
-const EMA_TAU_MS = 140;
+const PROCESS_NOISE_POS = 80; // px² per prediction step
+const PROCESS_NOISE_VEL = 250; // (px/s)² per prediction step
+const MEASUREMENT_NOISE_XY = 36; // px² — position measurement variance
+const MEASUREMENT_NOISE_WH = 64; // px² — dimension measurement variance
+const EMA_TAU_MS = 140; // ms — exponential moving average time constant for render smoothing
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -103,11 +103,7 @@ const squaredDistanceFromTrack = (track: TrackState, detection: Detection): numb
   return dx * dx + dy * dy;
 };
 
-const getSampleTimeMs = (detectionFrameSentAtMs: number, detectionTimestampMs: number): number => {
-  if (detectionFrameSentAtMs > 0) return detectionFrameSentAtMs;
-  if (detectionTimestampMs > 0) return Date.now();
-  return Date.now();
-};
+const getSampleTimeMs = (): number => Date.now();
 
 const buildTrack = (
   key: string,
@@ -136,8 +132,6 @@ const buildTrack = (
 
 export function useInterpolatedDetections(
   vessels: DetectedVessel[],
-  detectionFrameSentAtMs: number,
-  detectionTimestampMs: number,
   options?: InterpolatedDetectionOptions
 ): DetectedVessel[] {
   const config = { ...DEFAULT_OPTIONS, ...options };
@@ -146,7 +140,7 @@ export function useInterpolatedDetections(
   const [rendered, setRendered] = useState<DetectedVessel[]>([]);
 
   useEffect(() => {
-    const sampleTimeMs = getSampleTimeMs(detectionFrameSentAtMs, detectionTimestampMs);
+    const sampleTimeMs = getSampleTimeMs();
     const tracks = tracksRef.current;
     const seenKeys = new Set<string>();
     const unmatchedAnon = new Set<string>();
@@ -156,6 +150,7 @@ export function useInterpolatedDetections(
       if (key.startsWith("anon:")) {
         unmatchedAnon.add(key);
       }
+      // 3x trackDropMs: keep hidden tracks for re-identification if the same ID reappears
       if (sampleTimeMs - track.lastMeasurementAtMs > config.trackDropMs * 3) {
         tracks.delete(key);
       }
@@ -223,20 +218,7 @@ export function useInterpolatedDetections(
       existing.lastMeasurementAtMs = sampleTimeMs;
       seenKeys.add(key);
     }
-
-    // Keep tracks not present in this payload for short-term prediction.
-    for (const [key, track] of tracks.entries()) {
-      if (!seenKeys.has(key) && sampleTimeMs - track.lastMeasurementAtMs > config.trackDropMs * 3) {
-        tracks.delete(key);
-      }
-    }
-  }, [
-    vessels,
-    detectionFrameSentAtMs,
-    detectionTimestampMs,
-    config.anonMatchDistancePx,
-    config.trackDropMs,
-  ]);
+  }, [vessels, config.anonMatchDistancePx, config.trackDropMs]);
 
   useEffect(() => {
     let rafId = 0;
