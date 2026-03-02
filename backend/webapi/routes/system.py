@@ -57,10 +57,10 @@ def list_samples() -> dict[str, Any]:
 
 
 @router.post("/api/fusion/reset")
-def reset_fusion_timer() -> dict[str, Any]:
+def reset_fusion_timer(profile: str = "mock") -> dict[str, Any]:
     try:
-        start = fusion.reset_sample_timer()
-        return {"status": "ok", "start_mono": start}
+        start = fusion.reset_sample_timer(profile=profile)
+        return {"status": "ok", "profile": profile, "start_mono": start}
     except Exception as exc:
         wrap_internal("Error resetting fusion timer", exc)
 
