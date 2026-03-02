@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class RTDETRDetector:
-    DEFAULT_MODEL = "best.pt"  # Custom trained on CombinedShips
+    DEFAULT_MODEL = "optuna_model.pt"
     # All classes are boats in our custom model, no filtering needed
     BOAT_CLASSES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
