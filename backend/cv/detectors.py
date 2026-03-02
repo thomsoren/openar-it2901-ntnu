@@ -1,10 +1,9 @@
-"""
-RT-DETR boat detector.
-"""
+"""RT-DETR boat detector."""
+from __future__ import annotations
+
 import logging
 import threading
 from pathlib import Path
-from typing import List
 
 import numpy as np
 import torch
@@ -12,7 +11,7 @@ from ultralytics import RTDETR
 
 from common.config import MODELS_DIR
 from common.types import Detection
-from cv.config import CONFIDENCE, IOU_THRESHOLD, AGNOSTIC_NMS, BYTETRACK_YAML
+from cv.config import CONFIDENCE, IOU_THRESHOLD, AGNOSTIC_NMS, BYTETRACK_YAML, MODEL_INPUT_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -54,23 +53,23 @@ class RTDETRDetector:
         if model_path:
             path = Path(model_path)
             if path.exists():
-                logger.info(f"Loading model from: {path}")
+                logger.info("Loading model from: %s", path)
                 return RTDETR(str(path))
 
             models_path = MODELS_DIR / model_path
             if models_path.exists():
-                logger.info(f"Loading model from: {models_path}")
+                logger.info("Loading model from: %s", models_path)
                 return RTDETR(str(models_path))
 
         default_path = MODELS_DIR / self.DEFAULT_MODEL
         if default_path.exists():
-            logger.info(f"Loading model from: {default_path}")
+            logger.info("Loading model from: %s", default_path)
             return RTDETR(str(default_path))
 
-        logger.info(f"Loading default model: {self.DEFAULT_MODEL}")
+        logger.info("Loading default model: %s", self.DEFAULT_MODEL)
         return RTDETR(self.DEFAULT_MODEL)
 
-    def detect(self, frame: np.ndarray, track: bool = False) -> List[Detection]:
+    def detect(self, frame: np.ndarray, track: bool = False) -> list[Detection]:
         half = self._use_half
         if track:
             results = self.model.track(
@@ -78,7 +77,7 @@ class RTDETRDetector:
                 device=self.device,
                 conf=self.confidence,
                 iou=IOU_THRESHOLD,
-                imgsz=640,
+                imgsz=MODEL_INPUT_SIZE,
                 half=half,
                 persist=True,
                 tracker=str(BYTETRACK_YAML),
@@ -91,7 +90,7 @@ class RTDETRDetector:
                 device=self.device,
                 conf=self.confidence,
                 iou=IOU_THRESHOLD,
-                imgsz=640,
+                imgsz=MODEL_INPUT_SIZE,
                 half=half,
                 agnostic_nms=AGNOSTIC_NMS,
                 verbose=False,

@@ -1,40 +1,34 @@
 """MediaMTX and FFmpeg publishing configuration."""
 from __future__ import annotations
 
-import os
 from urllib.parse import urlsplit, urlunsplit
 
-
-def _truthy(value: str | None, default: bool = False) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+from settings._env import get_bool, get_int, get_str
 
 
-MEDIAMTX_ENABLED = _truthy(os.getenv("MEDIAMTX_ENABLED"), default=True)
-MEDIAMTX_RTSP_BASE = os.getenv("MEDIAMTX_RTSP_BASE", "rtsp://localhost:8854").rstrip("/")
-MEDIAMTX_WHEP_BASE = os.getenv("MEDIAMTX_WHEP_BASE", "http://localhost:8889").rstrip("/")
-MEDIAMTX_HLS_BASE = os.getenv("MEDIAMTX_HLS_BASE", "http://localhost:8888").rstrip("/")
+MEDIAMTX_ENABLED = get_bool("MEDIAMTX_ENABLED", default=True)
+MEDIAMTX_RTSP_BASE = get_str("MEDIAMTX_RTSP_BASE", "rtsp://localhost:8854").rstrip("/")
+MEDIAMTX_WHEP_BASE = get_str("MEDIAMTX_WHEP_BASE", "http://localhost:8889").rstrip("/")
+MEDIAMTX_HLS_BASE = get_str("MEDIAMTX_HLS_BASE", "http://localhost:8888").rstrip("/")
 
-MEDIAMTX_PUBLISH_USER = os.getenv("MEDIAMTX_PUBLISH_USER", "").strip()
-MEDIAMTX_PUBLISH_PASS = os.getenv("MEDIAMTX_PUBLISH_PASS", "").strip()
-MEDIAMTX_READ_USER = os.getenv("MEDIAMTX_READ_USER", "").strip()
-MEDIAMTX_READ_PASS = os.getenv("MEDIAMTX_READ_PASS", "").strip()
+MEDIAMTX_PUBLISH_USER = get_str("MEDIAMTX_PUBLISH_USER", "")
+MEDIAMTX_PUBLISH_PASS = get_str("MEDIAMTX_PUBLISH_PASS", "")
+MEDIAMTX_READ_USER = get_str("MEDIAMTX_READ_USER", "")
+MEDIAMTX_READ_PASS = get_str("MEDIAMTX_READ_PASS", "")
 # WARNING: When true, read credentials are embedded in playback URLs returned
 # to the browser via the API. Only enable for local development or trusted networks.
-MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS = _truthy(
-    os.getenv("MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS"),
-    default=False,
+MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS = get_bool(
+    "MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS", default=False,
 )
 
-FFMPEG_BIN = os.getenv("FFMPEG_BIN", "ffmpeg")
-FFMPEG_CODEC = os.getenv("FFMPEG_CODEC", "auto").strip().lower()
-FFMPEG_LIBX264_PRESET = os.getenv("FFMPEG_LIBX264_PRESET", "ultrafast").strip()
-FFMPEG_NVENC_PRESET = os.getenv("FFMPEG_NVENC_PRESET", "p1").strip()
-FFMPEG_VIDEO_BITRATE = os.getenv("FFMPEG_VIDEO_BITRATE", "4M").strip()
-FFMPEG_GOP = int(os.getenv("FFMPEG_GOP", "15"))
-FFMPEG_SCALE_WIDTH = int(os.getenv("FFMPEG_SCALE_WIDTH", "0"))
-FFMPEG_SCALE_HEIGHT = int(os.getenv("FFMPEG_SCALE_HEIGHT", "0"))
+FFMPEG_BIN = get_str("FFMPEG_BIN", "ffmpeg")
+FFMPEG_CODEC = get_str("FFMPEG_CODEC", "auto").lower()
+FFMPEG_LIBX264_PRESET = get_str("FFMPEG_LIBX264_PRESET", "ultrafast")
+FFMPEG_NVENC_PRESET = get_str("FFMPEG_NVENC_PRESET", "p1")
+FFMPEG_VIDEO_BITRATE = get_str("FFMPEG_VIDEO_BITRATE", "4M")
+FFMPEG_GOP = get_int("FFMPEG_GOP", 15)
+FFMPEG_SCALE_WIDTH = get_int("FFMPEG_SCALE_WIDTH", 0)
+FFMPEG_SCALE_HEIGHT = get_int("FFMPEG_SCALE_HEIGHT", 0)
 
 
 def _with_basic_auth(url: str, user: str, password: str) -> str:

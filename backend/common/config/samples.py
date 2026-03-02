@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -13,12 +12,12 @@ from .paths import BASE_DIR, SAMPLES_CONFIG_PATH, DEFAULT_VIDEO_PATH, DEFAULT_FU
 class SampleConfig(BaseModel):
     id: str
     label: str
-    video_path: Optional[str] = None
-    ais_path: Optional[str] = None
-    gt_fusion_path: Optional[str] = None
+    video_path: str | None = None
+    ais_path: str | None = None
+    gt_fusion_path: str | None = None
     start_sec: int = 0
     end_sec: int = 0
-    description: Optional[str] = None
+    description: str | None = None
 
 
 def _resolve_sample_path(path_value: str | None) -> Path | None:

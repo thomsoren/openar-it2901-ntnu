@@ -5,9 +5,12 @@ import logging
 import threading
 import time
 
+import numpy as np
+
 from cv.decode_thread import DecodeThread
 from cv.detectors import RTDETRDetector
 from cv.publisher import DetectionPublisher
+from settings import cv_runtime_settings
 
 logger = logging.getLogger(__name__)
 
@@ -81,62 +84,95 @@ class InferenceThread:
         except Exception as exc:
             logger.debug("Tracker reset failed (non-critical): %s", exc)
 
+    def _get_active_stream(self) -> tuple[str | None, DecodeThread | None]:
+        with self._lock:
+            active_id = self._active_stream_id
+            decode_thread = self._streams.get(active_id) if active_id else None
+        return active_id, decode_thread
+
+    def _handle_stream_switch(self, active_id: str) -> None:
+        if active_id == self._prev_active_stream_id:
+            return
+        self._reset_tracker()
+        self._prev_active_stream_id = active_id
+        logger.info("[%s] Inference thread switched to stream", active_id)
+
+    def _publish_ready_if_needed(self, active_id: str, decode_thread: DecodeThread) -> None:
+        if active_id in self._ready_sent or not decode_thread.is_alive:
+            return
+        ready_payload = {
+            "type": "ready",
+            "width": decode_thread.width,
+            "height": decode_thread.height,
+            "fps": decode_thread.fps,
+        }
+        self._publisher.publish(active_id, ready_payload)
+        self._ready_sent.add(active_id)
+
+    def _next_pending_frame(
+        self,
+        active_id: str,
+        decode_thread: DecodeThread,
+    ) -> tuple[np.ndarray, int, float] | None:
+        frame, frame_idx, ts = decode_thread.get_latest()
+        if frame is None or frame_idx == self._last_processed_idx.get(active_id, -1):
+            return None
+        return frame, frame_idx, ts
+
+    def _publish_detections(
+        self,
+        active_id: str,
+        decode_thread: DecodeThread,
+        frame: np.ndarray,
+        frame_idx: int,
+        ts: float,
+        inf_fps: float,
+    ) -> None:
+        detections = self._detector.detect(frame, track=True)
+        if self._last_processed_idx.get(active_id, -1) == -1:
+            logger.info(
+                "[%s] First frame processed (idx=%d, %dx%d)",
+                active_id, frame_idx, frame.shape[1], frame.shape[0],
+            )
+        self._last_processed_idx[active_id] = frame_idx
+
+        payload = {
+            "type": "detections",
+            "frame_index": frame_idx,
+            "timestamp_ms": ts,
+            "frame_sent_at_ms": time.time() * 1000.0,
+            "fps": decode_thread.fps,
+            "inference_fps": round(inf_fps, 1),
+            "vessels": [
+                {"detection": d.model_dump(), "vessel": None}
+                for d in detections
+            ],
+        }
+        self._publisher.publish(active_id, payload)
+
     def _loop(self) -> None:
         last_time = time.monotonic()
+        wait_no_stream_sec = cv_runtime_settings.inference_wait_no_stream_sec
+        wait_no_frame_sec = cv_runtime_settings.inference_wait_no_frame_sec
         logger.info("Inference thread loop started, waiting for active stream")
 
         while not self._stopped.is_set():
-            with self._lock:
-                active_id = self._active_stream_id
-                decode_thread = self._streams.get(active_id) if active_id else None
+            active_id, decode_thread = self._get_active_stream()
 
             if active_id is None or decode_thread is None:
-                time.sleep(0.01)
+                time.sleep(wait_no_stream_sec)
                 continue
 
-            # Stream switch: reset tracker
-            if active_id != self._prev_active_stream_id:
-                self._reset_tracker()
-                self._prev_active_stream_id = active_id
-                logger.info("[%s] Inference thread switched to stream", active_id)
+            self._handle_stream_switch(active_id)
+            self._publish_ready_if_needed(active_id, decode_thread)
 
-            # Send ready message on first activation
-            if active_id not in self._ready_sent and decode_thread.is_alive:
-                ready_payload = {
-                    "type": "ready",
-                    "width": decode_thread.width,
-                    "height": decode_thread.height,
-                    "fps": decode_thread.fps,
-                }
-                self._publisher.publish(active_id, ready_payload)
-                self._ready_sent.add(active_id)
-
-            frame, frame_idx, ts = decode_thread.get_latest()
-
-            if frame is None or frame_idx == self._last_processed_idx.get(active_id, -1):
-                time.sleep(0.005)
+            pending = self._next_pending_frame(active_id, decode_thread)
+            if pending is None:
+                time.sleep(wait_no_frame_sec)
                 continue
-
-            detections = self._detector.detect(frame, track=True)
-            if self._last_processed_idx.get(active_id, -1) == -1:
-                logger.info("[%s] First frame processed (idx=%d, %dx%d)",
-                            active_id, frame_idx, frame.shape[1], frame.shape[0])
-            self._last_processed_idx[active_id] = frame_idx
+            frame, frame_idx, ts = pending
 
             now = time.monotonic()
             inf_fps = 1.0 / (now - last_time) if now > last_time else 0.0
             last_time = now
-
-            payload = {
-                "type": "detections",
-                "frame_index": frame_idx,
-                "timestamp_ms": ts,
-                "frame_sent_at_ms": time.time() * 1000.0,
-                "fps": decode_thread.fps,
-                "inference_fps": round(inf_fps, 1),
-                "vessels": [
-                    {"detection": d.model_dump(), "vessel": None}
-                    for d in detections
-                ],
-            }
-            self._publisher.publish(active_id, payload)
+            self._publish_detections(active_id, decode_thread, frame, frame_idx, ts, inf_fps)
