@@ -1,6 +1,13 @@
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import type { StreamSummary } from "../../types/stream";
-import { DEFAULT_STREAM_ID, DEFAULT_STREAM_TITLE } from "./constants";
+import {
+  DEFAULT_STREAM_ID,
+  DEFAULT_STREAM_TITLE,
+  FUSION_TAB_ID,
+  FUSION_TAB_TITLE,
+  FUSION_MOCK_TAB_ID,
+  FUSION_MOCK_TAB_TITLE,
+} from "./constants";
 
 export function nextAvailableStreamId(
   runningStreams: StreamSummary[],
@@ -20,7 +27,13 @@ export function hasConfiguredStreams(
   joinedStreamIds: string[],
   configureTabId: string | null
 ): boolean {
-  return joinedStreamIds.some((id) => id !== DEFAULT_STREAM_ID && id !== configureTabId);
+  return joinedStreamIds.some(
+    (id) =>
+      id !== DEFAULT_STREAM_ID &&
+      id !== FUSION_MOCK_TAB_ID &&
+      id !== FUSION_TAB_ID &&
+      id !== configureTabId
+  );
 }
 
 export function buildTabsAndActiveStream(
@@ -39,6 +52,14 @@ export function buildTabsAndActiveStream(
   for (const id of joinedStreamIds) {
     if (seen.has(id) || id === configureTabId) continue;
     seen.add(id);
+    if (id === FUSION_MOCK_TAB_ID) {
+      tabs.push({ id, title: FUSION_MOCK_TAB_TITLE });
+      continue;
+    }
+    if (id === FUSION_TAB_ID) {
+      tabs.push({ id, title: FUSION_TAB_TITLE });
+      continue;
+    }
     const stream = byId.get(id);
     tabs.push({ id, title: stream ? id : `${id} (starting...)` });
   }

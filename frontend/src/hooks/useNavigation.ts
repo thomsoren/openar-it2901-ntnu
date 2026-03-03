@@ -1,22 +1,20 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-export type PageId = "datavision" | "ais" | "components" | "fusion" | "admin";
+export type PageId = "ar" | "ais" | "components" | "media-library";
 
 const PAGE_PATHS: Record<PageId, string> = {
-  datavision: "/datavision",
+  ar: "/ar",
   ais: "/ais",
   components: "/components",
-  fusion: "/fusion",
-  admin: "/admin",
+  "media-library": "/media-library",
 };
 
 const pageLabels: Record<PageId, string> = {
-  datavision: "Datavision",
+  ar: "AR",
   ais: "AIS",
   components: "Components",
-  fusion: "Fusion",
-  admin: "Admin",
+  "media-library": "Media Library",
 };
 
 const getPageFromPath = (pathname: string): PageId => {
@@ -26,13 +24,13 @@ const getPageFromPath = (pathname: string): PageId => {
       return "ais";
     case "components":
       return "components";
-    case "fusion":
-      return "fusion";
+    case "media-library":
     case "admin":
-      return "admin";
+      return "media-library";
+    case "ar":
     case "datavision":
     default:
-      return "datavision";
+      return "ar";
   }
 };
 

@@ -156,28 +156,6 @@ header {
   max-width: 500px;
 }
 
-/* Status overlay */
-.status-overlay {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  color: white;
-  background-color: rgba(0, 0, 0, 0.7);
-  padding: 8px 12px;
-  border-radius: 4px;
-  z-index: 20;
-  font-size: 12px;
-  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
-}
-
-.status-error {
-  background-color: rgba(220, 53, 69, 0.9);
-}
-
-.status-info {
-  background-color: rgba(0, 0, 0, 0.6);
-}
-
 /* Video placeholder while loading */
 .video-placeholder {
   display: flex;

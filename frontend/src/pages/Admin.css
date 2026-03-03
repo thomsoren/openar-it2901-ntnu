@@ -1,7 +1,7 @@
 .admin-page {
   padding: 2rem;
   max-width: 1200px;
-  color: var(--obc-color-text-primary, #fff);
+  color: var(--element-active-color, #1f1f1f);
 }
 
 .admin-page__title {
@@ -20,8 +20,8 @@
 }
 
 .admin-section {
-  background: var(--obc-color-surface-2, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.1));
+  background: var(--container-background-color, #f7f7f7);
+  border: 1px solid var(--border-outline-color, #ddd);
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 2rem;
@@ -37,25 +37,27 @@
 }
 
 .admin-dropzone {
-  border: 2px dashed var(--obc-color-border, rgba(255, 255, 255, 0.2));
+  border: 2px dashed var(--indent-enabled-border-color, rgba(0, 0, 0, 0.12));
+  background: var(--indent-enabled-background-color, rgba(0, 0, 0, 0.03));
   border-radius: 6px;
   padding: 2rem;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s;
   margin-bottom: 1rem;
-  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--element-neutral-color, #535353);
 }
 
 .admin-dropzone:hover,
 .admin-dropzone--active {
-  border-color: var(--obc-color-primary, #0ea5e9);
-  color: var(--obc-color-text-primary, #fff);
+  border-color: var(--indent-hover-border-color, rgba(0, 0, 0, 0.24));
+  background: var(--indent-hover-background-color, rgba(0, 0, 0, 0.06));
+  color: var(--element-active-color, #1f1f1f);
 }
 
 .admin-dropzone__filename {
   font-weight: 600;
-  color: var(--obc-color-text-primary, #fff);
+  color: var(--element-active-color, #1f1f1f);
 }
 
 .admin-upload-controls {
@@ -73,8 +75,8 @@
 }
 
 .admin-label select {
-  background: var(--obc-color-surface-3, rgba(255, 255, 255, 0.08));
-  border: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.15));
+  background: var(--container-backdrop-color, #e8e8e8);
+  border: 1px solid var(--border-outline-color, #ddd);
   color: inherit;
   border-radius: 4px;
   padding: 0.25rem 0.5rem;
@@ -82,26 +84,26 @@
 
 .admin-upload-progress {
   font-size: 0.875rem;
-  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--element-neutral-color, #535353);
 }
 
 .admin-upload-success {
   font-size: 0.875rem;
-  color: #4ade80;
+  color: var(--alert-safe-color, #2f9e44);
 }
 
 .admin-upload-error {
   font-size: 0.875rem;
-  color: #f87171;
+  color: var(--alert-alarm-color, #c0392b);
 }
 
 .admin-error {
-  color: #f87171;
+  color: var(--alert-alarm-color, #c0392b);
   margin-bottom: 1rem;
 }
 
 .admin-empty {
-  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--element-neutral-color, #535353);
 }
 
 .admin-button {
@@ -112,8 +114,8 @@
   font-size: 0.875rem;
   font-weight: 500;
   transition: opacity 0.2s;
-  background: var(--obc-color-primary, #0ea5e9);
-  color: #fff;
+  background: var(--instrument-enhanced-secondary-color, #4ea9dd);
+  color: var(--on-main-interaction-color, #fff);
 }
 
 .admin-button:disabled {
@@ -126,11 +128,11 @@
 }
 
 .admin-button--primary {
-  background: var(--obc-color-primary, #0ea5e9);
+  background: var(--instrument-enhanced-secondary-color, #4ea9dd);
 }
 
 .admin-button--danger {
-  background: #ef4444;
+  background: var(--alert-alarm-color, #c0392b);
 }
 
 .admin-button--small {
@@ -152,12 +154,12 @@
 .admin-table td {
   text-align: left;
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--border-outline-color, #ddd);
 }
 
 .admin-table th {
   font-weight: 600;
-  color: var(--obc-color-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--element-neutral-color, #535353);
   white-space: nowrap;
 }
 
@@ -181,8 +183,8 @@
 }
 
 .admin-table select {
-  background: var(--obc-color-surface-3, rgba(255, 255, 255, 0.08));
-  border: 1px solid var(--obc-color-border, rgba(255, 255, 255, 0.15));
+  background: var(--container-backdrop-color, #e8e8e8);
+  border: 1px solid var(--border-outline-color, #ddd);
   color: inherit;
   border-radius: 4px;
   padding: 0.2rem 0.4rem;

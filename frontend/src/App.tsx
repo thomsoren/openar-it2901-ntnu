@@ -5,7 +5,6 @@ import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webc
 import "./App.css";
 import Admin from "./pages/Admin";
 import Ais from "./pages/Ais";
-import Fusion from "./pages/Fusion";
 import Components from "./pages/Components";
 import Datavision from "./pages/Datavision";
 import { useClock } from "./hooks/useClock";
@@ -13,7 +12,6 @@ import { useNavigation } from "./hooks/useNavigation";
 import { AppTopBar } from "./components/app/AppTopBar";
 import { NavigationPanel } from "./components/app/NavigationPanel";
 import { UserPanel } from "./components/app/UserPanel";
-import { useAuth } from "./hooks/useAuth";
 
 const handleBrillianceChange = (event: CustomEvent) => {
   document.documentElement.setAttribute("data-obc-theme", event.detail.value);
@@ -21,7 +19,6 @@ const handleBrillianceChange = (event: CustomEvent) => {
 
 function App() {
   const { clockDate } = useClock();
-  const { isAdmin } = useAuth();
   const nav = useNavigation();
   const {
     currentPage,
@@ -107,11 +104,7 @@ function App() {
       )}
 
       {showNavigationMenu && (
-        <NavigationPanel
-          currentPage={currentPage}
-          onNavigate={handleNavigationItemClick}
-          isAdmin={isAdmin}
-        />
+        <NavigationPanel currentPage={currentPage} onNavigate={handleNavigationItemClick} />
       )}
 
       <main
@@ -127,15 +120,16 @@ function App() {
 
         <Routes>
           <Route
-            path="/datavision"
+            path="/ar"
             element={<Datavision onAuthGateVisibleChange={handleAuthGateVisibleChange} />}
           />
+          <Route path="/datavision" element={<Navigate to="/ar" replace />} />
           <Route path="/ais" element={<Ais />} />
           <Route path="/components" element={<Components />} />
-          <Route path="/fusion" element={<Fusion />} />
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/" element={<Navigate to="/datavision" replace />} />
-          <Route path="*" element={<Navigate to="/datavision" replace />} />
+          <Route path="/media-library" element={<Admin />} />
+          <Route path="/admin" element={<Navigate to="/media-library" replace />} />
+          <Route path="/" element={<Navigate to="/ar" replace />} />
+          <Route path="*" element={<Navigate to="/ar" replace />} />
         </Routes>
       </main>
     </>

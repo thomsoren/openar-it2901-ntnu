@@ -112,10 +112,16 @@ def match_detections_to_ais(
         matched_ais.add(ai)
         matched_det.add(di)
         vessel = _record_to_vessel(projectable[ai])
+        projection = projectable[ai].get("projection") or {}
         fused.append({
             "detection": parsed_dets[di].model_dump(),
             "vessel": vessel.model_dump(),
             "match_distance_px": round(dist, 1),
+            "fusion": {
+                "match_distance_px": round(dist, 1),
+                "range_m": projection.get("distance_m"),
+                "rel_bearing_deg": projection.get("rel_bearing_deg"),
+            },
         })
         logger.debug(
             "[matcher] Matched MMSI %s to detection at (%.0f,%.0f) dist=%.1fpx",

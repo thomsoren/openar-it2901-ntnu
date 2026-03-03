@@ -4,26 +4,24 @@ import { ARControlProvider } from "../components/ar-control-panel/ARControlProvi
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
+import { FUSION_MOCK_CONFIG, FUSION_PIRBADET_CONFIG } from "../config/video";
 import { apiFetchPublic } from "../lib/api-client";
 
-function FusionInner() {
+interface FusionViewConfig {
+  width: number;
+  height: number;
+  videoSource: string;
+  wsUrl: string;
+  resetUrl: string;
+}
+
+function FusionView({ config }: { config: FusionViewConfig }) {
   const [detectionsEnabled, setDetectionsEnabled] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { state: arControls } = useARControls();
-  // Use WebSocket for real-time fusion detections
-  const {
-    vessels,
-    isLoading,
-    error,
-    isConnected,
-    fps,
-    wsUrl,
-    lastMessageAtMs,
-    detectionTimestampMs,
-  } = useDetectionsWebSocket({
-    url: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws`,
+  const { vessels } = useDetectionsWebSocket({
+    url: config.wsUrl,
     enabled: detectionsEnabled,
   });
 
@@ -32,8 +30,8 @@ function FusionInner() {
     videoRef,
     containerRef,
     arControls.videoFitMode,
-    FUSION_VIDEO_CONFIG.WIDTH,
-    FUSION_VIDEO_CONFIG.HEIGHT,
+    config.width,
+    config.height,
     arControls.detectionVisible
   );
 
@@ -42,7 +40,7 @@ function FusionInner() {
 
     const resetFusionTimer = async () => {
       try {
-        await apiFetchPublic(`${API_CONFIG.BASE_URL}/api/fusion/reset`, { method: "POST" });
+        await apiFetchPublic(config.resetUrl, { method: "POST" });
       } catch {
         // Reset failed — continue anyway
       } finally {
@@ -57,27 +55,16 @@ function FusionInner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [config.resetUrl]);
 
   return (
     <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
-      {isLoading && <div className="status-overlay">Loading FVessel demo...</div>}
-      {error && <div className="status-overlay status-error">Error: {error}</div>}
-      {!isLoading && !error && (
-        <div className="status-overlay status-info">
-          {isConnected ? "Connected" : "Disconnected"} | FVessel | Fusion | {fps.toFixed(1)} FPS |
-          Vessels: {vessels.length} | Last msg:{" "}
-          {lastMessageAtMs ? new Date(lastMessageAtMs).toLocaleTimeString() : "n/a"} | Last
-          detection ts: {detectionTimestampMs || "n/a"} | WS: {wsUrl}
-        </div>
-      )}
-
       {arControls.detectionVisible && (
         <PoiOverlay
           vessels={vessels}
           videoTransform={videoTransform}
           videoRef={videoRef}
-          videoSource={FUSION_VIDEO_CONFIG.SOURCE}
+          videoSource={config.videoSource}
           videoFitMode={arControls.videoFitMode}
         />
       )}
@@ -85,10 +72,38 @@ function FusionInner() {
   );
 }
 
+export function FusionMockDataView() {
+  return (
+    <FusionView
+      config={{
+        width: FUSION_MOCK_CONFIG.WIDTH,
+        height: FUSION_MOCK_CONFIG.HEIGHT,
+        videoSource: FUSION_MOCK_CONFIG.VIDEO_SOURCE,
+        wsUrl: FUSION_MOCK_CONFIG.WS_URL,
+        resetUrl: FUSION_MOCK_CONFIG.RESET_URL,
+      }}
+    />
+  );
+}
+
+export function FusionPirbadetView() {
+  return (
+    <FusionView
+      config={{
+        width: FUSION_PIRBADET_CONFIG.WIDTH,
+        height: FUSION_PIRBADET_CONFIG.HEIGHT,
+        videoSource: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
+        wsUrl: FUSION_PIRBADET_CONFIG.WS_URL,
+        resetUrl: FUSION_PIRBADET_CONFIG.RESET_URL,
+      }}
+    />
+  );
+}
+
 function Fusion() {
   return (
     <ARControlProvider>
-      <FusionInner />
+      <FusionMockDataView />
     </ARControlProvider>
   );
 }

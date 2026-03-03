@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 from urllib.parse import urlparse
+from urllib.request import urlopen
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -29,6 +30,9 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_PROFILES = {"mock", "pirbadet"}
 PIRBADET_AIS_LOCAL_PATH = BASE_DIR / "data" / "raw" / "video" / "Pirbadet.ndjson"
+PIRBADET_AIS_URL_DEFAULT = (
+    "https://bridgable.hel1.your-objectstorage.com/openar/ais-data/fusion-trondheim/Pirbadet.ndjson"
+)
 PIRBADET_AIS_S3_KEY_DEFAULT = (
     "ais/private/default-group/HuWS2pHe8cZeuro8llQ2bGOdacTv4GsJ/manual/Pirbadet.ndjson"
 )
@@ -137,9 +141,15 @@ def _coerce_s3_key(raw: str | None) -> str | None:
 
 def _iter_pirbadet_text_sources() -> list[tuple[str, str]]:
     sources: list[tuple[str, str]] = []
+    seen_source_labels: set[str] = set()
+
+    candidate_raw_sources: list[str] = []
+    env_url = os.getenv("FUSION_PIRBADET_AIS_URL")
+    if env_url and env_url.strip():
+        candidate_raw_sources.append(env_url.strip())
+    candidate_raw_sources.append(PIRBADET_AIS_URL_DEFAULT)
 
     candidate_s3_keys: list[str] = []
-
     env_key = _coerce_s3_key(os.getenv("FUSION_PIRBADET_AIS_S3_KEY"))
     if env_key:
         candidate_s3_keys.append(env_key)
@@ -155,6 +165,28 @@ def _iter_pirbadet_text_sources() -> list[tuple[str, str]]:
     candidate_s3_keys.extend([PIRBADET_AIS_S3_KEY_DEFAULT, PIRBADET_AIS_S3_KEY_LEGACY])
 
     seen_keys: set[str] = set()
+    for source in candidate_raw_sources:
+        s3_key = _coerce_s3_key(source)
+        if s3_key and s3_key not in seen_keys:
+            seen_keys.add(s3_key)
+            text = s3.read_text_from_sources(s3_key)
+            if text:
+                label = f"s3://{s3_key}"
+                if label not in seen_source_labels:
+                    seen_source_labels.add(label)
+                    sources.append((label, text))
+
+        if source.startswith(("http://", "https://")):
+            try:
+                with urlopen(source, timeout=20) as response:
+                    body = response.read()
+                text = body.decode("utf-8", errors="ignore")
+                if text.strip() and source not in seen_source_labels:
+                    seen_source_labels.add(source)
+                    sources.append((source, text))
+            except Exception as exc:
+                logger.warning("[fusion:pirbadet] Failed to download NDJSON from %s: %s", source, exc)
+
     for raw_key in candidate_s3_keys:
         s3_key = _coerce_s3_key(raw_key)
         if not s3_key or s3_key in seen_keys:
@@ -162,13 +194,19 @@ def _iter_pirbadet_text_sources() -> list[tuple[str, str]]:
         seen_keys.add(s3_key)
         text = s3.read_text_from_sources(s3_key)
         if text:
-            sources.append((f"s3://{s3_key}", text))
+            label = f"s3://{s3_key}"
+            if label not in seen_source_labels:
+                seen_source_labels.add(label)
+                sources.append((label, text))
 
     local_path = Path(os.getenv("FUSION_PIRBADET_AIS_LOCAL_PATH", str(PIRBADET_AIS_LOCAL_PATH)))
     try:
         if local_path.exists():
             text = local_path.read_text(encoding="utf-8")
-            sources.append((str(local_path), text))
+            label = str(local_path)
+            if label not in seen_source_labels:
+                seen_source_labels.add(label)
+                sources.append((label, text))
     except OSError as exc:
         logger.warning("[fusion:pirbadet] Failed to read local NDJSON %s: %s", local_path, exc)
 

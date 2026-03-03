@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import {
   type MediaAsset,
@@ -15,8 +14,8 @@ import "./Admin.css";
 type UploadStatus = "idle" | "uploading" | "done" | "error";
 
 export default function Admin() {
-  const { isAdmin } = useAuth();
-  const navigate = useNavigate();
+  const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge, isAdmin } =
+    useAuth();
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -42,23 +41,38 @@ export default function Admin() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!session || authBridgeStatus !== "ready") return;
     const timeoutId = window.setTimeout(() => {
       void loadAssets();
     }, 0);
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [isAdmin, loadAssets]);
+  }, [session, authBridgeStatus, loadAssets]);
 
-  if (!isAdmin) {
+  if (isSessionPending || authBridgeStatus === "loading") {
     return (
       <div className="admin-page">
-        <div className="admin-access-denied">
-          <h2>Access Denied</h2>
-          <p>You need administrator privileges to view this page.</p>
-          <button onClick={() => navigate("/datavision")}>Go to Datavision</button>
-        </div>
+        <p className="admin-empty">Loading media library…</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="admin-page">
+        <p className="admin-empty">Sign in to view your media library.</p>
+      </div>
+    );
+  }
+
+  if (authBridgeStatus === "error") {
+    return (
+      <div className="admin-page">
+        <div className="admin-error">{authBridgeError || "Authentication bridge failed."}</div>
+        <button className="admin-button admin-button--small" onClick={retryAuthBridge}>
+          Retry
+        </button>
       </div>
     );
   }
@@ -136,7 +150,7 @@ export default function Admin() {
 
   return (
     <div className="admin-page">
-      <h1 className="admin-page__title">Admin — Media Library</h1>
+      <h1 className="admin-page__title">Media Library</h1>
 
       {/* Upload section */}
       <section className="admin-section">
@@ -176,7 +190,7 @@ export default function Admin() {
             >
               <option value="private">Private</option>
               <option value="group">Group</option>
-              <option value="public">Public</option>
+              {isAdmin && <option value="public">Public</option>}
             </select>
           </label>
 
@@ -243,7 +257,7 @@ export default function Admin() {
                       >
                         <option value="private">Private</option>
                         <option value="group">Group</option>
-                        <option value="public">Public</option>
+                        {isAdmin && <option value="public">Public</option>}
                       </select>
                     </td>
                     <td>{asset.owner_user_id ?? "—"}</td>

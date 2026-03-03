@@ -17,11 +17,16 @@ import { useAuth } from "../hooks/useAuth";
 import { DETECTION_CONFIG } from "../config/video";
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
-import { stopStream, toStreamError } from "../services/streams";
+import { startStream, stopStream, toStreamError } from "../services/streams";
 import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
-import { useDatavisionStatus } from "../hooks/useDatavisionStatus";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
-import { DEFAULT_STREAM_ID } from "../hooks/stream-tabs/constants";
+import {
+  DEFAULT_STREAM_ID,
+  FUSION_MOCK_TAB_ID,
+  FUSION_TAB_ID,
+} from "../hooks/stream-tabs/constants";
+import { FUSION_PIRBADET_CONFIG } from "../config/video";
+import { FusionMockDataView } from "./Fusion";
 import "./Datavision.css";
 
 // ---------------------------------------------------------------------------
@@ -57,20 +62,15 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     handleAddTab,
     handleStreamReady,
     configureTabId,
-    streamError,
+    refreshStreams,
   } = useStreamTabs({ externalStreamId });
 
-  const {
-    videoSession,
-    videoState,
-    imageLoaded,
-    showVideoLoader,
-    controlError,
-    setControlError,
-    handleVideoStatusChange,
-  } = useVideoSessionRecovery({ streamKey: activeTabId });
+  const { videoSession, imageLoaded, showVideoLoader, setControlError, handleVideoStatusChange } =
+    useVideoSessionRecovery({ streamKey: activeTabId });
 
   const showingAuthGate = activeIsSetup && !auth.session;
+  const activeIsFusionMock = activeTabId === FUSION_MOCK_TAB_ID;
+  const activeIsSpecialFusionTab = activeIsFusionMock;
 
   useEffect(() => {
     onAuthGateVisibleChange?.(showingAuthGate);
@@ -84,18 +84,9 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
 
   const detectionWsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
-  const {
-    vessels,
-    isLoading,
-    error,
-    isConnected,
-    videoInfo,
-    wsUrl: activeWsUrl,
-    detectionTimestampMs,
-    lastMessageAtMs,
-  } = useDetectionsWebSocket({
+  const { vessels, videoInfo } = useDetectionsWebSocket({
     url: detectionWsUrl,
-    enabled: wsEnabled,
+    enabled: wsEnabled && !activeIsSpecialFusionTab,
   });
 
   const videoTransform = useVideoTransform(
@@ -107,11 +98,44 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     imageLoaded
   );
 
+  useEffect(() => {
+    if (activeTabId !== FUSION_TAB_ID || activeStream) {
+      return;
+    }
+
+    let cancelled = false;
+    const ensureFusionStreamRunning = async () => {
+      try {
+        await startStream(FUSION_TAB_ID, {
+          sourceUrl: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
+          loop: true,
+          allowExisting: true,
+        });
+        await refreshStreams();
+      } catch (err) {
+        if (!cancelled) {
+          setControlError(toStreamError(err, "Failed to start Fusion stream"));
+        }
+      }
+    };
+
+    void ensureFusionStreamRunning();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTabId, activeStream, refreshStreams, setControlError]);
+
   // --- Tab close with backend DELETE ---
   const onTabClosed = useCallback(
     async (event: CustomEvent<{ id?: string }>) => {
       const tabId = event.detail?.id?.trim();
-      if (!tabId || tabId === DEFAULT_STREAM_ID) return;
+      if (
+        !tabId ||
+        tabId === DEFAULT_STREAM_ID ||
+        tabId === FUSION_MOCK_TAB_ID ||
+        tabId === FUSION_TAB_ID
+      )
+        return;
 
       const wasSetup = configureTabId === tabId;
       handleTabClosed(tabId);
@@ -129,18 +153,6 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
 
   const activeStreamPlayback = activeStream?.playback_urls ?? null;
 
-  // Merge stream errors from the hook into controlError
-  const displayError = controlError || streamError;
-  const statusDisplay = useDatavisionStatus({
-    activeTabId,
-    wsUrl: activeWsUrl,
-    vesselsCount: vessels.length,
-    isConnected,
-    detectionTimestampMs,
-    lastMessageAtMs,
-    controlError: displayError,
-    videoState,
-  });
   const tabWidth = 210; // OBC tab row renders uniform tab widths in this layout
   const requiredTabsWidth = tabs.length * tabWidth;
   const controlsPanelWidth = 690; // AR controls + spacing
@@ -184,11 +196,14 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
               </>
             )}
 
+            {!activeIsSetup && activeIsFusionMock && <FusionMockDataView />}
+
             {!activeIsSetup &&
+              !activeIsSpecialFusionTab &&
               !activeStream &&
               "No running streams. Join or create one from the sidebar."}
 
-            {!activeIsSetup && activeStream && (
+            {!activeIsSetup && !activeIsSpecialFusionTab && activeStream && (
               <>
                 <VideoPlayer
                   key={`${activeTabId}-${videoSession}`}
@@ -224,13 +239,6 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
                       {!imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."}
                     </div>
                   </div>
-                )}
-                {isLoading && imageLoaded && (
-                  <div className="status-overlay">Connecting to detection stream...</div>
-                )}
-                {error && <div className="status-overlay status-error">Error: {error}</div>}
-                {!isLoading && !error && (
-                  <div className="status-overlay status-info">{statusDisplay.infoLabel}</div>
                 )}
 
                 {arControls.detectionVisible && (

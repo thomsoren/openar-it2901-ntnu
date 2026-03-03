@@ -8,6 +8,7 @@ import {
 import { persistActiveTabId, persistJoinedStreamIds } from "./storage";
 import { setRunningStreamsSnapshot } from "./running-streams-store";
 import type { StreamTabAction } from "./reducer";
+import { FUSION_MOCK_TAB_ID } from "./constants";
 
 interface EffectOptions {
   dispatch: (action: StreamTabAction) => void;
@@ -44,7 +45,7 @@ export function useStreamHeartbeats(
   useEffect(() => {
     const interval = window.setInterval(() => {
       for (const id of joinedIdsRef.current) {
-        if (id === configureTabIdRef.current) continue;
+        if (id === configureTabIdRef.current || id === FUSION_MOCK_TAB_ID) continue;
         sendStreamHeartbeat(id).catch((err) => console.warn("stream heartbeat failed", err));
       }
     }, 60_000);

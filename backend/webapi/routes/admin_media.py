@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from auth.deps import require_admin
+from auth.deps import get_current_user
 from db.database import get_db
 from db.models import AppUser, MediaAsset
 from storage.s3 import S3_BUCKET, _client, _normalize_key, s3_enabled
@@ -47,22 +47,27 @@ class VisibilityPayload(BaseModel):
 
 @router.get("", response_model=list[MediaAssetResponse])
 def list_media_assets(
-    _: Annotated[AppUser, Depends(require_admin)],
+    current_user: Annotated[AppUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    assets = db.query(MediaAsset).order_by(MediaAsset.created_at.desc()).all()
+    query = db.query(MediaAsset)
+    if not current_user.is_admin:
+        query = query.filter(MediaAsset.owner_user_id == current_user.id)
+    assets = query.order_by(MediaAsset.created_at.desc()).all()
     return [MediaAssetResponse.from_orm(a) for a in assets]
 
 
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_media_asset(
     asset_id: str,
-    _: Annotated[AppUser, Depends(require_admin)],
+    current_user: Annotated[AppUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
     asset = db.get(MediaAsset, asset_id)
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if not current_user.is_admin and asset.owner_user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     if s3_enabled():
         try:
@@ -79,7 +84,7 @@ def delete_media_asset(
 def update_visibility(
     asset_id: str,
     payload: VisibilityPayload,
-    _: Annotated[AppUser, Depends(require_admin)],
+    current_user: Annotated[AppUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ):
     if payload.visibility not in {"private", "group", "public"}:
@@ -87,10 +92,17 @@ def update_visibility(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="visibility must be private, group, or public",
         )
+    if payload.visibility == "public" and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public visibility requires admin privileges",
+        )
 
     asset = db.get(MediaAsset, asset_id)
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if not current_user.is_admin and asset.owner_user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     asset.visibility = payload.visibility
     db.add(asset)

@@ -48,6 +48,18 @@ function isLayerVisible(
   return arControls.vesselLayerVisible;
 }
 
+const formatMmsiPrefix = (mmsi: string | undefined): string => {
+  if (!mmsi) return "N/A";
+  const digitsOnly = mmsi.replace(/\D/g, "");
+  const source = digitsOnly || mmsi;
+  return source.slice(0, 4) || "N/A";
+};
+
+const formatNumber = (value: number | null | undefined, digits = 0): string => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "N/A";
+  return value.toFixed(digits);
+};
+
 function PoiOverlay({
   vessels = [],
   videoTransform,
@@ -116,42 +128,57 @@ function PoiOverlay({
 
     const keysToRemove = new Set(poiElementsRef.current.keys());
 
-    vessels
-      .filter((item) => isLayerVisible(item.detection.class_name, arControls))
-      .forEach((item, index) => {
-        const trackId = item.detection.track_id ?? `vessel-${index}`;
-        keysToRemove.delete(trackId);
+    vessels.forEach((item, index) => {
+      const detection = item?.detection;
+      if (!detection) {
+        return;
+      }
+      if (!isLayerVisible(detection.class_name, arControls)) {
+        return;
+      }
 
-        const scaledX = item.detection.x * mapX * videoTransform.scaleX;
-        const scaledY = item.detection.y * mapY * videoTransform.scaleY;
-        const scaledWidth = item.detection.width * mapX * videoTransform.scaleX;
-        const scaledHeight = item.detection.height * mapY * videoTransform.scaleY;
-        const screenX = scaledX + videoTransform.offsetX;
-        const screenY = scaledY + videoTransform.offsetY;
-        const lineLength = Math.max(0, screenY - layerTopOffset);
+      const trackId = detection.track_id ?? `vessel-${index}`;
+      keysToRemove.delete(trackId);
 
-        const vesselData =
-          arControls.aisCardsVisible && item.vessel
-            ? [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
-            : [];
+      const scaledX = detection.x * mapX * videoTransform.scaleX;
+      const scaledY = detection.y * mapY * videoTransform.scaleY;
+      const scaledWidth = detection.width * mapX * videoTransform.scaleX;
+      const scaledHeight = detection.height * mapY * videoTransform.scaleY;
+      const screenX = scaledX + videoTransform.offsetX;
+      const screenY = scaledY + videoTransform.offsetY;
+      const lineLength = Math.max(0, screenY - layerTopOffset);
 
-        let el = poiElementsRef.current.get(trackId);
-        if (!el) {
-          el = document.createElement("obc-poi-data") as PoiDataElement;
-          el.style.position = "absolute";
-          poiElementsRef.current.set(trackId, el);
-          layer.appendChild(el);
-        }
+      const matchDistancePx = item.fusion?.match_distance_px ?? item.match_distance_px;
+      const hasFusionMetrics =
+        Boolean(item.vessel) && matchDistancePx !== null && matchDistancePx !== undefined;
 
-        // Update Lit reactive properties directly on the element.
-        el.x = screenX;
-        el.y = lineLength;
-        el.boxWidth = scaledWidth;
-        el.boxHeight = scaledHeight;
-        el.value = PoiDataValue.Unchecked;
-        el.data = vesselData;
-        el.relativeDirection = item.vessel?.heading ?? 0;
-      });
+      const vesselData =
+        arControls.aisCardsVisible && item.vessel
+          ? hasFusionMetrics
+            ? [
+                { value: formatMmsiPrefix(item.vessel.mmsi), label: "MMSI", unit: "" },
+                { value: formatNumber(matchDistancePx, 1), label: "Dpx", unit: "px" },
+              ]
+            : [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
+          : [];
+
+      let el = poiElementsRef.current.get(trackId);
+      if (!el) {
+        el = document.createElement("obc-poi-data") as PoiDataElement;
+        el.style.position = "absolute";
+        poiElementsRef.current.set(trackId, el);
+        layer.appendChild(el);
+      }
+
+      // Update Lit reactive properties directly on the element.
+      el.x = screenX;
+      el.y = lineLength;
+      el.boxWidth = scaledWidth;
+      el.boxHeight = scaledHeight;
+      el.value = PoiDataValue.Unchecked;
+      el.data = vesselData;
+      el.relativeDirection = item.vessel?.heading ?? 0;
+    });
 
     // Remove elements whose vessels are no longer present.
     // Use el.parentNode (not layer) because the web component may have
@@ -218,10 +245,10 @@ function PoiOverlay({
               height: "auto",
             }}
           >
-            <ObcPoiLayer label="Second Layer" className="poi-layer" is-selected debug>
+            <ObcPoiLayer label="Second Layer" className="poi-layer" is-selected>
               {/* Second layer content */}
             </ObcPoiLayer>
-            <ObcPoiLayer debug ref={layerRefCallback} label="Vessel Layer" className="poi-layer">
+            <ObcPoiLayer ref={layerRefCallback} label="Vessel Layer" className="poi-layer">
               {/* obc-poi-data elements are managed imperatively in useEffect above */}
             </ObcPoiLayer>
           </ObcPoiLayerStack>

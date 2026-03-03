@@ -46,14 +46,27 @@ function asVideoFitMode(value: unknown, fallback: VideoFitMode): VideoFitMode {
     : fallback;
 }
 
+function ensurePoiLayersVisible(state: ARControlState): ARControlState {
+  if (state.vesselLayerVisible && state.detectionVisible) {
+    return state;
+  }
+  return {
+    ...state,
+    vesselLayerVisible: true,
+    detectionVisible: true,
+  };
+}
+
 function readStoredState(): ARControlState {
   const mobileDefault: VideoFitMode = isMobileDevice() ? "contain" : "cover";
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault };
+    if (!raw) {
+      return ensurePoiLayersVisible({ ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault });
+    }
     const parsed = JSON.parse(raw) as Partial<ARControlState> & { rangeVisible?: boolean };
     const fallbackRange = parsed.rangeVisible ? "10.5" : AR_CONTROL_DEFAULTS.rangeValue;
-    return {
+    return ensurePoiLayersVisible({
       vesselLayerVisible: asBoolean(
         parsed.vesselLayerVisible,
         AR_CONTROL_DEFAULTS.vesselLayerVisible
@@ -75,9 +88,9 @@ function readStoredState(): ARControlState {
       aisCardsVisible: asBoolean(parsed.aisCardsVisible, AR_CONTROL_DEFAULTS.aisCardsVisible),
       detectionVisible: asBoolean(parsed.detectionVisible, AR_CONTROL_DEFAULTS.detectionVisible),
       videoFitMode: asVideoFitMode(parsed.videoFitMode, mobileDefault),
-    };
+    });
   } catch {
-    return { ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault };
+    return ensurePoiLayersVisible({ ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault });
   }
 }
 
