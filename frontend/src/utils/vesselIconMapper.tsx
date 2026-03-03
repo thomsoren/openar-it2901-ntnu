@@ -2,9 +2,10 @@ import { ObiAisTargetSleepingIec } from "@ocean-industries-concept-lab/openbridg
 import { ObiAisTargetActivatedIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-target-activated-iec";
 import { ObiAisTargetDangerousIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-target-dangerous-iec";
 import { ObiAisSarVesselIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-sar-vessel-iec";
+import type { ReactElement } from "react";
 
 /** Select appropriate AIS icon based on vessel ship type */
-function getVesselIcon(shipType?: number): React.ReactElement {
+function getVesselIcon(shipType?: number): ReactElement {
   if (!shipType) return <ObiAisTargetSleepingIec />;
 
   // AIS ship type codes: https://api.vtexplorer.com/docs/ref-aistypes.html

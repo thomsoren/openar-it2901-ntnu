@@ -38,7 +38,7 @@ const buildFovPolygon = (
   heading: number,
   offsetMeters: number,
   fovDegrees: number,
-  steps = 32
+  steps = 48
 ): [number, number][] => {
   if (fovDegrees >= 359) {
     const ring: [number, number][] = [];

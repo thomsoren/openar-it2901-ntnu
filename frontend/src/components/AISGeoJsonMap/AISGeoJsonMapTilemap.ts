@@ -35,5 +35,3 @@ export function getMapLibreStyle(theme: string): StyleSpecification {
     layers: [{ id: "carto-tiles", type: "raster", source: "carto" }],
   };
 }
-
-export default getMapLibreStyle;

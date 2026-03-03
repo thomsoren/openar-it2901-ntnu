@@ -4,9 +4,9 @@
  * Consolidates repeated GeoJSON construction, layer management,
  * and draggable-marker creation logic.
  */
-import React from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, Root } from "react-dom/client";
 import maplibregl from "maplibre-gl";
+import type { ReactElement } from "react";
 import { AISData } from "../../types/aisData";
 import getVesselIcon from "../../utils/vesselIconMapper";
 
@@ -30,6 +30,8 @@ export function makePolygonFeature(coords: [number, number][]): GeoJSON.Feature<
 const LAYER_OUTLINE = "fov-wedge-outline";
 const LAYER_FILL = "fov-wedge-fill";
 const SOURCE_ID = "fov-wedge";
+const SCAN_AREA_COLOR = "#2d558c";
+const SCAN_AREA_BORDER_COLOR = "#cadefc";
 
 /** Remove existing scan-area source & layers, then add fresh ones. */
 export function addScanAreaLayers(map: maplibregl.Map, coords: [number, number][]): void {
@@ -50,7 +52,7 @@ export function addScanAreaLayers(map: maplibregl.Map, coords: [number, number][
       id: LAYER_OUTLINE,
       type: "line",
       source: SOURCE_ID,
-      paint: { "line-color": "#0d6efd", "line-width": 3 },
+      paint: { "line-color": SCAN_AREA_COLOR, "line-width": 3 },
     },
     firstSymbolId
   );
@@ -60,7 +62,7 @@ export function addScanAreaLayers(map: maplibregl.Map, coords: [number, number][
       id: LAYER_FILL,
       type: "fill",
       source: SOURCE_ID,
-      paint: { "fill-color": "#7dadf5", "fill-opacity": 0.15 },
+      paint: { "fill-color": SCAN_AREA_BORDER_COLOR, "fill-opacity": 0.3 },
     },
     firstSymbolId
   );
@@ -86,22 +88,30 @@ interface AnchorMarkerOptions {
   className: string;
   lngLat: [number, number];
   popupText: string;
-  icon: React.ReactElement;
+  icon: ReactElement;
+}
+
+export interface MarkerWithRoot {
+  marker: maplibregl.Marker;
+  root: Root;
 }
 
 /** Create a draggable anchor marker with an icon and popup. */
 export function createAnchorMarker(
   map: maplibregl.Map,
   { className, lngLat, popupText, icon }: AnchorMarkerOptions
-): maplibregl.Marker {
+): MarkerWithRoot {
   const element = document.createElement("div");
   element.className = className;
-  createRoot(element).render(icon);
+  const root = createRoot(element);
+  root.render(icon);
 
-  return new maplibregl.Marker({ element, draggable: true })
+  const marker = new maplibregl.Marker({ element, draggable: true })
     .setLngLat(lngLat)
     .setPopup(new maplibregl.Popup({ offset: 10 }).setText(popupText))
     .addTo(map);
+
+  return { marker, root };
 }
 
 /** Create a non-draggable vessel marker. */
@@ -109,12 +119,13 @@ export function createVesselMarker(
   map: maplibregl.Map,
   vessel: AISData,
   onClick: (vessel: AISData) => void
-): maplibregl.Marker {
+): MarkerWithRoot {
   const element = document.createElement("div");
   element.className = "geojson-map-vessel-icon";
 
+  const root = createRoot(element);
   if (vessel.shipType) {
-    createRoot(element).render(getVesselIcon(vessel.shipType));
+    root.render(getVesselIcon(vessel.shipType));
   }
 
   const popup = new maplibregl.Popup({ offset: 10 }).setText(
@@ -126,12 +137,16 @@ export function createVesselMarker(
     rotationAlignment: "map",
     pitchAlignment: "map",
   })
-    .setLngLat([vessel.longitude!, vessel.latitude!])
+    .setLngLat([vessel.longitude ?? 0, vessel.latitude ?? 0])
     .setRotation(vessel.courseOverGround || 0)
     .setPopup(popup)
     .addTo(map);
 
-  element.addEventListener("click", () => onClick(vessel));
+  element.addEventListener("click", () => {
+    if (vessel.longitude && vessel.latitude) {
+      onClick(vessel);
+    }
+  });
 
-  return marker;
+  return { marker, root };
 }

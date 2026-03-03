@@ -17,6 +17,7 @@ import {
 } from "../../utils/geometryMath";
 import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
 import { ObiPlaceholderDeviceStatic } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder-device-static";
+import type { Root } from "react-dom/client";
 import {
   addScanAreaLayers,
   updateScanAreaData,
@@ -46,6 +47,23 @@ interface AISGeoJsonMapProps extends ScanAreaParams {
 }
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+// Drag anchor distance constraints
+const MIN_HEADING_MARKER_DIST_M = 150; // meters - minimum distance for heading marker
+const HEADING_MARKER_DIST_MULTIPLIER = 0.7; // heading marker placed at offset * 0.7
+
+// Wedge mode constraints
+const MIN_WEDGE_RANGE_M = 400; // meters
+const MIN_FOV_DEG = 10; // degrees
+const MAX_FOV_DEG = 360; // degrees
+
+// Rect mode constraints
+const MIN_RECT_LENGTH_M = 100; // meters
+const MIN_RECT_WIDTH_M = 50; // meters
+
+// ---------------------------------------------------------------------------
 // Anchor-position computation (shared by init + sync)
 // ---------------------------------------------------------------------------
 
@@ -68,7 +86,10 @@ function computeAnchorPositions(
   if (shapeMode === "rect") {
     const halfLen = rectLength / 2;
     const [fwdLat, fwdLon] = destinationPoint(lat, lon, heading, halfLen);
-    const headingDist = Math.max(150, Math.round(halfLen * 0.7));
+    const headingDist = Math.max(
+      MIN_HEADING_MARKER_DIST_M,
+      Math.round(halfLen * HEADING_MARKER_DIST_MULTIPLIER)
+    );
     const [hLat, hLon] = destinationPoint(lat, lon, heading, headingDist);
     const [sideLat, sideLon] = destinationPoint(lat, lon, heading + 90, rectWidth / 2);
     return {
@@ -79,7 +100,10 @@ function computeAnchorPositions(
   }
 
   const [rLat, rLon] = destinationPoint(lat, lon, heading, offsetMeters);
-  const headingDist = Math.max(150, Math.round(offsetMeters * 0.7));
+  const headingDist = Math.max(
+    MIN_HEADING_MARKER_DIST_M,
+    Math.round(offsetMeters * HEADING_MARKER_DIST_MULTIPLIER)
+  );
   const [hLat, hLon] = destinationPoint(lat, lon, heading, headingDist);
   const [fLat, fLon] = destinationPoint(lat, lon, heading + fovDegrees / 2, offsetMeters);
   return {
@@ -122,9 +146,13 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const originRef = useRef<maplibregl.Marker | null>(null);
+  const originRootRef = useRef<Root | null>(null);
   const rangeRef = useRef<maplibregl.Marker | null>(null);
+  const rangeRootRef = useRef<Root | null>(null);
   const headingRef = useRef<maplibregl.Marker | null>(null);
+  const headingRootRef = useRef<Root | null>(null);
   const fovRef = useRef<maplibregl.Marker | null>(null);
+  const fovRootRef = useRef<Root | null>(null);
 
   const theme = useObcPalette();
   const [followMode, setFollowMode] = useState(true);
@@ -258,15 +286,16 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       icon: ANCHOR_ICON,
     });
 
-    originMarker.on("drag", () => {
-      const { lng, lat } = originMarker.getLngLat();
+    originMarker.marker.on("drag", () => {
+      const { lng, lat } = originMarker.marker.getLngLat();
       syncVisuals(lat, lng, paramsRef.current.heading);
     });
-    originMarker.on("dragend", () => {
-      const { lng, lat } = originMarker.getLngLat();
+    originMarker.marker.on("dragend", () => {
+      const { lng, lat } = originMarker.marker.getLngLat();
       onChange?.({ shipLat: lat, shipLon: lng });
     });
-    originRef.current = originMarker;
+    originRef.current = originMarker.marker;
+    originRootRef.current = originMarker.root;
 
     // --- Range marker (constrained to heading ray) ---------------------------
 
@@ -288,40 +317,41 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       icon: ANCHOR_ICON,
     });
 
-    rangeMarker.on("drag", () => {
-      const { lng, lat } = rangeMarker.getLngLat();
+    rangeMarker.marker.on("drag", () => {
+      const { lng, lat } = rangeMarker.marker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
       const along = computeAlongTrackDistance(origin.lat, origin.lng, lat, lng, heading, 100);
 
       if (shapeMode === "rect") {
-        const newLen = Math.max(100, along * 2);
+        const newLen = Math.max(MIN_RECT_LENGTH_M, along * 2);
         const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, newLen / 2);
-        rangeMarker.setLngLat([cLon, cLat]);
+        rangeMarker.marker.setLngLat([cLon, cLat]);
         syncVisuals(origin.lat, origin.lng, heading, { rectLength: newLen });
       } else {
-        const dist = Math.max(400, along);
+        const dist = Math.max(MIN_WEDGE_RANGE_M, along);
         const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, dist);
-        rangeMarker.setLngLat([cLon, cLat]);
+        rangeMarker.marker.setLngLat([cLon, cLat]);
         syncVisuals(origin.lat, origin.lng, heading, { offsetMeters: dist });
       }
     });
 
-    rangeMarker.on("dragend", () => {
-      const { lng, lat } = rangeMarker.getLngLat();
+    rangeMarker.marker.on("dragend", () => {
+      const { lng, lat } = rangeMarker.marker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
       const along = computeAlongTrackDistance(origin.lat, origin.lng, lat, lng, heading, 100);
 
       if (shapeMode === "rect") {
-        onChange?.({ rectLength: Math.round(Math.max(100, along * 2)) });
+        onChange?.({ rectLength: Math.round(Math.max(MIN_RECT_LENGTH_M, along * 2)) });
       } else {
-        onChange?.({ offsetMeters: Math.round(Math.max(400, along)) });
+        onChange?.({ offsetMeters: Math.round(Math.max(MIN_WEDGE_RANGE_M, along)) });
       }
     });
-    rangeRef.current = rangeMarker;
+    rangeRef.current = rangeMarker.marker;
+    rangeRootRef.current = rangeMarker.root;
 
     // --- Heading marker (heading-only) ---------------------------------------
 
@@ -332,21 +362,22 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       icon: ANCHOR_ICON,
     });
 
-    headingMarker.on("drag", () => {
-      const { lng, lat } = headingMarker.getLngLat();
+    headingMarker.marker.on("drag", () => {
+      const { lng, lat } = headingMarker.marker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const nextHeading = headingTo(origin.lat, origin.lng, lat, lng);
       syncVisuals(origin.lat, origin.lng, nextHeading);
     });
 
-    headingMarker.on("dragend", () => {
-      const { lng, lat } = headingMarker.getLngLat();
+    headingMarker.marker.on("dragend", () => {
+      const { lng, lat } = headingMarker.marker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       onChange?.({ heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)) });
     });
-    headingRef.current = headingMarker;
+    headingRef.current = headingMarker.marker;
+    headingRootRef.current = headingMarker.root;
 
     // --- FOV / Width marker --------------------------------------------------
 
@@ -357,53 +388,57 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       icon: ANCHOR_ICON,
     });
 
-    fovMarker.on("drag", () => {
-      const { lng, lat } = fovMarker.getLngLat();
+    fovMarker.marker.on("drag", () => {
+      const { lng, lat } = fovMarker.marker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
 
       if (shapeMode === "rect") {
         const cross = computeCrossTrackDistance(origin.lat, origin.lng, lat, lng, heading);
-        const newWidth = Math.max(50, cross * 2);
+        const newWidth = Math.max(MIN_RECT_WIDTH_M, cross * 2);
         syncVisuals(origin.lat, origin.lng, heading, { rectWidth: newWidth });
       } else {
         const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
         const nextFov = Math.min(
-          360,
-          Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
+          MAX_FOV_DEG,
+          Math.max(MIN_FOV_DEG, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
         );
         syncVisuals(origin.lat, origin.lng, heading, { fovDegrees: nextFov });
       }
     });
 
-    fovMarker.on("dragend", () => {
-      const { lng, lat } = fovMarker.getLngLat();
+    fovMarker.marker.on("dragend", () => {
+      const { lng, lat } = fovMarker.marker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
 
       if (shapeMode === "rect") {
         const cross = computeCrossTrackDistance(origin.lat, origin.lng, lat, lng, heading);
-        onChange?.({ rectWidth: Math.round(Math.max(50, cross * 2)) });
+        onChange?.({ rectWidth: Math.round(Math.max(MIN_RECT_WIDTH_M, cross * 2)) });
       } else {
         const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
         const nextFov = Math.min(
-          360,
-          Math.max(10, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
+          MAX_FOV_DEG,
+          Math.max(MIN_FOV_DEG, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
         );
         onChange?.({ fovDegrees: Math.round(nextFov) });
       }
     });
-    fovRef.current = fovMarker;
+    fovRef.current = fovMarker.marker;
+    fovRootRef.current = fovMarker.root;
 
-    // Initially show anchors if in edit mode, hide if not
-
-    setAnchorVisibility(editMode);
     map.on("dragstart", () => setFollowMode(false));
     mapRef.current = map;
 
     return () => {
+      // Unmount React roots to prevent memory leaks
+      originRootRef.current?.unmount();
+      rangeRootRef.current?.unmount();
+      headingRootRef.current?.unmount();
+      fovRootRef.current?.unmount();
+
       map.remove();
       mapRef.current = null;
     };
