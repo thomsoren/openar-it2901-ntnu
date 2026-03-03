@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ObcTabRow } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
 import {
   CircularProgressState,
@@ -7,17 +6,22 @@ import {
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
-import VideoPlayer, { type VideoPlayerState } from "../components/video-player/VideoPlayer";
+import VideoPlayer from "../components/video-player/VideoPlayer";
+import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { useSettings } from "../contexts/useSettings";
+import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useAuth } from "../hooks/useAuth";
 import { DETECTION_CONFIG } from "../config/video";
-import { apiFetch as apiFetchLib } from "../lib/api-client";
-import { readJsonSafely, explainFetchError } from "../utils/api-helpers";
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
+import { stopStream, toStreamError } from "../services/streams";
+import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
+import { useDatavisionStatus } from "../hooks/useDatavisionStatus";
+import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
+import { DEFAULT_STREAM_ID } from "../hooks/stream-tabs/constants";
 import "./Datavision.css";
 
 // ---------------------------------------------------------------------------
@@ -30,10 +34,10 @@ interface DatavisionProps {
   onAuthGateVisibleChange?: (visible: boolean) => void;
 }
 
-function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
+function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { videoFitMode, detectionVisible, multiStreamTestingEnabled } = useSettings();
+  const { state: arControls } = useARControls();
   const auth = useAuth();
 
   // --- Tab / stream state (extracted hook) ---
@@ -51,23 +55,17 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
     handleStreamReady,
     configureTabId,
     streamError,
-  } = useStreamTabs({ externalStreamId, multiStreamTestingEnabled });
+  } = useStreamTabs({ externalStreamId });
 
-  // --- Video state ---
-  const [controlError, setControlError] = useState<string | null>(null);
-  const [videoSession, setVideoSession] = useState(0);
-  const [videoState, setVideoState] = useState<VideoPlayerState>({
-    transport: "webrtc",
-    status: "idle",
-    error: null,
-  });
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const imageLoadedRef = useRef(false);
-  const reconnectCountRef = useRef(0);
-  const firstFrameRetryDoneRef = useRef(false);
-  const reconnectTimerRef = useRef<number | null>(null);
-  const firstFrameWatchdogRef = useRef<number | null>(null);
-  const MAX_RECONNECT_ATTEMPTS = 8;
+  const {
+    videoSession,
+    videoState,
+    imageLoaded,
+    showVideoLoader,
+    controlError,
+    setControlError,
+    handleVideoStatusChange,
+  } = useVideoSessionRecovery({ streamKey: activeTabId });
 
   const showingAuthGate = activeIsSetup && !auth.session;
 
@@ -75,44 +73,18 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
     onAuthGateVisibleChange?.(showingAuthGate);
   }, [showingAuthGate, onAuthGateVisibleChange]);
 
-  const clearReconnectTimers = useCallback(() => {
-    if (reconnectTimerRef.current !== null) {
-      window.clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-    if (firstFrameWatchdogRef.current !== null) {
-      window.clearTimeout(firstFrameWatchdogRef.current);
-      firstFrameWatchdogRef.current = null;
-    }
-  }, []);
-
-  const scheduleReconnect = useCallback(
-    (reason: string) => {
-      if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
-        setControlError(`${reason} — gave up after ${MAX_RECONNECT_ATTEMPTS} attempts`);
-        return;
-      }
-      reconnectCountRef.current += 1;
-      const delay = Math.min(2000 * Math.pow(1.5, reconnectCountRef.current - 1), 15000);
-      setControlError(`${reason} (attempt ${reconnectCountRef.current})...`);
-      reconnectTimerRef.current = window.setTimeout(() => {
-        setVideoSession((prev) => prev + 1);
-      }, delay);
-    },
-    [MAX_RECONNECT_ATTEMPTS]
-  );
-
   const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
   const { vessels, isLoading, error, isConnected, videoInfo } = useDetectionsWebSocket({
     url: wsUrl,
     enabled: wsEnabled,
   });
+  const interpolatedVessels = useInterpolatedDetections(vessels);
 
   const videoTransform = useVideoTransform(
     videoRef,
     containerRef,
-    videoFitMode,
+    arControls.videoFitMode,
     undefined,
     undefined,
     imageLoaded
@@ -122,137 +94,46 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
   const onTabClosed = useCallback(
     async (event: CustomEvent<{ id?: string }>) => {
       const tabId = event.detail?.id?.trim();
-      if (!tabId || tabId === "default") return;
+      if (!tabId || tabId === DEFAULT_STREAM_ID) return;
 
       const wasSetup = configureTabId === tabId;
       handleTabClosed(tabId);
 
       if (!wasSetup) {
         try {
-          const response = await apiFetchLib(`/api/streams/${encodeURIComponent(tabId)}`, {
-            method: "DELETE",
-          });
-          if (!response.ok && response.status !== 404) {
-            const payload = (await readJsonSafely(response)) as { detail?: string };
-            throw new Error(payload.detail || "Failed to stop stream");
-          }
+          await stopStream(tabId);
         } catch (err) {
-          setControlError(explainFetchError(err, "Failed to stop stream"));
+          setControlError(toStreamError(err, "Failed to stop stream"));
         }
       }
     },
-    [configureTabId, handleTabClosed]
+    [configureTabId, handleTabClosed, setControlError]
   );
-
-  // When the browser tab becomes visible again, force a fresh stream connection.
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        reconnectCountRef.current = 0;
-        firstFrameRetryDoneRef.current = false;
-        setVideoSession((prev) => prev + 1);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
-
-  // Reset video state when stream or session changes
-  useEffect(() => {
-    reconnectCountRef.current = 0;
-    firstFrameRetryDoneRef.current = false;
-    setControlError(null);
-    setVideoState({
-      transport: "webrtc",
-      status: "idle",
-      error: null,
-    });
-  }, [activeTabId, videoSession]);
-
-  useEffect(() => {
-    imageLoadedRef.current = false;
-    setImageLoaded(false);
-    clearReconnectTimers();
-    firstFrameWatchdogRef.current = window.setTimeout(() => {
-      if (imageLoadedRef.current) {
-        return;
-      }
-      if (firstFrameRetryDoneRef.current) {
-        return;
-      }
-      firstFrameRetryDoneRef.current = true;
-      scheduleReconnect("Video stream reconnecting");
-    }, 10000);
-
-    return () => {
-      clearReconnectTimers();
-    };
-  }, [activeTabId, clearReconnectTimers, scheduleReconnect]);
-
-  useEffect(() => {
-    return () => {
-      clearReconnectTimers();
-    };
-  }, [clearReconnectTimers]);
 
   const activeStreamPlayback = activeStream?.playback_urls ?? null;
-  const showVideoLoader = !imageLoaded || videoState.status === "connecting";
-
-  const handleVideoStatusChange = useCallback(
-    (next: VideoPlayerState) => {
-      setVideoState(next);
-
-      if (next.status === "playing") {
-        imageLoadedRef.current = true;
-        reconnectCountRef.current = 0;
-        setImageLoaded(true);
-        clearReconnectTimers();
-        setControlError((prev) => {
-          if (
-            prev?.startsWith("Video stream") ||
-            prev?.startsWith("Waiting for first video frame") ||
-            prev?.startsWith("WebRTC stream") ||
-            prev?.startsWith("HLS stream")
-          ) {
-            return null;
-          }
-          return prev;
-        });
-        return;
-      }
-
-      if (next.status === "error") {
-        imageLoadedRef.current = false;
-        setImageLoaded(false);
-        scheduleReconnect(
-          next.transport === "webrtc" ? "WebRTC stream reconnecting" : "HLS stream reconnecting"
-        );
-        return;
-      }
-
-      if (!imageLoadedRef.current) {
-        setImageLoaded(false);
-      }
-    },
-    [clearReconnectTimers, scheduleReconnect]
-  );
 
   // Merge stream errors from the hook into controlError
   const displayError = controlError || streamError;
+  const statusDisplay = useDatavisionStatus({
+    activeTabId,
+    vesselsCount: vessels.length,
+    isConnected,
+    controlError: displayError,
+    videoState,
+  });
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <section className="stream-workspace">
         <div className="stream-tabs-shell">
-          <ObcTabRow
-            className="stream-tab-row"
+          <StreamWorkspaceHeader
             tabs={tabs}
-            selectedTabId={activeTabId}
-            hasAddNewTab={showAddButton}
-            hasClose={showCloseButtons}
+            activeTabId={activeTabId}
+            showAddButton={showAddButton}
+            showCloseButtons={showCloseButtons}
             onTabSelected={handleTabSelected}
             onTabClosed={onTabClosed}
-            onAddNewTab={handleAddTab}
+            onAddTab={handleAddTab}
           />
 
           <div
@@ -289,7 +170,7 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                   hlsUrl={activeStreamPlayback?.hls_url}
                   sessionToken={videoSession}
                   className="background-video"
-                  style={{ objectFit: videoFitMode, backgroundColor: "#e5e9ef" }}
+                  style={{ objectFit: arControls.videoFitMode, backgroundColor: "#e5e9ef" }}
                   onVideoReady={(videoEl) => {
                     videoRef.current = videoEl;
                   }}
@@ -322,18 +203,12 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
                 )}
                 {error && <div className="status-overlay status-error">Error: {error}</div>}
                 {!isLoading && !error && (
-                  <div className="status-overlay status-info">
-                    {isConnected ? "Connected" : "Disconnected"} | Stream: {activeTabId} |{" "}
-                    {videoState.transport.toUpperCase()} {videoState.status} | Vessels:{" "}
-                    {vessels.length}
-                    {videoState.error ? ` | Video error: ${videoState.error}` : ""}
-                    {displayError ? ` | Control: ${displayError}` : ""}
-                  </div>
+                  <div className="status-overlay status-info">{statusDisplay.infoLabel}</div>
                 )}
 
-                {detectionVisible && (
+                {arControls.detectionVisible && (
                   <PoiOverlay
-                    vessels={vessels}
+                    vessels={interpolatedVessels}
                     videoTransform={videoTransform}
                     detectionFrame={
                       videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
@@ -349,4 +224,10 @@ function Datavision({ externalStreamId, onAuthGateVisibleChange }: DatavisionPro
   );
 }
 
-export default Datavision;
+export default function Datavision(props: DatavisionProps) {
+  return (
+    <ARControlProvider>
+      <DatavisionInner {...props} />
+    </ARControlProvider>
+  );
+}

@@ -1,4 +1,4 @@
-# camera_config.py
+# current_ship_config.py
 from pydantic import BaseModel
 
 class CameraConfig(BaseModel):
@@ -7,3 +7,8 @@ class CameraConfig(BaseModel):
     h_fov_deg: float = 180.0
     v_fov_deg: float = 60.0
     pitch_deg: float = 5   # camera tilted slightly down
+
+class ShipConfig(BaseModel):
+    latitude: float
+    longitude: float
+    heading_deg: float

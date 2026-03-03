@@ -17,7 +17,6 @@ import {
 } from "../../utils/geometryMath";
 import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
 import { ObiPlaceholderDeviceStatic } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder-device-static";
-import type { Root } from "react-dom/client";
 import {
   addScanAreaLayers,
   updateScanAreaData,
@@ -26,7 +25,6 @@ import {
 } from "./mapHelpers";
 import { useVesselMarkers } from "../../hooks/useVesselMarkers";
 
-// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -46,7 +44,6 @@ interface AISGeoJsonMapProps extends ScanAreaParams {
   onChange?: (updates: Partial<ScanAreaParams>) => void;
 }
 
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -63,8 +60,7 @@ const MAX_FOV_DEG = 360; // degrees
 const MIN_RECT_LENGTH_M = 100; // meters
 const MIN_RECT_WIDTH_M = 50; // meters
 
-// ---------------------------------------------------------------------------
-// Anchor-position computation (shared by init + sync)
+// Anchor-position computation
 // ---------------------------------------------------------------------------
 
 interface AnchorPositions {
@@ -125,7 +121,6 @@ function applyAnchorPositions(
   fovRef.current?.setLngLat(positions.fov);
 }
 
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -146,13 +141,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const originRef = useRef<maplibregl.Marker | null>(null);
-  const originRootRef = useRef<Root | null>(null);
   const rangeRef = useRef<maplibregl.Marker | null>(null);
-  const rangeRootRef = useRef<Root | null>(null);
   const headingRef = useRef<maplibregl.Marker | null>(null);
-  const headingRootRef = useRef<Root | null>(null);
   const fovRef = useRef<maplibregl.Marker | null>(null);
-  const fovRootRef = useRef<Root | null>(null);
 
   const theme = useObcPalette();
   const [followMode, setFollowMode] = useState(true);
@@ -294,30 +285,29 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       `${Math.abs(shipLat).toFixed(5)}°${shipLat >= 0 ? "N" : "S"}, ` +
         `${Math.abs(shipLon).toFixed(5)}°${shipLon >= 0 ? "E" : "W"}`
     );
-    originMarker.marker.setPopup(originPopup);
+    originMarker.setPopup(originPopup);
 
-    originMarker.marker.on("dragstart", () => {
-      const popup = originMarker.marker.getPopup();
-      if (!popup?.isOpen()) originMarker.marker.togglePopup();
+    originMarker.on("dragstart", () => {
+      const popup = originMarker.getPopup();
+      if (!popup?.isOpen()) originMarker.togglePopup();
     });
 
-    originMarker.marker.on("drag", () => {
-      const { lng, lat } = originMarker.marker.getLngLat();
+    originMarker.on("drag", () => {
+      const { lng, lat } = originMarker.getLngLat();
       syncVisuals(lat, lng, paramsRef.current.heading);
-      const popup = originMarker.marker.getPopup();
+      const popup = originMarker.getPopup();
       popup?.setText(
         `${Math.abs(lat).toFixed(5)}°${lat >= 0 ? "N" : "S"}, ` +
           `${Math.abs(lng).toFixed(5)}°${lng >= 0 ? "E" : "W"}`
       );
     });
 
-    originMarker.marker.on("dragend", () => {
-      const { lng, lat } = originMarker.marker.getLngLat();
+    originMarker.on("dragend", () => {
+      const { lng, lat } = originMarker.getLngLat();
       onChange?.({ shipLat: lat, shipLon: lng });
-      originMarker.marker.togglePopup();
+      originMarker.togglePopup();
     });
-    originRef.current = originMarker.marker;
-    originRootRef.current = originMarker.root;
+    originRef.current = originMarker;
 
     // --- Range marker (constrained to heading ray) ---------------------------
 
@@ -348,15 +338,15 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         ? `Length ${Math.round(rectLength)}m`
         : `Radius ${Math.round(offsetMeters)}m`
     );
-    rangeMarker.marker.setPopup(rangePopup);
+    rangeMarker.setPopup(rangePopup);
 
-    rangeMarker.marker.on("dragstart", () => {
-      const popup = rangeMarker.marker.getPopup();
-      if (!popup?.isOpen()) rangeMarker.marker.togglePopup();
+    rangeMarker.on("dragstart", () => {
+      const popup = rangeMarker.getPopup();
+      if (!popup?.isOpen()) rangeMarker.togglePopup();
     });
 
-    rangeMarker.marker.on("drag", () => {
-      const { lng, lat } = rangeMarker.marker.getLngLat();
+    rangeMarker.on("drag", () => {
+      const { lng, lat } = rangeMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
@@ -365,24 +355,24 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       if (shapeMode === "rect") {
         const newLen = Math.max(MIN_RECT_LENGTH_M, along * 2);
         const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, newLen / 2);
-        rangeMarker.marker.setLngLat([cLon, cLat]);
+        rangeMarker.setLngLat([cLon, cLat]);
         syncVisuals(origin.lat, origin.lng, heading, { rectLength: newLen });
 
-        const popup = rangeMarker.marker.getPopup();
+        const popup = rangeMarker.getPopup();
         popup?.setText(`Length ${Math.round(newLen)}m`);
       } else {
         const dist = Math.max(MIN_WEDGE_RANGE_M, along);
         const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, dist);
-        rangeMarker.marker.setLngLat([cLon, cLat]);
+        rangeMarker.setLngLat([cLon, cLat]);
         syncVisuals(origin.lat, origin.lng, heading, { offsetMeters: dist });
 
-        const popup = rangeMarker.marker.getPopup();
+        const popup = rangeMarker.getPopup();
         popup?.setText(`Radius ${Math.round(dist)}m`);
       }
     });
 
-    rangeMarker.marker.on("dragend", () => {
-      const { lng, lat } = rangeMarker.marker.getLngLat();
+    rangeMarker.on("dragend", () => {
+      const { lng, lat } = rangeMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
@@ -393,10 +383,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       } else {
         onChange?.({ offsetMeters: Math.round(Math.max(MIN_WEDGE_RANGE_M, along)) });
       }
-      rangeMarker.marker.togglePopup();
+      rangeMarker.togglePopup();
     });
-    rangeRef.current = rangeMarker.marker;
-    rangeRootRef.current = rangeMarker.root;
+    rangeRef.current = rangeMarker;
 
     // --- Heading marker (heading-only) ---------------------------------------
 
@@ -412,33 +401,32 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       closeButton: false,
       closeOnClick: true,
     }).setText(`BRG ${Math.round(heading)}°`);
-    headingMarker.marker.setPopup(headingPopup);
+    headingMarker.setPopup(headingPopup);
 
-    headingMarker.marker.on("dragstart", () => {
-      const popup = headingMarker.marker.getPopup();
-      if (!popup?.isOpen()) headingMarker.marker.togglePopup();
+    headingMarker.on("dragstart", () => {
+      const popup = headingMarker.getPopup();
+      if (!popup?.isOpen()) headingMarker.togglePopup();
     });
 
-    headingMarker.marker.on("drag", () => {
-      const { lng, lat } = headingMarker.marker.getLngLat();
+    headingMarker.on("drag", () => {
+      const { lng, lat } = headingMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const nextHeading = headingTo(origin.lat, origin.lng, lat, lng);
       syncVisuals(origin.lat, origin.lng, nextHeading);
 
-      const popup = headingMarker.marker.getPopup();
+      const popup = headingMarker.getPopup();
       popup?.setText(`BRG ${Math.round(nextHeading)}°`);
     });
 
-    headingMarker.marker.on("dragend", () => {
-      const { lng, lat } = headingMarker.marker.getLngLat();
+    headingMarker.on("dragend", () => {
+      const { lng, lat } = headingMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       onChange?.({ heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)) });
-      headingMarker.marker.togglePopup();
+      headingMarker.togglePopup();
     });
-    headingRef.current = headingMarker.marker;
-    headingRootRef.current = headingMarker.root;
+    headingRef.current = headingMarker;
 
     // --- FOV / Width marker --------------------------------------------------
 
@@ -456,15 +444,15 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     }).setText(
       shapeMode === "rect" ? `Width ${Math.round(rectWidth)}m` : `Sector ${Math.round(fovDegrees)}°`
     );
-    fovMarker.marker.setPopup(fovPopup);
+    fovMarker.setPopup(fovPopup);
 
-    fovMarker.marker.on("dragstart", () => {
-      const popup = fovMarker.marker.getPopup();
-      if (!popup?.isOpen()) fovMarker.marker.togglePopup();
+    fovMarker.on("dragstart", () => {
+      const popup = fovMarker.getPopup();
+      if (!popup?.isOpen()) fovMarker.togglePopup();
     });
 
-    fovMarker.marker.on("drag", () => {
-      const { lng, lat } = fovMarker.marker.getLngLat();
+    fovMarker.on("drag", () => {
+      const { lng, lat } = fovMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
@@ -474,7 +462,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         const newWidth = Math.max(MIN_RECT_WIDTH_M, cross * 2);
         syncVisuals(origin.lat, origin.lng, heading, { rectWidth: newWidth });
 
-        const popup = fovMarker.marker.getPopup();
+        const popup = fovMarker.getPopup();
         popup?.setText(`Width ${Math.round(newWidth)}m`);
       } else {
         const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
@@ -484,13 +472,13 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         );
         syncVisuals(origin.lat, origin.lng, heading, { fovDegrees: nextFov });
 
-        const popup = fovMarker.marker.getPopup();
+        const popup = fovMarker.getPopup();
         popup?.setText(`Sector ${Math.round(nextFov)}°`);
       }
     });
 
-    fovMarker.marker.on("dragend", () => {
-      const { lng, lat } = fovMarker.marker.getLngLat();
+    fovMarker.on("dragend", () => {
+      const { lng, lat } = fovMarker.getLngLat();
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       const { heading, shapeMode } = paramsRef.current;
@@ -506,21 +494,14 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         );
         onChange?.({ fovDegrees: Math.round(nextFov) });
       }
-      fovMarker.marker.togglePopup();
+      fovMarker.togglePopup();
     });
-    fovRef.current = fovMarker.marker;
-    fovRootRef.current = fovMarker.root;
+    fovRef.current = fovMarker;
 
     map.on("dragstart", () => setFollowMode(false));
     mapRef.current = map;
 
     return () => {
-      // Unmount React roots to prevent memory leaks
-      originRootRef.current?.unmount();
-      rangeRootRef.current?.unmount();
-      headingRootRef.current?.unmount();
-      fovRootRef.current?.unmount();
-
       map.remove();
       mapRef.current = null;
     };

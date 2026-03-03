@@ -15,7 +15,10 @@
     "install": "pnpm run install:backend && pnpm run install:frontend && pnpm run install:auth",
     "prepare": "husky",
     "lint": "cd frontend && pnpm lint",
-    "format": "cd frontend && pnpm exec prettier --write ."
+    "format": "cd frontend && pnpm exec prettier --write .",
+    "docker:up": "docker compose up",
+    "docker:down": "docker compose down",
+    "docker:build": "docker compose build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

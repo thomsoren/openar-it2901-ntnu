@@ -1,49 +1,55 @@
-import { useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-const PAGE_STORAGE_KEY = "openar.currentPage";
-const PAGES = ["datavision", "ais", "components", "fusion", "settings"] as const;
+export type PageId = "datavision" | "ais" | "components" | "fusion" | "control-customization";
 
-export type PageId = (typeof PAGES)[number];
+const PAGE_PATHS: Record<PageId, string> = {
+  datavision: "/datavision",
+  ais: "/ais",
+  components: "/components",
+  fusion: "/fusion",
+  "control-customization": "/control-customization",
+};
 
 const pageLabels: Record<PageId, string> = {
   datavision: "Datavision",
   ais: "AIS",
   components: "Components",
   fusion: "Fusion",
-  settings: "Settings",
+  "control-customization": "Control Customization",
 };
 
-const getStoredPage = (): PageId => {
-  try {
-    const stored = localStorage.getItem(PAGE_STORAGE_KEY) as PageId | null;
-    if (stored && PAGES.includes(stored)) {
-      return stored;
-    }
-  } catch {
-    // Ignore storage failures.
-  }
-  return "datavision";
+const PATH_TO_PAGE = new Map(
+  (Object.entries(PAGE_PATHS) as [PageId, string][]).map(([id, path]) => [path.slice(1), id])
+);
+
+const getPageFromPath = (pathname: string): PageId => {
+  const rootSegment = pathname.replace(/^\/+/, "").split("/")[0];
+  return PATH_TO_PAGE.get(rootSegment) ?? "datavision";
 };
 
+/**
+ * @example
+ * ```tsx
+ * const { currentPage, handleNavigationItemClick } = useNavigation();
+ * ```
+ */
 export function useNavigation() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [showBrillianceMenu, setShowBrillianceMenu] = useState(false);
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
-  const [currentPage, setCurrentPage] = useState<PageId>(() => getStoredPage());
+  const currentPage = useMemo(() => getPageFromPath(location.pathname), [location.pathname]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(PAGE_STORAGE_KEY, currentPage);
-    } catch {
-      // Ignore storage failures.
-    }
-  }, [currentPage]);
-
-  const handleNavigationItemClick = (page: PageId) => {
-    setCurrentPage(page);
-    setShowNavigationMenu(false);
-    setShowUserPanel(false);
-  };
+  const handleNavigationItemClick = useCallback(
+    (page: PageId) => {
+      navigate(PAGE_PATHS[page]);
+      setShowNavigationMenu(false);
+      setShowUserPanel(false);
+    },
+    [navigate]
+  );
 
   return {
     showBrillianceMenu,

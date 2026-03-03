@@ -101,3 +101,81 @@ curl -X POST http://localhost:8000/api/storage/presign \
 - **Database connection fails**: Ensure PostgreSQL is running (`docker compose -f infra/docker-compose.postgres.yml up -d`)
 - **No detections arriving**: Check that the worker process started (look for `Worker started for stream` in logs)
 - **MediaMTX not reachable**: Verify Docker container is running (`docker ps | grep mediamtx`)
+
+## Stream Lifecycle At A Glance
+
+The backend has one orchestrator that manages stream workers. Each running stream has:
+
+- one decode thread (reads frames from source)
+- one FFmpeg subprocess (publishes video to MediaMTX)
+- one shared inference thread that consumes decoded frames and publishes detections to Redis
+
+The detections WebSocket does not run inference directly. It subscribes to Redis and forwards detection messages to clients.
+
+### Architecture Diagram
+
+```mermaid
+flowchart LR
+    Client["Browser Client"]
+    API["FastAPI (webapi)"]
+    Orch["WorkerOrchestrator"]
+    Decode["DecodeThread (per stream)"]
+    Infer["InferenceThread (shared)"]
+    Pub["DetectionPublisher / FusionPublisher"]
+    Redis["Redis Pub/Sub"]
+    WS["Detections WebSocket"]
+    FF["FFmpeg subprocess (per stream)"]
+    MTX["MediaMTX"]
+    Playback["WHEP/HLS/RTSP playback"]
+
+    Client -->|"REST /api/streams/*"| API
+    Client -->|"ws /api/detections/ws/{stream_id}"| WS
+    WS --> API
+    API --> Orch
+    Orch --> Decode
+    Orch --> FF
+    Decode --> Infer
+    Infer --> Pub
+    Pub --> Redis
+    Redis --> WS
+    FF --> MTX
+    MTX --> Playback
+    Playback --> Client
+```
+
+### Main Responsibilities
+
+- `webapi/app.py`, `webapi/routes/*`: API surface and app startup/shutdown wiring
+- `orchestrator/orchestrator.py`: stream lifecycle, viewer/heartbeat tracking, health checks, restarts
+- `cv/decode_thread.py`: source decoding and latest-frame buffer
+- `cv/inference_thread.py`: active-stream inference loop and detection publishing
+- `cv/publisher.py`: Redis publish adapter for detections/fusion payloads
+- `cv/ffmpeg.py`: FFmpeg subprocess control for MediaMTX publishing
+- `common/config/*`: environment-driven settings and channel/URL builders
+
+### Request Flow (Detect WebSocket)
+
+1. Stream starts via `/api/streams/{stream_id}/start` or upload endpoint.
+2. Client connects to `/api/detections/ws/{stream_id}`.
+3. API acquires a stream viewer in orchestrator.
+4. Decode thread updates latest frame; inference thread runs detector on new frames.
+5. Inference publishes JSON to Redis `detections:{stream_id}`.
+6. WebSocket handler forwards Redis messages to client.
+7. On disconnect, API unsubscribes and releases viewer.
+
+### Monitor Behavior
+
+- No-viewer timeout: stops inactive streams but keeps config for later auto-restart.
+- Idle timeout: stops streams with stale heartbeat.
+- Decode failures: exponential backoff restart attempts.
+- FFmpeg failures: restart attempts while stream remains active.
+
+## CV Module Map
+
+- `cv/config.py`: shared detector and tracking tuning values
+- `cv/decode_thread.py`: decode loop, reconnection, pacing, latest-frame store
+- `cv/detectors.py`: RT-DETR model integration and detection output mapping
+- `cv/inference_thread.py`: active stream selection and detection publish loop
+- `cv/publisher.py`: Redis publish logic and optional fusion enrichment path
+- `cv/ffmpeg.py`: FFmpeg command building/process lifecycle for MediaMTX publishing
+- `cv/utils.py`: video metadata helpers

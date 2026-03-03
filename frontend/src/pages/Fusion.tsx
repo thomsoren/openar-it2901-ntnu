@@ -1,16 +1,17 @@
 import { useEffect, useState, useRef } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
+import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
+import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { useSettings } from "../contexts/useSettings";
 import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
 import { apiFetchPublic } from "../lib/api-client";
 
-function Fusion() {
+function FusionInner() {
   const [detectionsEnabled, setDetectionsEnabled] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { videoFitMode, detectionVisible } = useSettings();
+  const { state: arControls } = useARControls();
   // Use WebSocket for real-time fusion detections
   const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
     url: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws`,
@@ -21,7 +22,7 @@ function Fusion() {
   const videoTransform = useVideoTransform(
     videoRef,
     containerRef,
-    videoFitMode,
+    arControls.videoFitMode,
     FUSION_VIDEO_CONFIG.WIDTH,
     FUSION_VIDEO_CONFIG.HEIGHT
   );
@@ -57,7 +58,7 @@ function Fusion() {
         muted
         playsInline
         className="background-video"
-        style={{ objectFit: videoFitMode }}
+        style={{ objectFit: arControls.videoFitMode }}
       >
         <source src={FUSION_VIDEO_CONFIG.SOURCE} type="video/mp4" />
       </video>
@@ -71,9 +72,17 @@ function Fusion() {
         </div>
       )}
 
-      {detectionVisible && <PoiOverlay vessels={vessels} videoTransform={videoTransform} />}
+      {arControls.detectionVisible && (
+        <PoiOverlay vessels={vessels} videoTransform={videoTransform} />
+      )}
     </div>
   );
 }
 
-export default Fusion;
+export default function Fusion() {
+  return (
+    <ARControlProvider>
+      <FusionInner />
+    </ARControlProvider>
+  );
+}

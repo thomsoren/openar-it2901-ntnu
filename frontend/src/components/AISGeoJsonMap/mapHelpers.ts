@@ -4,13 +4,12 @@
  * Consolidates repeated GeoJSON construction, layer management,
  * and draggable-marker creation logic.
  */
-import { createRoot, Root } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import maplibregl from "maplibre-gl";
 import type { ReactElement } from "react";
 import { AISData } from "../../types/aisData";
 import getVesselIcon from "../../utils/vesselIconMapper";
 
-// ---------------------------------------------------------------------------
 // GeoJSON helpers
 // ---------------------------------------------------------------------------
 
@@ -23,7 +22,6 @@ export function makePolygonFeature(coords: [number, number][]): GeoJSON.Feature<
   };
 }
 
-// ---------------------------------------------------------------------------
 // Scan-area layer management
 // ---------------------------------------------------------------------------
 
@@ -80,7 +78,6 @@ export function getScanAreaSource(map: maplibregl.Map): maplibregl.GeoJSONSource
   return map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
 }
 
-// ---------------------------------------------------------------------------
 // Marker factories
 // ---------------------------------------------------------------------------
 
@@ -91,16 +88,11 @@ interface AnchorMarkerOptions {
   draggable?: boolean;
 }
 
-export interface MarkerWithRoot {
-  marker: maplibregl.Marker;
-  root: Root;
-}
-
 /** Create a draggable anchor marker with an icon (no popup - add separately if needed). */
 export function createAnchorMarker(
   map: maplibregl.Map,
   { className, lngLat, icon, draggable = true }: AnchorMarkerOptions
-): MarkerWithRoot {
+): maplibregl.Marker {
   const element = document.createElement("div");
   element.className = className;
   const root = createRoot(element);
@@ -108,7 +100,7 @@ export function createAnchorMarker(
 
   const marker = new maplibregl.Marker({ element, draggable }).setLngLat(lngLat).addTo(map);
 
-  return { marker, root };
+  return marker;
 }
 
 /** Create a non-draggable vessel marker. */
@@ -116,7 +108,7 @@ export function createVesselMarker(
   map: maplibregl.Map,
   vessel: AISData,
   onClick: (vessel: AISData) => void
-): MarkerWithRoot {
+): maplibregl.Marker {
   const element = document.createElement("div");
   element.className = "geojson-map-vessel-icon";
 
@@ -145,5 +137,5 @@ export function createVesselMarker(
     }
   });
 
-  return { marker, root };
+  return marker;
 }

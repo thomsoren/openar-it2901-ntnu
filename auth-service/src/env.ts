@@ -40,8 +40,18 @@ export const env = {
   betterAuthBasePath: getOptional("BETTER_AUTH_BASE_PATH", "/api/auth"),
   betterAuthSecret: getRequired("BETTER_AUTH_SECRET"),
   corsOrigins: getOptionalCsv("CORS_ORIGIN", [
+    "http://localhost:5273",
     "http://localhost:5173",
+    "http://127.0.0.1:5273",
     "http://127.0.0.1:5173",
   ]),
   databaseUrl: getRequired("DATABASE_URL"),
 };
+
+const isProduction = env.nodeEnv === "production";
+
+if (isProduction && env.betterAuthUrl === "http://localhost:3001") {
+  throw new Error(
+    "BETTER_AUTH_URL must be set to your deployed public auth base URL in production (for example: https://ar.bridgable.ai)"
+  );
+}

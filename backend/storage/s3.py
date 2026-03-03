@@ -3,6 +3,7 @@ S3 helpers for OpenAR asset storage (Hetzner-compatible).
 """
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
@@ -137,6 +138,14 @@ def get_download_url(raw_key: str, expires: int = 900) -> str:
     raise RuntimeError("S3 is not configured")
 
 
+def download_to_path(raw_key: str, destination: Path) -> Path:
+    """Download an S3 object key to a local path and return the destination."""
+    full_key, _ = _normalize_key(raw_key)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _client().download_file(S3_BUCKET, full_key, str(destination))
+    return destination
+
+
 def _stream_s3_body(body, chunk_size: int = 1024 * 1024):
     try:
         for chunk in body.iter_chunks(chunk_size=chunk_size):
@@ -233,15 +242,17 @@ def read_text(raw_key: str, encoding: str = "utf-8") -> str:
 
 def read_text_from_sources(
     s3_key: str | None,
-    local_path,
+    local_path: Path | None,
 ) -> str | None:
     """Try to read text from S3, falling back to local path."""
     if s3_key and s3_enabled():
         try:
             if head_object(s3_key) is not None:
                 return read_text(s3_key)
-        except Exception:
-            pass  # Fall through to local path
+        except (ClientError, ConnectionError) as exc:
+            logging.getLogger(__name__).warning(
+                "S3 read failed for '%s', falling back to local: %s", s3_key, exc,
+            )
 
     if local_path and local_path.exists():
         return local_path.read_text(encoding="utf-8", errors="ignore")

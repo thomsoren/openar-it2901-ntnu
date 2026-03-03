@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
+import { apiFetch } from "../lib/api-client";
 import { AISData } from "../types/aisData";
-import { API_CONFIG } from "../config/video";
 import { isPointInPolygon, buildScanPolygon } from "../utils/geometryMath";
 
 const isVesselInFov = (vessel: AISData, polygon: [number, number][]): boolean => {
@@ -8,6 +8,29 @@ const isVesselInFov = (vessel: AISData, polygon: [number, number][]): boolean =>
   return isPointInPolygon(vessel.longitude, vessel.latitude, polygon);
 };
 
+/**
+ * Hook for streaming raw AIS geographical vessel data filtered by a dynamic FOV polygon.
+ * Connects to `/api/ais/stream` and keeps a cached vessel map for fast re-filtering.
+ *
+ * @param shouldStream - Whether to start/maintain the stream connection
+ * @param shipLat - Observer latitude (default: 63.4365 - Trondheim)
+ * @param shipLon - Observer longitude (default: 10.3835 - Trondheim)
+ * @param heading - Observer heading in degrees (0=North, 90=East)
+ * @param offsetMeters - Distance from observer to FOV base in meters
+ * @param fovDegrees - Field of view angle in degrees
+ *
+ * @example
+ * ```tsx
+ * const { features, isStreaming, error } = useFetchAISGeographicalData(
+ *   true,
+ *   63.4365,
+ *   10.3835,
+ *   90,
+ *   3000,
+ *   120
+ * );
+ * ```
+ */
 export const useFetchAISGeographicalData = (
   shouldStream: boolean = false,
   shipLat: number = 63.4365,
@@ -72,10 +95,15 @@ export const useFetchAISGeographicalData = (
 
     const runStream = async () => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}/api/ais/stream`, {
+        const response = await apiFetch("/api/ais/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ coordinates: polygon }),
+          body: JSON.stringify({
+            coordinates: polygon,
+            ship_lat: shipLat,
+            ship_lon: shipLon,
+            heading,
+          }),
           signal: controller.signal,
         });
 

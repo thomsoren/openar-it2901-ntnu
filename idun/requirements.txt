@@ -1,0 +1,12 @@
+ultralytics>=8.3.0
+opencv-python-headless
+numpy
+# torch and torchvision must be CUDA-compatible builds.
+# On IDUN, load the appropriate module before activating the venv:
+#   module load PyTorch/2.1.2-foss-2023b-CUDA-12.1.1
+# and remove these two lines, OR install manually with the CUDA index URL:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
+websockets>=12.0
+pydantic>=2.0

@@ -1,12 +1,17 @@
+import logging
 from pathlib import Path
 
 import yaml
 from ultralytics import RTDETR
 
+logger = logging.getLogger(__name__)
+
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
 
-def main():
+def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)
 
@@ -16,14 +21,10 @@ def main():
     if not data_yaml.exists():
         raise FileNotFoundError(f"data.yaml not found in {data_dir}")
 
-    print(f"\n{'='*60}")
-    print("Training RT-DETR")
-    print(f"  Model: {config['model']}")
-    print(f"  Data: {data_yaml}")
-    print(f"  Epochs: {config['epochs']}")
-    print(f"  Batch size: {config['batch']}")
-    print(f"  Device: {config['device']}")
-    print(f"{'='*60}\n")
+    logger.info(
+        "Training RT-DETR | Model: %s | Data: %s | Epochs: %s | Batch: %s | Device: %s",
+        config["model"], data_yaml, config["epochs"], config["batch"], config["device"],
+    )
 
     model = RTDETR(config["model"])
 

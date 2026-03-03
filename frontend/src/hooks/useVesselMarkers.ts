@@ -7,20 +7,19 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { AISData } from "../types/aisData";
-import { createVesselMarker, MarkerWithRoot } from "../components/AISGeoJsonMap/mapHelpers";
+import { createVesselMarker } from "../components/AISGeoJsonMap/mapHelpers";
 
 export function useVesselMarkers(
   map: maplibregl.Map | null,
   vessels: AISData[] | undefined,
   onVesselClick: (vessel: AISData) => void
 ): void {
-  const markersMapRef = useRef<Map<number, MarkerWithRoot>>(new Map());
+  const markersMapRef = useRef<Map<number, maplibregl.Marker>>(new Map());
 
   useEffect(() => {
     if (!map || !vessels) {
       // Clean up all markers if map or vessels are gone
-      markersMapRef.current.forEach(({ marker, root }) => {
-        root.unmount();
+      markersMapRef.current.forEach((marker) => {
         marker.remove();
       });
       markersMapRef.current.clear();
@@ -38,14 +37,11 @@ export function useVesselMarkers(
 
       if (existing) {
         // Update existing marker position and rotation
-        existing.marker.setLngLat([vessel.longitude, vessel.latitude]);
-        existing.marker.setRotation(vessel.courseOverGround || 0);
+        existing.setLngLat([vessel.longitude, vessel.latitude]);
+        existing.setRotation(vessel.courseOverGround || 0);
       } else {
         // Create new marker
-        const markerWithRoot = createVesselMarker(map, vessel, (v) => {
-          // Look up the latest vessel data from the map to avoid stale closure
-          const latest = markersMapRef.current.get(v.mmsi);
-          if (!latest) return;
+        const marker = createVesselMarker(map, vessel, (v) => {
           // Search for latest vessel data in vessels array
           const latestVessel = vessels.find((vessel) => vessel.mmsi === v.mmsi);
           if (latestVessel) {
@@ -55,14 +51,13 @@ export function useVesselMarkers(
             }
           }
         });
-        markersMapRef.current.set(vessel.mmsi, markerWithRoot);
+        markersMapRef.current.set(vessel.mmsi, marker);
       }
     }
 
     // Remove markers for vessels that are no longer present
-    for (const [mmsi, { marker, root }] of markersMapRef.current.entries()) {
+    for (const [mmsi, marker] of markersMapRef.current.entries()) {
       if (!currentVesselIds.has(mmsi)) {
-        root.unmount();
         marker.remove();
         markersMapRef.current.delete(mmsi);
       }
