@@ -62,7 +62,8 @@
   justify-content: center;
 }
 
-.geojson-map-vessel-icon [class*="obi-vessel-type"] {
-  width: 28px;
-  height: 28px;
+/* Make vessel markers white in dark themes */
+[data-obc-theme="night"] .geojson-map-vessel-icon,
+[data-obc-theme="dusk"] .geojson-map-vessel-icon {
+  filter: brightness(0) invert(1);
 }
