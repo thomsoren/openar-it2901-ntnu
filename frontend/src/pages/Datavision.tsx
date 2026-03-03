@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
 import {
   CircularProgressState,
@@ -9,6 +9,7 @@ import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import VideoPlayer from "../components/video-player/VideoPlayer";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useARControls } from "../components/ar-control-panel/useARControls";
@@ -36,9 +37,6 @@ interface DatavisionProps {
 function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window === "undefined" ? 1440 : window.innerWidth
-  );
   const { state: arControls } = useARControls();
   const auth = useAuth();
 
@@ -75,18 +73,13 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     onAuthGateVisibleChange?.(showingAuthGate);
   }, [showingAuthGate, onAuthGateVisibleChange]);
 
-  useEffect(() => {
-    const onResize = () => setViewportWidth(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
   const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
   const { vessels, isLoading, error, isConnected, videoInfo } = useDetectionsWebSocket({
     url: wsUrl,
     enabled: wsEnabled,
   });
+  const interpolatedVessels = useInterpolatedDetections(vessels);
 
   const videoTransform = useVideoTransform(
     videoRef,
@@ -128,12 +121,6 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     controlError: displayError,
     videoState,
   });
-  const tabWidth = 210; // OBC tab row renders uniform tab widths in this layout
-  const requiredTabsWidth = tabs.length * tabWidth;
-  const controlsPanelWidth = 690; // AR controls + spacing
-  const layoutPadding = 140;
-  const requiredWidth = requiredTabsWidth + controlsPanelWidth + layoutPadding;
-  const shouldStackTabsBar = viewportWidth < requiredWidth;
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -144,7 +131,6 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
             activeTabId={activeTabId}
             showAddButton={showAddButton}
             showCloseButtons={showCloseButtons}
-            shouldStackTabsBar={shouldStackTabsBar}
             onTabSelected={handleTabSelected}
             onTabClosed={onTabClosed}
             onAddTab={handleAddTab}
@@ -222,7 +208,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
 
                 {arControls.detectionVisible && (
                   <PoiOverlay
-                    vessels={vessels}
+                    vessels={interpolatedVessels}
                     videoTransform={videoTransform}
                     detectionFrame={
                       videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
@@ -238,12 +224,10 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   );
 }
 
-function Datavision(props: DatavisionProps) {
+export default function Datavision(props: DatavisionProps) {
   return (
     <ARControlProvider>
       <DatavisionInner {...props} />
     </ARControlProvider>
   );
 }
-
-export default Datavision;

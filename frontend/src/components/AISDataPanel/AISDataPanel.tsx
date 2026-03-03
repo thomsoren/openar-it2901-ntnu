@@ -48,7 +48,7 @@ export const AISDataPanel: React.FC<AISDataPanelProps> = ({ vessel, onClose }) =
     </div>
     <div className="geojson-map-vessel-panel-body">
       {AIS_DATA_LABELS.map(({ label, format }) => ({ label, value: format(vessel) }))
-        .filter(({ value }) => value != null && value !== "")
+        .filter(({ value }) => value != null && value !== "" && value !== -1)
         .map(({ label, value }) => (
           <div key={label} className="geojson-map-vessel-panel-row">
             <span className="geojson-map-vessel-panel-label">{label}</span>

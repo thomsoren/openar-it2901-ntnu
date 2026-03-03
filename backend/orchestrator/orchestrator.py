@@ -10,7 +10,7 @@ from cv.decode_thread import DecodeThread
 from cv.detectors import get_shared_detector
 from cv.ffmpeg import FFmpegDirectPublisher
 from cv.inference_thread import InferenceThread
-from cv.publisher import DetectionPublisher
+from cv.publisher import get_fusion_publisher
 from orchestrator.exceptions import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -54,7 +54,7 @@ class WorkerOrchestrator:
         """Lazily create and start the inference thread if not injected."""
         if self._inference_thread is None:
             detector = get_shared_detector()
-            publisher = DetectionPublisher()
+            publisher = get_fusion_publisher()
             self._inference_thread = InferenceThread(detector, publisher)
             self._inference_thread.start()
         return self._inference_thread
@@ -198,6 +198,46 @@ class WorkerOrchestrator:
             handle.terminate()
         logger.info("Worker orchestrator shutdown complete")
 
+    def _compute_timeout_candidates_locked(
+        self,
+        now: float,
+        snapshot: list[tuple[str, StreamHandle]],
+    ) -> tuple[list[str], list[str]]:
+        """Compute idle/no-viewer candidates while holding `self._lock`."""
+        assert self._lock.locked(), "_compute_timeout_candidates_locked requires self._lock"
+        no_viewer_ids: list[str] = []
+        if self._no_viewer_timeout_seconds > 0:
+            for sid, handle in snapshot:
+                if sid in self._protected_stream_ids:
+                    continue
+                if handle.viewer_count > 0:
+                    handle.no_viewer_since = 0.0
+                    continue
+                if handle.no_viewer_since == 0.0:
+                    handle.no_viewer_since = now
+                    continue
+                if (now - handle.no_viewer_since) >= self._no_viewer_timeout_seconds:
+                    no_viewer_ids.append(sid)
+
+        idle_ids: list[str] = []
+        if self._idle_timeout_seconds > 0:
+            idle_ids = [
+                sid for sid, h in snapshot
+                if sid not in self._protected_stream_ids
+                and (now - h.last_heartbeat) > self._idle_timeout_seconds
+            ]
+        return idle_ids, no_viewer_ids
+
+    def _handle_ffmpeg_health(self, stream_id: str, handle: StreamHandle) -> None:
+        if handle.ffmpeg_process is None or handle.ffmpeg_process.poll() is None:
+            return
+        exit_code = handle.ffmpeg_process.returncode
+        logger.warning(
+            "FFmpeg died for stream '%s' (exit=%s), restarting",
+            stream_id, exit_code,
+        )
+        handle.ffmpeg_process = self._start_ffmpeg(handle.config)
+
     def _monitor_loop(self) -> None:
         while not self._stop_event.is_set():
             time.sleep(self._monitor_interval_seconds)
@@ -205,35 +245,8 @@ class WorkerOrchestrator:
 
             with self._lock:
                 snapshot = list(self._workers.items())
+                idle_ids, no_viewer_ids = self._compute_timeout_candidates_locked(now, snapshot)
 
-                # No-viewer timeout: mutations to no_viewer_since must happen
-                # under the lock to avoid racing with release_stream_viewer().
-                no_viewer_ids: list[str] = []
-                if self._no_viewer_timeout_seconds > 0:
-                    for sid, handle in snapshot:
-                        if sid in self._protected_stream_ids:
-                            continue
-                        if handle.viewer_count > 0:
-                            handle.no_viewer_since = 0.0
-                            continue
-                        if handle.no_viewer_since == 0.0:
-                            handle.no_viewer_since = now
-                            continue
-                        if (now - handle.no_viewer_since) >= self._no_viewer_timeout_seconds:
-                            no_viewer_ids.append(sid)
-
-                # Idle timeout: computed under lock alongside no-viewer check
-                # so both use the same consistent snapshot.
-                idle_ids: list[str] = []
-                if self._idle_timeout_seconds > 0:
-                    idle_ids = [
-                        sid for sid, h in snapshot
-                        if sid not in self._protected_stream_ids
-                        and (now - h.last_heartbeat) > self._idle_timeout_seconds
-                    ]
-
-            # Stop idle streams. Re-check under lock before each stop to
-            # avoid racing with acquire_stream_viewer / touch_stream.
             for sid in idle_ids:
                 with self._lock:
                     handle = self._workers.get(sid)
@@ -250,14 +263,10 @@ class WorkerOrchestrator:
                 except StreamNotFoundError:
                     pass
 
-            # Stop streams with no viewers. Re-check under lock before each
-            # stop to avoid racing with acquire_stream_viewer.
             for sid in no_viewer_ids:
                 with self._lock:
                     handle = self._workers.get(sid)
-                    if not handle:
-                        continue
-                    if handle.viewer_count > 0:
+                    if not handle or handle.viewer_count != 0:
                         continue
                 logger.info(
                     "Stopping stream '%s' (no active viewers for %.0fs)",
@@ -272,21 +281,10 @@ class WorkerOrchestrator:
 
             for stream_id, handle in snapshot:
                 with self._lock:
-                    current = self._workers.get(stream_id)
-                    if current is not handle:
-                        # Stream was intentionally removed (for example no-viewer stop).
+                    if self._workers.get(stream_id) is not handle:
                         continue
+                self._handle_ffmpeg_health(stream_id, handle)
 
-                # --- FFmpeg health check (independent of decode thread) ---
-                if handle.ffmpeg_process is not None and handle.ffmpeg_process.poll() is not None:
-                    exit_code = handle.ffmpeg_process.returncode
-                    logger.warning(
-                        "FFmpeg died for stream '%s' (exit=%s), restarting",
-                        stream_id, exit_code,
-                    )
-                    handle.ffmpeg_process = self._start_ffmpeg(handle.config)
-
-                # --- Decode thread health check ---
                 if handle.is_alive:
                     handle.next_restart_at = 0.0
                     handle.backoff_seconds = self._initial_backoff_seconds
@@ -313,13 +311,13 @@ class WorkerOrchestrator:
                     )
                     if not new_decode.start():
                         raise RuntimeError("DecodeThread.start() returned False")
-                except Exception:
+                except (FileNotFoundError, PermissionError) as exc:
+                    logger.error("Permanent failure for stream '%s', will not retry: %s", stream_id, exc)
+                    continue
+                except Exception as exc:
                     handle.next_restart_at = now + handle.backoff_seconds
-                    handle.backoff_seconds = min(
-                        handle.backoff_seconds * 2,
-                        self._max_backoff_seconds,
-                    )
-                    logger.exception("Restart failed for stream '%s'", stream_id)
+                    handle.backoff_seconds = min(handle.backoff_seconds * 2, self._max_backoff_seconds)
+                    logger.warning("Restart failed for stream '%s': %s", stream_id, exc)
                     continue
 
                 with self._lock:
@@ -330,14 +328,9 @@ class WorkerOrchestrator:
                     handle.decode_thread = new_decode
                     handle.restart_count += 1
                     handle.started_at = time.monotonic()
-                    handle.backoff_seconds = min(
-                        handle.backoff_seconds * 2,
-                        self._max_backoff_seconds,
-                    )
+                    handle.backoff_seconds = min(handle.backoff_seconds * 2, self._max_backoff_seconds)
                     handle.next_restart_at = 0.0
 
-                # Re-register the new decode thread with the inference thread
                 if self._inference_thread:
                     self._inference_thread.register_stream(stream_id, new_decode)
-
                 logger.info("Restarted decode thread for stream '%s'", stream_id)

@@ -1,6 +1,7 @@
 """Types for stream worker orchestration."""
 from __future__ import annotations
 
+import logging
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -8,12 +9,15 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from cv.decode_thread import DecodeThread
+from settings.app import app_settings
+
+logger = logging.getLogger(__name__)
 
 
 class StreamConfig(BaseModel):
     """Runtime configuration for one stream worker."""
 
-    stream_id: str = Field(..., min_length=1, pattern=r"^[a-zA-Z0-9_-]+$")
+    stream_id: str = Field(..., min_length=1, pattern=app_settings.stream_id_pattern.pattern)
     source_url: str = Field(..., min_length=1)
     loop: bool = True
 
@@ -39,16 +43,15 @@ class StreamHandle:
         return self.decode_thread.is_alive
 
     def terminate(self) -> None:
-        # Stop FFmpeg direct publisher first
         if self.ffmpeg_process:
             try:
                 self.ffmpeg_process.terminate()
                 self.ffmpeg_process.wait(timeout=2)
-            except Exception:
+            except subprocess.TimeoutExpired:
                 try:
                     self.ffmpeg_process.kill()
-                except Exception:
-                    pass
+                except OSError as exc:
+                    logger.debug("Failed to kill FFmpeg for stream '%s': %s", self.config.stream_id, exc)
             self.ffmpeg_process = None
 
         self.decode_thread.stop()

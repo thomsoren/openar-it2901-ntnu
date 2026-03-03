@@ -11,6 +11,7 @@ import { ObiTargetSettingsProposal } from "@ocean-industries-concept-lab/openbri
 import { ObiExpand } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-expand";
 import { useARControls } from "./useARControls";
 import type { PoiDropdownValue, RangeValue } from "./ar-control-context";
+import { AR_PANEL_CONTROL_DEFINITIONS } from "./panel-controls";
 import "./ARControlPanel.css";
 
 const RANGE_OPTIONS: { value: RangeValue; label: string }[] = [
@@ -28,7 +29,8 @@ const POI_OPTIONS: { value: PoiDropdownValue; label: string }[] = [
 ];
 
 export function ARControlPanel() {
-  const { state, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode } = useARControls();
+  const { state, panelVisibility, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode } =
+    useARControls();
 
   const buoyAndLightOn = state.buoyLayerVisible && state.flotsamLayerVisible;
   const aisDataOn = state.aisCardsVisible && state.mobLayerVisible;
@@ -41,9 +43,9 @@ export function ARControlPanel() {
     if (state[second] !== next) toggle(second);
   };
 
-  return (
-    <div className="ar-control-bar">
-      <div className="obc-component-size-regular">
+  const controls = {
+    rangeVisible: (
+      <div key="rangeVisible" className="obc-component-size-regular">
         <ObcDropdownButton
           className="ar-control-bar__range"
           title="Range selection"
@@ -55,8 +57,10 @@ export function ARControlPanel() {
           <ObiRadarRangeProposal slot="icon" />
         </ObcDropdownButton>
       </div>
-
+    ),
+    rulerVisible: (
       <ObcIconButton
+        key="rulerVisible"
         variant={IconButtonVariant.flat}
         activated={state.rulerVisible}
         title="Ruler"
@@ -64,7 +68,10 @@ export function ARControlPanel() {
       >
         <ObiRadarRangeProposal />
       </ObcIconButton>
+    ),
+    buoyLightsVisible: (
       <ObcIconButton
+        key="buoyLightsVisible"
         variant={IconButtonVariant.flat}
         activated={buoyAndLightOn}
         title="Buoy + lighthouse"
@@ -72,7 +79,10 @@ export function ARControlPanel() {
       >
         <ObiBuoySparEast />
       </ObcIconButton>
+    ),
+    vesselVisible: (
       <ObcIconButton
+        key="vesselVisible"
         variant={IconButtonVariant.flat}
         activated={state.vesselLayerVisible}
         title="Boat"
@@ -80,8 +90,10 @@ export function ARControlPanel() {
       >
         <ObiVesselTypeGenericOutlined />
       </ObcIconButton>
-
+    ),
+    aisDataVisible: (
       <ObcIconButton
+        key="aisDataVisible"
         variant={IconButtonVariant.flat}
         activated={aisDataOn}
         title="AIS Data"
@@ -89,7 +101,10 @@ export function ARControlPanel() {
       >
         <ObiAisProposal />
       </ObcIconButton>
+    ),
+    imageDataVisible: (
       <ObcIconButton
+        key="imageDataVisible"
         variant={IconButtonVariant.flat}
         activated={state.imageDataVisible}
         title="Image Data"
@@ -97,8 +112,9 @@ export function ARControlPanel() {
       >
         <ObiCamera />
       </ObcIconButton>
-
-      <div className="obc-component-size-regular">
+    ),
+    poiSettingsVisible: (
+      <div key="poiSettingsVisible" className="obc-component-size-regular">
         <ObcDropdownButton
           className="ar-control-bar__poi-dropdown"
           title="POI settings"
@@ -115,8 +131,10 @@ export function ARControlPanel() {
           <ObiTargetSettingsProposal slot="icon" />
         </ObcDropdownButton>
       </div>
-
+    ),
+    videoFitVisible: (
       <ObcIconButton
+        key="videoFitVisible"
         variant={IconButtonVariant.flat}
         activated={state.videoFitMode === "cover"}
         title={state.videoFitMode === "cover" ? "Fill Screen (Crop)" : "Fit to Screen (Letterbox)"}
@@ -124,6 +142,14 @@ export function ARControlPanel() {
       >
         <ObiExpand />
       </ObcIconButton>
+    ),
+  } as const;
+
+  return (
+    <div className="ar-control-bar">
+      {AR_PANEL_CONTROL_DEFINITIONS.filter((c) => panelVisibility[c.key]).map(
+        (c) => controls[c.key]
+      )}
     </div>
   );
 }

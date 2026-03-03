@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-export type PageId = "datavision" | "ais" | "components" | "fusion";
+export type PageId = "datavision" | "ais" | "components" | "fusion" | "control-customization";
 
 const PAGE_PATHS: Record<PageId, string> = {
   datavision: "/datavision",
   ais: "/ais",
   components: "/components",
   fusion: "/fusion",
+  "control-customization": "/control-customization",
 };
 
 const pageLabels: Record<PageId, string> = {
@@ -15,21 +16,16 @@ const pageLabels: Record<PageId, string> = {
   ais: "AIS",
   components: "Components",
   fusion: "Fusion",
+  "control-customization": "Control Customization",
 };
+
+const PATH_TO_PAGE = new Map(
+  (Object.entries(PAGE_PATHS) as [PageId, string][]).map(([id, path]) => [path.slice(1), id])
+);
 
 const getPageFromPath = (pathname: string): PageId => {
   const rootSegment = pathname.replace(/^\/+/, "").split("/")[0];
-  switch (rootSegment) {
-    case "ais":
-      return "ais";
-    case "components":
-      return "components";
-    case "fusion":
-      return "fusion";
-    case "datavision":
-    default:
-      return "datavision";
-  }
+  return PATH_TO_PAGE.get(rootSegment) ?? "datavision";
 };
 
 /**

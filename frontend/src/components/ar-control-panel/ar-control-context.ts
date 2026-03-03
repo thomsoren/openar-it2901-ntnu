@@ -4,6 +4,17 @@ export type RangeValue = "off" | "3" | "5" | "10.5" | "24";
 export type PoiDropdownValue = "poi-show" | "poi-hide" | "poi-display" | "poi-icon";
 export type VideoFitMode = "contain" | "cover";
 
+export interface ARControlPanelVisibilityState {
+  rangeVisible: boolean;
+  rulerVisible: boolean;
+  buoyLightsVisible: boolean;
+  vesselVisible: boolean;
+  aisDataVisible: boolean;
+  imageDataVisible: boolean;
+  poiSettingsVisible: boolean;
+  videoFitVisible: boolean;
+}
+
 export interface ARControlState {
   vesselLayerVisible: boolean;
   buoyLayerVisible: boolean;
@@ -30,12 +41,16 @@ export type ARBooleanControlKey =
   | "aisCardsVisible"
   | "detectionVisible";
 
+export type ARControlPanelVisibilityKey = keyof ARControlPanelVisibilityState;
+
 export interface ARControlContextType {
   state: ARControlState;
+  panelVisibility: ARControlPanelVisibilityState;
   toggle: (key: ARBooleanControlKey) => void;
   setRangeValue: (value: RangeValue) => void;
   setPoiDropdownValue: (value: PoiDropdownValue) => void;
   setVideoFitMode: (value: VideoFitMode) => void;
+  setPanelControlVisibility: (key: ARControlPanelVisibilityKey, visible: boolean) => void;
 }
 
 export const AR_CONTROL_DEFAULTS: ARControlState = {
@@ -51,6 +66,17 @@ export const AR_CONTROL_DEFAULTS: ARControlState = {
   aisCardsVisible: true,
   detectionVisible: true,
   videoFitMode: "cover",
+};
+
+export const AR_CONTROL_PANEL_VISIBILITY_DEFAULTS: ARControlPanelVisibilityState = {
+  rangeVisible: true,
+  rulerVisible: true,
+  buoyLightsVisible: true,
+  vesselVisible: true,
+  aisDataVisible: true,
+  imageDataVisible: true,
+  poiSettingsVisible: true,
+  videoFitVisible: true,
 };
 
 export const ARControlContext = createContext<ARControlContextType | undefined>(undefined);

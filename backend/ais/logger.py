@@ -15,38 +15,45 @@ logger = logging.getLogger(__name__)
 
 
 class AISLogEntry(BaseModel):
-    """Pydantic model for a single AIS data point in the log."""
+    """Pydantic model for a single AIS data point in the log.
 
-    timestamp: str
+    Field names and aliases mirror the Barentswatch /v1/combinedfeed/sse/tracks schema.
+    """
+
+    msgtime: str
     mmsi: str
     latitude: float
     longitude: float
-    speed: float
-    heading: float
+    speed_over_ground: float = Field(..., alias="speedOverGround")
+    true_heading: float = Field(..., alias="trueHeading")
     course_over_ground: float = Field(..., alias="courseOverGround")
     name: str | None = None
     ship_type: int | None = Field(None, alias="shipType")
     navigational_status: int | None = Field(None, alias="navigationalStatus")
     rate_of_turn: float | None = Field(None, alias="rateOfTurn")
+    stream: str | None = None
     log_received_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), alias="logReceivedAt")
+    projection: Dict[str, Any] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
     @classmethod
     def from_ais_data(cls, ais_data: Dict[str, Any]) -> "AISLogEntry":
-        """Create from raw AIS API response."""
+        """Create from raw AIS API response (Barentswatch tracks schema)."""
         return cls(
-            timestamp=ais_data.get("timestamp", ""),
+            msgtime=ais_data.get("msgtime", ""),
             mmsi=str(ais_data.get("mmsi", "")),
             latitude=float(ais_data.get("latitude", 0)),
             longitude=float(ais_data.get("longitude", 0)),
-            speed=float(ais_data.get("speed", -1)),
-            heading=float(ais_data.get("heading", -1)),
+            speed_over_ground=float(ais_data.get("speedOverGround", -1)),
+            true_heading=float(ais_data.get("trueHeading", -1)),
             course_over_ground=float(ais_data.get("courseOverGround", -1)),
             name=ais_data.get("name"),
             ship_type=ais_data.get("shipType"),
             navigational_status=ais_data.get("navigationalStatus"),
-            rate_of_turn=ais_data.get("rateOfTurn")
+            rate_of_turn=ais_data.get("rateOfTurn"),
+            stream=ais_data.get("stream"),
+            projection=ais_data.get("projection"),
         )
 
 
