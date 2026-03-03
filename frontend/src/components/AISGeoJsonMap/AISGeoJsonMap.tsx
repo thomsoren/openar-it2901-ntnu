@@ -282,17 +282,39 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const originMarker = createAnchorMarker(map, {
       className: "geojson-map-origin-icon",
       lngLat: [shipLon, shipLat],
-      popupText: "Drag to move origin",
       icon: ANCHOR_ICON,
+    });
+
+    const originPopup = new maplibregl.Popup({
+      offset: 10,
+      className: "geojson-anchor-popup",
+      closeButton: false,
+      closeOnClick: true,
+    }).setText(
+      `${Math.abs(shipLat).toFixed(5)}°${shipLat >= 0 ? "N" : "S"}, ` +
+        `${Math.abs(shipLon).toFixed(5)}°${shipLon >= 0 ? "E" : "W"}`
+    );
+    originMarker.marker.setPopup(originPopup);
+
+    originMarker.marker.on("dragstart", () => {
+      const popup = originMarker.marker.getPopup();
+      if (!popup?.isOpen()) originMarker.marker.togglePopup();
     });
 
     originMarker.marker.on("drag", () => {
       const { lng, lat } = originMarker.marker.getLngLat();
       syncVisuals(lat, lng, paramsRef.current.heading);
+      const popup = originMarker.marker.getPopup();
+      popup?.setText(
+        `${Math.abs(lat).toFixed(5)}°${lat >= 0 ? "N" : "S"}, ` +
+          `${Math.abs(lng).toFixed(5)}°${lng >= 0 ? "E" : "W"}`
+      );
     });
+
     originMarker.marker.on("dragend", () => {
       const { lng, lat } = originMarker.marker.getLngLat();
       onChange?.({ shipLat: lat, shipLon: lng });
+      originMarker.marker.togglePopup();
     });
     originRef.current = originMarker.marker;
     originRootRef.current = originMarker.root;
@@ -313,8 +335,24 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const rangeMarker = createAnchorMarker(map, {
       className: "geojson-map-range-icon",
       lngLat: initAnchors.range,
-      popupText: "Drag to set range",
       icon: ANCHOR_ICON,
+    });
+
+    const rangePopup = new maplibregl.Popup({
+      offset: 10,
+      className: "geojson-anchor-popup",
+      closeButton: false,
+      closeOnClick: true,
+    }).setText(
+      shapeMode === "rect"
+        ? `Length ${Math.round(rectLength)}m`
+        : `Radius ${Math.round(offsetMeters)}m`
+    );
+    rangeMarker.marker.setPopup(rangePopup);
+
+    rangeMarker.marker.on("dragstart", () => {
+      const popup = rangeMarker.marker.getPopup();
+      if (!popup?.isOpen()) rangeMarker.marker.togglePopup();
     });
 
     rangeMarker.marker.on("drag", () => {
@@ -329,11 +367,17 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, newLen / 2);
         rangeMarker.marker.setLngLat([cLon, cLat]);
         syncVisuals(origin.lat, origin.lng, heading, { rectLength: newLen });
+
+        const popup = rangeMarker.marker.getPopup();
+        popup?.setText(`Length ${Math.round(newLen)}m`);
       } else {
         const dist = Math.max(MIN_WEDGE_RANGE_M, along);
         const [cLat, cLon] = destinationPoint(origin.lat, origin.lng, heading, dist);
         rangeMarker.marker.setLngLat([cLon, cLat]);
         syncVisuals(origin.lat, origin.lng, heading, { offsetMeters: dist });
+
+        const popup = rangeMarker.marker.getPopup();
+        popup?.setText(`Radius ${Math.round(dist)}m`);
       }
     });
 
@@ -349,6 +393,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       } else {
         onChange?.({ offsetMeters: Math.round(Math.max(MIN_WEDGE_RANGE_M, along)) });
       }
+      rangeMarker.marker.togglePopup();
     });
     rangeRef.current = rangeMarker.marker;
     rangeRootRef.current = rangeMarker.root;
@@ -358,8 +403,20 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const headingMarker = createAnchorMarker(map, {
       className: "geojson-map-heading-icon",
       lngLat: initAnchors.heading,
-      popupText: "Drag to set heading",
       icon: ANCHOR_ICON,
+    });
+
+    const headingPopup = new maplibregl.Popup({
+      offset: 10,
+      className: "geojson-anchor-popup",
+      closeButton: false,
+      closeOnClick: true,
+    }).setText(`BRG ${Math.round(heading)}°`);
+    headingMarker.marker.setPopup(headingPopup);
+
+    headingMarker.marker.on("dragstart", () => {
+      const popup = headingMarker.marker.getPopup();
+      if (!popup?.isOpen()) headingMarker.marker.togglePopup();
     });
 
     headingMarker.marker.on("drag", () => {
@@ -368,6 +425,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       if (!origin) return;
       const nextHeading = headingTo(origin.lat, origin.lng, lat, lng);
       syncVisuals(origin.lat, origin.lng, nextHeading);
+
+      const popup = headingMarker.marker.getPopup();
+      popup?.setText(`BRG ${Math.round(nextHeading)}°`);
     });
 
     headingMarker.marker.on("dragend", () => {
@@ -375,6 +435,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       const origin = originRef.current?.getLngLat();
       if (!origin) return;
       onChange?.({ heading: Math.round(headingTo(origin.lat, origin.lng, lat, lng)) });
+      headingMarker.marker.togglePopup();
     });
     headingRef.current = headingMarker.marker;
     headingRootRef.current = headingMarker.root;
@@ -384,8 +445,22 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const fovMarker = createAnchorMarker(map, {
       className: "geojson-map-fov-icon",
       lngLat: initAnchors.fov,
-      popupText: "Drag to set FOV / width",
       icon: ANCHOR_ICON,
+    });
+
+    const fovPopup = new maplibregl.Popup({
+      offset: 10,
+      className: "geojson-anchor-popup",
+      closeButton: false,
+      closeOnClick: true,
+    }).setText(
+      shapeMode === "rect" ? `Width ${Math.round(rectWidth)}m` : `Sector ${Math.round(fovDegrees)}°`
+    );
+    fovMarker.marker.setPopup(fovPopup);
+
+    fovMarker.marker.on("dragstart", () => {
+      const popup = fovMarker.marker.getPopup();
+      if (!popup?.isOpen()) fovMarker.marker.togglePopup();
     });
 
     fovMarker.marker.on("drag", () => {
@@ -398,6 +473,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         const cross = computeCrossTrackDistance(origin.lat, origin.lng, lat, lng, heading);
         const newWidth = Math.max(MIN_RECT_WIDTH_M, cross * 2);
         syncVisuals(origin.lat, origin.lng, heading, { rectWidth: newWidth });
+
+        const popup = fovMarker.marker.getPopup();
+        popup?.setText(`Width ${Math.round(newWidth)}m`);
       } else {
         const fovBearing = headingTo(origin.lat, origin.lng, lat, lng);
         const nextFov = Math.min(
@@ -405,6 +483,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           Math.max(MIN_FOV_DEG, Math.abs(normalizeAngleDelta(fovBearing - heading)) * 2)
         );
         syncVisuals(origin.lat, origin.lng, heading, { fovDegrees: nextFov });
+
+        const popup = fovMarker.marker.getPopup();
+        popup?.setText(`Sector ${Math.round(nextFov)}°`);
       }
     });
 
@@ -425,6 +506,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
         );
         onChange?.({ fovDegrees: Math.round(nextFov) });
       }
+      fovMarker.marker.togglePopup();
     });
     fovRef.current = fovMarker.marker;
     fovRootRef.current = fovMarker.root;
@@ -481,6 +563,33 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       rectWidth
     );
     applyAnchorPositions(positions, rangeRef, headingRef, fovRef);
+
+    // Update popup text to match current mode and values
+    const latDir = shipLat >= 0 ? "N" : "S";
+    const lonDir = shipLon >= 0 ? "E" : "W";
+    originRef.current
+      ?.getPopup()
+      ?.setText(
+        `${Math.abs(shipLat).toFixed(5)}°${latDir}, ${Math.abs(shipLon).toFixed(5)}°${lonDir}`
+      );
+
+    rangeRef.current
+      ?.getPopup()
+      ?.setText(
+        shapeMode === "rect"
+          ? `Length ${Math.round(rectLength)}m`
+          : `Radius ${Math.round(offsetMeters)}m`
+      );
+
+    headingRef.current?.getPopup()?.setText(`BRG ${Math.round(heading)}°`);
+
+    fovRef.current
+      ?.getPopup()
+      ?.setText(
+        shapeMode === "rect"
+          ? `Width ${Math.round(rectWidth)}m`
+          : `Sector ${Math.round(fovDegrees)}°`
+      );
 
     if (followMode) centerMap();
   }, [

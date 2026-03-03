@@ -87,8 +87,8 @@ export function getScanAreaSource(map: maplibregl.Map): maplibregl.GeoJSONSource
 interface AnchorMarkerOptions {
   className: string;
   lngLat: [number, number];
-  popupText: string;
   icon: ReactElement;
+  draggable?: boolean;
 }
 
 export interface MarkerWithRoot {
@@ -96,20 +96,17 @@ export interface MarkerWithRoot {
   root: Root;
 }
 
-/** Create a draggable anchor marker with an icon and popup. */
+/** Create a draggable anchor marker with an icon (no popup - add separately if needed). */
 export function createAnchorMarker(
   map: maplibregl.Map,
-  { className, lngLat, popupText, icon }: AnchorMarkerOptions
+  { className, lngLat, icon, draggable = true }: AnchorMarkerOptions
 ): MarkerWithRoot {
   const element = document.createElement("div");
   element.className = className;
   const root = createRoot(element);
   root.render(icon);
 
-  const marker = new maplibregl.Marker({ element, draggable: true })
-    .setLngLat(lngLat)
-    .setPopup(new maplibregl.Popup({ offset: 10 }).setText(popupText))
-    .addTo(map);
+  const marker = new maplibregl.Marker({ element, draggable }).setLngLat(lngLat).addTo(map);
 
   return { marker, root };
 }
