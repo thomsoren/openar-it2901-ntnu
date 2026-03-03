@@ -5,10 +5,11 @@ import {
   deleteMediaAsset,
   listMediaAssets,
   presignDownload,
-  presignUpload,
   updateVisibility,
-  uploadFileToS3,
+  uploadFileToS3Multipart,
 } from "../services/media";
+import { listStreams, stopStream } from "../services/streams";
+import { removePersistedStreamIds } from "../hooks/stream-tabs/storage";
 import "./Admin.css";
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
@@ -16,6 +17,7 @@ type UploadStatus = "idle" | "uploading" | "done" | "error";
 export default function Admin() {
   const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge, isAdmin } =
     useAuth();
+  const storageScope = session?.user?.id ?? "anon";
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -27,8 +29,14 @@ export default function Admin() {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const abortUploadRef = useRef<(() => void) | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      abortUploadRef.current?.();
+    };
+  }, []);
 
   const loadAssets = useCallback(async () => {
     try {
@@ -97,30 +105,54 @@ export default function Admin() {
     setUploadError(null);
 
     try {
-      const { url, headers } = await presignUpload(
-        selectedFile.name,
-        selectedFile.type,
-        visibility
-      );
-      await uploadFileToS3(url, headers, selectedFile, setUploadProgress, (xhr) => {
-        xhrRef.current = xhr;
+      await uploadFileToS3Multipart(selectedFile, visibility, setUploadProgress, (abortFn) => {
+        abortUploadRef.current = abortFn;
       });
-      xhrRef.current = null;
+      abortUploadRef.current = null;
       setUploadProgress(100);
       setUploadStatus("done");
       setSelectedFile(null);
       await loadAssets();
     } catch (err) {
-      xhrRef.current = null;
+      abortUploadRef.current = null;
       setUploadStatus("error");
       setUploadError(err instanceof Error ? err.message : "Upload failed");
+    }
+  };
+
+  const streamSourceUsesAssetKey = (sourceUrl: string, assetKey: string): boolean => {
+    const normalizedKey = assetKey.replace(/^\/+/, "");
+    if (!normalizedKey) return false;
+    if (sourceUrl.startsWith(`s3://${normalizedKey}`)) return true;
+    try {
+      const parsed = new URL(sourceUrl);
+      const path = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
+      return path.endsWith(normalizedKey) || path.includes(`/${normalizedKey}`);
+    } catch {
+      return sourceUrl.includes(normalizedKey);
     }
   };
 
   const handleDelete = async (asset: MediaAsset) => {
     if (!window.confirm(`Delete "${asset.s3_key}"?`)) return;
     try {
+      const streams = await listStreams().catch(() => []);
       await deleteMediaAsset(asset.id);
+      const affectedStreamIds = streams
+        .filter((stream) => streamSourceUsesAssetKey(stream.source_url, asset.s3_key))
+        .map((stream) => stream.stream_id);
+      if (affectedStreamIds.length > 0) {
+        await Promise.all(
+          affectedStreamIds.map(async (streamId) => {
+            try {
+              await stopStream(streamId);
+            } catch {
+              // Ignore stop failures during cleanup.
+            }
+          })
+        );
+        removePersistedStreamIds(affectedStreamIds, storageScope);
+      }
       setAssets((prev) => prev.filter((a) => a.id !== asset.id));
     } catch (err) {
       alert(err instanceof Error ? err.message : "Delete failed");

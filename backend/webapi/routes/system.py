@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi import HTTPException
 
 from webapi.errors import bad_request, wrap_internal
 from auth.deps import get_current_user
@@ -78,5 +79,7 @@ def presign_storage(
         )
     except ValueError as exc:
         bad_request(str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error generating presigned URL", exc)

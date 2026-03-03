@@ -10,6 +10,7 @@ export interface StreamTabState {
   runningStreams: StreamSummary[];
   configureTabId: string | null;
   hasLoadedStreamList: boolean;
+  hydratedScope: string | null;
 }
 
 export type StreamTabAction =
@@ -18,7 +19,8 @@ export type StreamTabAction =
   | { type: "SELECT_TAB"; tabId: string }
   | { type: "CONFIGURE_COMPLETE"; streamId: string }
   | { type: "SET_RUNNING_STREAMS"; streams: StreamSummary[] }
-  | { type: "JOIN_EXTERNAL_STREAM"; streamId: string };
+  | { type: "JOIN_EXTERNAL_STREAM"; streamId: string }
+  | { type: "RESET_FROM_STORAGE"; state: StreamTabState };
 
 export function streamTabReducer(state: StreamTabState, action: StreamTabAction): StreamTabState {
   switch (action.type) {
@@ -162,13 +164,20 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
       };
     }
 
+    case "RESET_FROM_STORAGE":
+      return action.state;
+
     default:
       return state;
   }
 }
 
-export function initStreamTabState(): StreamTabState {
-  const joined = loadJoinedStreams();
+export function initStreamTabState(storageScope?: string): StreamTabState {
+  const joined = loadJoinedStreams(storageScope);
+  const persistedActiveTabId = loadActiveTabId(storageScope);
+  if (persistedActiveTabId && !joined.includes(persistedActiveTabId)) {
+    joined.push(persistedActiveTabId);
+  }
   if (!joined.includes(DEFAULT_STREAM_ID)) {
     joined.unshift(DEFAULT_STREAM_ID);
   }
@@ -186,12 +195,16 @@ export function initStreamTabState(): StreamTabState {
   if (configureTabId && !joined.includes(configureTabId)) {
     joined.push(configureTabId);
   }
+  const activeTabId = joined.includes(persistedActiveTabId)
+    ? persistedActiveTabId
+    : DEFAULT_STREAM_ID;
 
   return {
-    activeTabId: hasConfigured ? loadActiveTabId() : DEFAULT_STREAM_ID,
+    activeTabId,
     joinedStreamIds: joined,
     runningStreams: [],
     configureTabId,
     hasLoadedStreamList: false,
+    hydratedScope: storageScope ?? null,
   };
 }

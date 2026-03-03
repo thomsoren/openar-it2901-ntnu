@@ -4,10 +4,9 @@ import os
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 
 from webapi.errors import not_found, wrap_internal
-from common.config import BASE_DIR
 from common.types import DetectedVessel
 from fusion import fusion
 from storage import s3
@@ -58,16 +57,7 @@ def _stream_pirbadet_video(request: Request) -> Response:
     except Exception:
         pass
 
-    candidates = (
-        BASE_DIR / "data" / "raw" / "video" / "Pirbadet-edited.mp4",
-        BASE_DIR / "data" / "raw" / "video" / "Pirbadet edited.mp4",
-        BASE_DIR / "data" / "cache" / "s3" / "Pirbadet-edited.mp4",
-    )
-    for candidate in candidates:
-        if candidate.exists():
-            return FileResponse(candidate, media_type="video/mp4", filename=candidate.name)
-
-    not_found("Pirbadet fusion video file not found")
+    not_found("Pirbadet fusion video file not found on S3")
 
 
 @router.get("/api/detections", response_model=list[DetectedVessel])

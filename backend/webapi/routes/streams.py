@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import math
 import os
-import shutil
-import uuid
-from pathlib import Path, PurePath
+import subprocess
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
@@ -26,6 +26,7 @@ from webapi.errors import (
 from webapi import state
 from settings import app_settings
 from common.config import BASE_DIR
+from common.config.mediamtx import FFMPEG_BIN
 from orchestrator import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -53,6 +54,9 @@ FUSION_AIS_URL_DEFAULT = (
 )
 FUSION_AIS_CACHE_PATH = BASE_DIR / "data" / "cache" / "fusion" / "Pirbadet.ndjson"
 FUSION_AIS_TIME_WINDOW_S = float(os.getenv("FUSION_STREAM_AIS_TIME_WINDOW_S", "900"))
+STREAM_UPLOAD_MAX_DURATION_S = float(os.getenv("STREAM_UPLOAD_MAX_DURATION_S", "300"))
+STREAM_UPLOAD_MAX_SIZE_MB = float(os.getenv("STREAM_UPLOAD_MAX_SIZE_MB", "300"))
+STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
 
 
 class StreamStartRequest(BaseModel):
@@ -162,6 +166,73 @@ def _configure_fusion_stream_ais(stream_id: str) -> None:
     )
 
 
+def _probe_video_duration_seconds(source: str) -> float | None:
+    ffprobe_bin = FFMPEG_BIN.replace("ffmpeg", "ffprobe")
+    try:
+        result = subprocess.run(
+            [
+                ffprobe_bin,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                source,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            return None
+        payload = json.loads(result.stdout or "{}")
+        duration_raw = payload.get("format", {}).get("duration")
+        if duration_raw is None:
+            return None
+        duration = float(duration_raw)
+        if duration <= 0 or not math.isfinite(duration):
+            return None
+        return duration
+    except (FileNotFoundError, ValueError, json.JSONDecodeError, subprocess.TimeoutExpired):
+        return None
+
+
+async def _validate_s3_source_limits(original_source_url: str | None, resolved_source_url: str) -> None:
+    raw = (original_source_url or "").strip()
+    if not raw.startswith("s3://"):
+        return
+
+    s3_key = raw[5:]
+    if not s3_key.startswith("videos/"):
+        return
+
+    meta = await asyncio.get_event_loop().run_in_executor(None, s3.head_object, s3_key)
+    if not meta:
+        bad_request("Uploaded S3 object is not available")
+    size_bytes = int(meta.get("ContentLength", 0))
+    if size_bytes <= 0:
+        bad_request("Uploaded S3 object is empty")
+    if size_bytes > STREAM_UPLOAD_MAX_SIZE_BYTES:
+        bad_request(
+            f"Video file too large ({size_bytes / (1024 * 1024):.1f} MB). "
+            f"Max allowed is {STREAM_UPLOAD_MAX_SIZE_MB:.0f} MB."
+        )
+
+    duration_s = await asyncio.get_event_loop().run_in_executor(
+        None, _probe_video_duration_seconds, resolved_source_url
+    )
+    if duration_s is None:
+        bad_request("Unable to read video metadata. Please upload a valid video file.")
+    if duration_s > STREAM_UPLOAD_MAX_DURATION_S:
+        bad_request(
+            f"Video too long ({duration_s:.1f}s). Max allowed is "
+            f"{STREAM_UPLOAD_MAX_DURATION_S:.0f}s (5 minutes)."
+        )
+
+
 @router.post("/api/streams/{stream_id}/start", status_code=201)
 async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str, Any]:
     _validate_stream_id(stream_id)
@@ -200,6 +271,7 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
         bad_gateway(str(exc))
     if not source_url:
         bad_request("source_url is required for this stream")
+    await _validate_s3_source_limits(request.source_url, source_url)
 
     config = StreamConfig(stream_id=stream_id, source_url=source_url, loop=request.loop)
     handle = await asyncio.get_event_loop().run_in_executor(
@@ -225,31 +297,12 @@ async def upload_and_start_stream(
     loop: bool = True,
 ) -> dict[str, Any]:
     _validate_stream_id(stream_id)
-    orchestrator = _require_orchestrator()
-
-    if not file.filename:
-        bad_request("No file provided")
-
-    upload_dir = BASE_DIR / "data" / "uploads"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = uuid.uuid4().hex + PurePath(file.filename).suffix
-    local_path = upload_dir / safe_name
-
-    try:
-        with open(local_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
-    except Exception as exc:
-        wrap_internal("Failed to save file", exc)
-
-    config = StreamConfig(stream_id=stream_id, source_url=str(local_path), loop=loop)
-    handle = _start_orchestrator_stream(orchestrator, config)
-    if stream_id == FUSION_STREAM_ID:
-        try:
-            await asyncio.get_event_loop().run_in_executor(None, _configure_fusion_stream_ais, stream_id)
-        except Exception as exc:
-            logger.warning("[fusion:%s] Failed to configure AIS enrichment after upload: %s", stream_id, exc)
-
-    return {"status": "started", **handle.to_dict()}
+    _ = file
+    _ = loop
+    bad_request(
+        "Direct file upload endpoint is disabled. Upload to S3 via /api/storage/presign "
+        "and start using source_url=s3://<key>."
+    )
 
 
 @router.delete("/api/streams/{stream_id}", status_code=204, response_class=Response)

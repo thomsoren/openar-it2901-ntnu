@@ -15,6 +15,7 @@ import {
   useStreamHeartbeats,
 } from "./stream-tabs/effects";
 import { initStreamTabState, streamTabReducer } from "./stream-tabs/reducer";
+import { useAuth } from "./useAuth";
 
 interface TabSelectedDetail {
   tab: TabData;
@@ -29,6 +30,7 @@ export interface UseStreamTabsOptions {
 export interface UseStreamTabsReturn {
   tabs: TabData[];
   activeTabId: string;
+  isTabsHydrated: boolean;
   showAddButton: boolean;
   showCloseButtons: boolean;
   activeIsSetup: boolean;
@@ -55,15 +57,23 @@ export interface UseStreamTabsReturn {
  */
 export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabsReturn {
   const { externalStreamId } = options;
+  const { session, isSessionPending } = useAuth();
+  const storageScope = isSessionPending ? undefined : (session?.user?.id ?? "anon");
+  const isScopeReady = !isSessionPending && !!storageScope;
 
-  const [state, dispatch] = useReducer(streamTabReducer, undefined, initStreamTabState);
-  const { activeTabId, joinedStreamIds, runningStreams, configureTabId } = state;
+  const [state, dispatch] = useReducer(
+    streamTabReducer,
+    storageScope ?? "anon",
+    initStreamTabState
+  );
+  const { activeTabId, joinedStreamIds, runningStreams, configureTabId, hydratedScope } = state;
   const sharedRunningStreams = useRunningStreamsSnapshot();
 
   const [streamError, setStreamError] = useState<string | null>(null);
 
   const activeIsSetup = configureTabId === activeTabId;
   const wsEnabled = !activeIsSetup;
+  const isTabsHydrated = isScopeReady && hydratedScope === storageScope;
 
   const hasConfigured = hasConfiguredStreams(joinedStreamIds, configureTabId);
   const showAddButton = hasConfigured;
@@ -91,8 +101,14 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
 
   useEnsureDefaultStream({ dispatch, setStreamError });
   useStreamHeartbeats(joinedStreamIds, configureTabId);
-  usePersistStreamTabs(activeTabId, joinedStreamIds);
+  const canPersistScope = isScopeReady && hydratedScope === storageScope;
+  usePersistStreamTabs(activeTabId, joinedStreamIds, storageScope, canPersistScope);
   useExternalStreamSelection(externalStreamId, { dispatch, setStreamError });
+
+  useEffect(() => {
+    if (!isScopeReady) return;
+    dispatch({ type: "RESET_FROM_STORAGE", state: initStreamTabState(storageScope) });
+  }, [storageScope, isScopeReady]);
 
   const handleTabSelected = useCallback((event: CustomEvent<TabSelectedDetail>) => {
     const tabId = event.detail?.id;
@@ -119,6 +135,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   return {
     tabs,
     activeTabId,
+    isTabsHydrated,
     showAddButton,
     showCloseButtons,
     activeIsSetup,

@@ -54,14 +54,21 @@ export function useStreamHeartbeats(
   }, []);
 }
 
-export function usePersistStreamTabs(activeTabId: string, joinedStreamIds: string[]): void {
+export function usePersistStreamTabs(
+  activeTabId: string,
+  joinedStreamIds: string[],
+  storageScope?: string,
+  enabled = true
+): void {
   useEffect(() => {
-    persistActiveTabId(activeTabId);
-  }, [activeTabId]);
+    if (!enabled) return;
+    persistActiveTabId(activeTabId, storageScope);
+  }, [activeTabId, storageScope, enabled]);
 
   useEffect(() => {
-    persistJoinedStreamIds(joinedStreamIds);
-  }, [joinedStreamIds]);
+    if (!enabled) return;
+    persistJoinedStreamIds(joinedStreamIds, storageScope);
+  }, [joinedStreamIds, storageScope, enabled]);
 }
 
 export function useExternalStreamSelection(

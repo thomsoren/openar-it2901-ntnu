@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+from uuid import uuid4
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -45,6 +46,9 @@ class PresignRequest(BaseModel):
     group_id: str | None = None
     stream_id: str | None = None
     visibility: str = "private"
+    part_count: int | None = None
+    upload_id: str | None = None
+    completed_parts: list[dict] | None = None
 
 
 def s3_enabled() -> bool:
@@ -119,6 +123,74 @@ def presign_get(raw_key: str, expires: int = 900) -> str:
 def presign_put(raw_key: str, content_type: str | None = None, expires: int = 900) -> tuple[str, dict]:
     result = _presign("put_object", raw_key, content_type, expires)
     return result if isinstance(result, tuple) else (result, {})
+
+
+def multipart_init(raw_key: str, content_type: str | None = None) -> str:
+    full_key, _ = _normalize_key(raw_key)
+    params = {"Bucket": S3_BUCKET, "Key": full_key}
+    if content_type:
+        params["ContentType"] = content_type
+    response = _client().create_multipart_upload(**params)
+    upload_id = response.get("UploadId")
+    if not upload_id:
+        raise RuntimeError("Failed to create multipart upload")
+    return upload_id
+
+
+def multipart_presign_part(
+    raw_key: str, *, upload_id: str, part_number: int, expires: int = 900
+) -> str:
+    full_key, _ = _normalize_key(raw_key)
+    return _client().generate_presigned_url(
+        "upload_part",
+        Params={
+            "Bucket": S3_BUCKET,
+            "Key": full_key,
+            "UploadId": upload_id,
+            "PartNumber": part_number,
+        },
+        ExpiresIn=expires,
+    )
+
+
+def multipart_complete(raw_key: str, *, upload_id: str, completed_parts: list[dict]) -> None:
+    full_key, _ = _normalize_key(raw_key)
+    normalized_parts: list[dict] = []
+    for part in completed_parts:
+        try:
+            number = int(part.get("part_number"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid part_number in completed_parts")
+        etag = str(part.get("etag", "")).strip().strip('"')
+        if number <= 0 or not etag:
+            raise HTTPException(status_code=400, detail="Each completed part must include part_number and etag")
+        normalized_parts.append({"PartNumber": number, "ETag": etag})
+
+    if not normalized_parts:
+        raise HTTPException(status_code=400, detail="completed_parts must not be empty")
+
+    normalized_parts.sort(key=lambda part: part["PartNumber"])
+    _client().complete_multipart_upload(
+        Bucket=S3_BUCKET,
+        Key=full_key,
+        UploadId=upload_id,
+        MultipartUpload={"Parts": normalized_parts},
+    )
+
+
+def multipart_abort(raw_key: str, *, upload_id: str) -> None:
+    full_key, _ = _normalize_key(raw_key)
+    try:
+        _client().abort_multipart_upload(
+            Bucket=S3_BUCKET,
+            Key=full_key,
+            UploadId=upload_id,
+        )
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code")
+        if code in {"404", "NoSuchUpload", "NotFound"}:
+            return
+        raise
 
 
 def download_to_path(raw_key: str, destination: Path) -> Path:
@@ -299,8 +371,14 @@ def _build_owned_upload_key(request: PresignRequest, *, owner_user_id: str, is_a
     filename = _sanitize_segment(request.filename, "")
     if not filename:
         raise HTTPException(status_code=400, detail="filename is required for PUT when key is not provided")
+    stem, dot, ext = filename.rpartition(".")
+    if not stem:
+        stem, ext = filename, ""
+        dot = ""
+    unique_suffix = uuid4().hex[:10]
+    unique_filename = f"{stem}-{unique_suffix}{dot}{ext}" if dot else f"{stem}-{unique_suffix}"
     owner_id = _sanitize_segment(owner_user_id, "unknown-user")
-    return f"videos/{visibility}/{group_id}/{owner_id}/{stream_id}/{filename}", visibility
+    return f"videos/{visibility}/{group_id}/{owner_id}/{stream_id}/{unique_filename}", visibility
 
 
 def _ensure_user_can_access_key(key: str, owner_user_id: str, is_admin: bool) -> None:
@@ -353,4 +431,88 @@ def presign_storage(request: PresignRequest, *, owner_user_id: str, is_admin: bo
             "expires_in": expires_in,
         }
 
-    raise HTTPException(status_code=400, detail="method must be GET or PUT")
+    if method == "MULTIPART_INIT":
+        if request.part_count is None:
+            raise HTTPException(status_code=400, detail="part_count is required for MULTIPART_INIT")
+        if request.part_count < 1 or request.part_count > 10000:
+            raise HTTPException(status_code=400, detail="part_count must be between 1 and 10000")
+
+        if request.key:
+            key = _validate_client_key(request.key)
+            _ensure_user_can_access_key(key, owner_user_id, is_admin)
+            visibility = "custom"
+        else:
+            key, visibility = _build_owned_upload_key(request, owner_user_id=owner_user_id, is_admin=is_admin)
+
+        upload_id = multipart_init(key, content_type=request.content_type)
+        part_urls = [
+            {
+                "part_number": part_number,
+                "url": multipart_presign_part(
+                    key,
+                    upload_id=upload_id,
+                    part_number=part_number,
+                    expires=expires_in,
+                ),
+                "headers": {},
+            }
+            for part_number in range(1, request.part_count + 1)
+        ]
+        return {
+            "method": "MULTIPART_INIT",
+            "key": key,
+            "visibility": visibility,
+            "owner_user_id": _sanitize_segment(owner_user_id, "unknown-user"),
+            "upload_id": upload_id,
+            "part_count": request.part_count,
+            "part_urls": part_urls,
+            "expires_in": expires_in,
+        }
+
+    if method == "MULTIPART_COMPLETE":
+        if not request.key:
+            raise HTTPException(status_code=400, detail="key is required for MULTIPART_COMPLETE")
+        if not request.upload_id:
+            raise HTTPException(status_code=400, detail="upload_id is required for MULTIPART_COMPLETE")
+        if request.completed_parts is None:
+            raise HTTPException(status_code=400, detail="completed_parts is required for MULTIPART_COMPLETE")
+
+        key = _validate_client_key(request.key)
+        _ensure_user_can_access_key(key, owner_user_id, is_admin)
+        visibility = "custom"
+        asset = _find_asset_by_key(key)
+        if asset:
+            visibility = asset.visibility
+
+        multipart_complete(key, upload_id=request.upload_id, completed_parts=request.completed_parts)
+        _upsert_uploaded_asset(
+            s3_key=key,
+            owner_user_id=_sanitize_segment(owner_user_id, "unknown-user"),
+            visibility=visibility,
+            group_id=_sanitize_segment(request.group_id, "default-group") if request.group_id else None,
+        )
+        return {
+            "method": "MULTIPART_COMPLETE",
+            "key": key,
+            "completed": True,
+        }
+
+    if method == "MULTIPART_ABORT":
+        if not request.key:
+            raise HTTPException(status_code=400, detail="key is required for MULTIPART_ABORT")
+        if not request.upload_id:
+            raise HTTPException(status_code=400, detail="upload_id is required for MULTIPART_ABORT")
+
+        key = _validate_client_key(request.key)
+        _ensure_user_can_access_key(key, owner_user_id, is_admin)
+        multipart_abort(key, upload_id=request.upload_id)
+        return {
+            "method": "MULTIPART_ABORT",
+            "key": key,
+            "aborted": True,
+        }
+
+    raise HTTPException(
+        status_code=400,
+        detail="method must be GET, PUT, MULTIPART_INIT, MULTIPART_COMPLETE, or MULTIPART_ABORT",
+    )

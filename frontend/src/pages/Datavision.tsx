@@ -52,6 +52,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   const {
     tabs,
     activeTabId,
+    isTabsHydrated,
     showAddButton,
     showCloseButtons,
     activeIsSetup,
@@ -167,8 +168,8 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
           <StreamWorkspaceHeader
             tabs={tabs}
             activeTabId={activeTabId}
-            showAddButton={showAddButton}
-            showCloseButtons={showCloseButtons}
+            showAddButton={isTabsHydrated && showAddButton}
+            showCloseButtons={isTabsHydrated && showCloseButtons}
             shouldStackTabsBar={shouldStackTabsBar}
             onTabSelected={handleTabSelected}
             onTabClosed={onTabClosed}
@@ -184,7 +185,27 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
               .filter(Boolean)
               .join(" ")}
           >
-            {activeIsSetup && (
+            {!isTabsHydrated && (
+              <div className="video-loading-center">
+                <ObcProgressBar
+                  className="video-loading-center__progress"
+                  type={ProgressBarType.circular}
+                  mode={ProgressBarMode.indeterminate}
+                  circularState={CircularProgressState.indeterminate}
+                  style={
+                    {
+                      "--instrument-enhanced-secondary-color": "#4ea9dd",
+                      "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+                    } as CSSProperties
+                  }
+                >
+                  <span slot="icon"></span>
+                </ObcProgressBar>
+                <div className="video-loading-center__label">Restoring workspace...</div>
+              </div>
+            )}
+
+            {isTabsHydrated && activeIsSetup && (
               <>
                 {!auth.session ? (
                   <div className="stream-setup-auth">
@@ -196,14 +217,15 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
               </>
             )}
 
-            {!activeIsSetup && activeIsFusionMock && <FusionMockDataView />}
+            {isTabsHydrated && !activeIsSetup && activeIsFusionMock && <FusionMockDataView />}
 
-            {!activeIsSetup &&
+            {isTabsHydrated &&
+              !activeIsSetup &&
               !activeIsSpecialFusionTab &&
               !activeStream &&
               "No running streams. Join or create one from the sidebar."}
 
-            {!activeIsSetup && !activeIsSpecialFusionTab && activeStream && (
+            {isTabsHydrated && !activeIsSetup && !activeIsSpecialFusionTab && activeStream && (
               <>
                 <VideoPlayer
                   key={`${activeTabId}-${videoSession}`}
