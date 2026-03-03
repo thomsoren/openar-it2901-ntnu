@@ -38,8 +38,18 @@ const buildFovPolygon = (
   heading: number,
   offsetMeters: number,
   fovDegrees: number,
-  steps = 32
+  steps = 48
 ): [number, number][] => {
+  if (fovDegrees >= 359) {
+    const ring: [number, number][] = [];
+    for (let i = 0; i <= steps; i++) {
+      const bearing = (360 * i) / steps;
+      const [lat, lon] = destinationPoint(shipLat, shipLon, bearing, offsetMeters);
+      ring.push([lon, lat]);
+    }
+    return ring;
+  }
+
   const half = fovDegrees / 2;
   const arc: [number, number][] = [];
   for (let i = 0; i <= steps; i++) {
@@ -52,6 +62,39 @@ const buildFovPolygon = (
     arc.push([lon, lat]); // GeoJSON uses [lon, lat]
   }
   return [[shipLon, shipLat], ...arc, [shipLon, shipLat]];
+};
+
+// Build a polygon representing a heading-aligned rectangle centred on origin, returns [lon, lat] pairs in GeoJSON format
+const buildRectPolygon = (
+  shipLat: number,
+  shipLon: number,
+  heading: number,
+  length: number,
+  width: number
+): [number, number][] => {
+  const halfL = length / 2;
+  const halfW = width / 2;
+
+  // Back center point (behind origin along heading)
+  const [bcLat, bcLon] = destinationPoint(shipLat, shipLon, (heading + 180) % 360, halfL);
+  // Front center point (ahead of origin along heading)
+  const [fcLat, fcLon] = destinationPoint(shipLat, shipLon, heading, halfL);
+
+  // Back-left / back-right corners
+  const [blLat, blLon] = destinationPoint(bcLat, bcLon, heading - 90, halfW);
+  const [brLat, brLon] = destinationPoint(bcLat, bcLon, heading + 90, halfW);
+  // Front-left / front-right corners
+  const [flLat, flLon] = destinationPoint(fcLat, fcLon, heading - 90, halfW);
+  const [frLat, frLon] = destinationPoint(fcLat, fcLon, heading + 90, halfW);
+
+  // GeoJSON [lon, lat], closed ring
+  return [
+    [blLon, blLat],
+    [brLon, brLat],
+    [frLon, frLat],
+    [flLon, flLat],
+    [blLon, blLat],
+  ];
 };
 
 // Check if a point (lon, lat) is inside a polygon using ray casting algorithm.
@@ -87,4 +130,68 @@ function isPointInPolygon(
   return inside;
 }
 
-export { destinationPoint, headingTo, distanceTo, isPointInPolygon, buildFovPolygon };
+// Normalize angle delta to range [-180, 180]
+function normalizeAngleDelta(angle: number): number {
+  return ((angle + 540) % 360) - 180;
+}
+
+// Build the scan area polygon for the current shape mode
+function buildScanPolygon(
+  shipLat: number,
+  shipLon: number,
+  heading: number,
+  offsetMeters: number,
+  fovDegrees: number,
+  shapeMode: "wedge" | "rect",
+  rectLength: number,
+  rectWidth: number
+): [number, number][] {
+  return shapeMode === "rect"
+    ? buildRectPolygon(shipLat, shipLon, heading, rectLength, rectWidth)
+    : buildFovPolygon(shipLat, shipLon, heading, offsetMeters, fovDegrees);
+}
+
+// Project a drag vector onto the heading axis and return the along-track distance (min-clamped)
+function computeAlongTrackDistance(
+  originLat: number,
+  originLon: number,
+  targetLat: number,
+  targetLon: number,
+  heading: number,
+  minDistance: number = 100
+): number {
+  const dragBearing = headingTo(originLat, originLon, targetLat, targetLon);
+  const dragDistance = distanceTo(originLat, originLon, targetLat, targetLon);
+  return Math.max(
+    minDistance,
+    dragDistance *
+      Math.max(0, Math.cos((normalizeAngleDelta(dragBearing - heading) * Math.PI) / 180))
+  );
+}
+
+// Compute perpendicular distance from the heading axis through origin to target point
+function computeCrossTrackDistance(
+  originLat: number,
+  originLon: number,
+  targetLat: number,
+  targetLon: number,
+  heading: number
+): number {
+  const dragBearing = headingTo(originLat, originLon, targetLat, targetLon);
+  const dragDistance = distanceTo(originLat, originLon, targetLat, targetLon);
+  const angleDiffRad = ((dragBearing - heading) * Math.PI) / 180;
+  return Math.abs(dragDistance * Math.sin(angleDiffRad));
+}
+
+export {
+  destinationPoint,
+  headingTo,
+  distanceTo,
+  isPointInPolygon,
+  buildFovPolygon,
+  buildRectPolygon,
+  buildScanPolygon,
+  normalizeAngleDelta,
+  computeAlongTrackDistance,
+  computeCrossTrackDistance,
+};
