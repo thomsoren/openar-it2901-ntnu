@@ -113,7 +113,7 @@ def _iter_pirbadet_text_sources() -> list[tuple[str, str]]:
     sources: list[tuple[str, str]] = []
     for asset_name in PIRBADET_AIS_ASSET_NAMES:
         try:
-            s3_key = s3.resolve_system_asset_key(asset_name, "data")
+            s3_key = s3.resolve_system_asset_key(asset_name)
         except Exception:
             continue
         text = s3.read_text_from_sources(s3_key)
@@ -225,7 +225,7 @@ def _build_vessel_from_ais_ndjson_row(row: dict) -> DetectedVessel | None:
 
 def _load_mock_profile() -> FusionProfileState | None:
     try:
-        text = s3.read_text_from_sources(s3.resolve_system_asset_key("gt_fusion", "txt"))
+        text = s3.read_text_from_sources(s3.resolve_system_asset_key("gt_fusion"))
     except Exception as exc:
         logger.warning("[fusion:mock] Failed to load gt_fusion: %s", exc)
         return None

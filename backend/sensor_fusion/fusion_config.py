@@ -35,7 +35,7 @@ def _load_ndjson_text_from_assets(asset_names: list[str]) -> tuple[str | None, s
         if not name:
             continue
         try:
-            s3_key = s3.resolve_system_asset_key(name, "data")
+            s3_key = s3.resolve_system_asset_key(name)
         except Exception:
             continue
 

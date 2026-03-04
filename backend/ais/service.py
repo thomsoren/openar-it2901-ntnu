@@ -60,7 +60,7 @@ def _load_ais_csv_from_lines(lines: Iterable[str]) -> tuple[list[dict], dict[str
 
 
 def _load_ais_data() -> tuple[list[dict], dict[str, dict]]:
-    text = s3.read_text_from_sources(s3.resolve_system_asset_key("ais", "csv"))
+    text = s3.read_text_from_sources(s3.resolve_system_asset_key("ais"))
     if not text:
         return [], {}
     return _load_ais_csv_from_lines(text.splitlines())

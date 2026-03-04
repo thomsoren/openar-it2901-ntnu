@@ -3,6 +3,14 @@
 import os
 import sys
 from pathlib import Path
+
+# Load .env before reading env vars so this script works standalone.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
+
 import psycopg
 
 # Get DATABASE_URL from environment

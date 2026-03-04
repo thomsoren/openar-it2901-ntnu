@@ -3,13 +3,10 @@ from __future__ import annotations
 
 import os
 import re
-from uuid import uuid4
-from pathlib import Path
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 from functools import lru_cache
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import boto3
 from botocore.client import Config
@@ -80,7 +77,7 @@ def _normalize_key(raw_key: str) -> tuple[str, str]:
     if key == S3_PREFIX:
         raise ValueError("S3 key resolves to prefix root")
     if key.startswith(f"{S3_PREFIX}/"):
-        return key, key[len(S3_PREFIX) + 1 :]
+        return key, key[len(S3_PREFIX) + 1:]
     return f"{S3_PREFIX}/{key}", key
 
 
@@ -89,8 +86,7 @@ def head_object(raw_key: str) -> dict | None:
     try:
         return _client().head_object(Bucket=S3_BUCKET, Key=full_key)
     except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code")
-        if code in {"404", "NoSuchKey", "NotFound"}:
+        if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
             return None
         raise
 
@@ -99,107 +95,36 @@ def read_text_from_sources(s3_key: str | None) -> str | None:
     if not s3_key or not s3_enabled():
         return None
     try:
-        if head_object(s3_key) is None:
-            return None
         full_key, _ = _normalize_key(s3_key)
         return _client().get_object(Bucket=S3_BUCKET, Key=full_key)["Body"].read().decode("utf-8", errors="ignore")
     except Exception:
         return None
 
 
-def _presign(method: str, raw_key: str, content_type: str | None = None, expires: int = 900):
-    full_key, _ = _normalize_key(raw_key)
-    params = {"Bucket": S3_BUCKET, "Key": full_key}
-    if content_type:
-        params["ContentType"] = content_type
-    url = _client().generate_presigned_url(method, Params=params, ExpiresIn=expires)
-    return (url, {"Content-Type": content_type}) if method == "put_object" and content_type else url
-
-
 def presign_get(raw_key: str, expires: int = 900) -> str:
-    return _presign("get_object", raw_key, expires=expires)
+    full_key, _ = _normalize_key(raw_key)
+    return _client().generate_presigned_url(
+        "get_object", Params={"Bucket": S3_BUCKET, "Key": full_key}, ExpiresIn=expires
+    )
 
 
 def presign_put(raw_key: str, content_type: str | None = None, expires: int = 900) -> tuple[str, dict]:
-    result = _presign("put_object", raw_key, content_type, expires)
-    return result if isinstance(result, tuple) else (result, {})
-
-
-def multipart_init(raw_key: str, content_type: str | None = None) -> str:
     full_key, _ = _normalize_key(raw_key)
-    params = {"Bucket": S3_BUCKET, "Key": full_key}
+    params: dict = {"Bucket": S3_BUCKET, "Key": full_key}
     if content_type:
         params["ContentType"] = content_type
-    response = _client().create_multipart_upload(**params)
-    upload_id = response.get("UploadId")
-    if not upload_id:
-        raise RuntimeError("Failed to create multipart upload")
-    return upload_id
-
-
-def multipart_presign_part(
-    raw_key: str, *, upload_id: str, part_number: int, expires: int = 900
-) -> str:
-    full_key, _ = _normalize_key(raw_key)
-    return _client().generate_presigned_url(
-        "upload_part",
-        Params={
-            "Bucket": S3_BUCKET,
-            "Key": full_key,
-            "UploadId": upload_id,
-            "PartNumber": part_number,
-        },
-        ExpiresIn=expires,
-    )
-
-
-def multipart_complete(raw_key: str, *, upload_id: str, completed_parts: list[dict]) -> None:
-    full_key, _ = _normalize_key(raw_key)
-    normalized_parts: list[dict] = []
-    for part in completed_parts:
-        try:
-            number = int(part.get("part_number"))
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail="Invalid part_number in completed_parts")
-        etag = str(part.get("etag", "")).strip().strip('"')
-        if number <= 0 or not etag:
-            raise HTTPException(status_code=400, detail="Each completed part must include part_number and etag")
-        normalized_parts.append({"PartNumber": number, "ETag": etag})
-
-    if not normalized_parts:
-        raise HTTPException(status_code=400, detail="completed_parts must not be empty")
-
-    normalized_parts.sort(key=lambda part: part["PartNumber"])
-    _client().complete_multipart_upload(
-        Bucket=S3_BUCKET,
-        Key=full_key,
-        UploadId=upload_id,
-        MultipartUpload={"Parts": normalized_parts},
-    )
-
-
-def multipart_abort(raw_key: str, *, upload_id: str) -> None:
-    full_key, _ = _normalize_key(raw_key)
-    try:
-        _client().abort_multipart_upload(
-            Bucket=S3_BUCKET,
-            Key=full_key,
-            UploadId=upload_id,
-        )
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code")
-        if code in {"404", "NoSuchUpload", "NotFound"}:
-            return
-        raise
+    url = _client().generate_presigned_url("put_object", Params=params, ExpiresIn=expires)
+    return url, ({"Content-Type": content_type} if content_type else {})
 
 
 def download_to_path(raw_key: str, destination: Path) -> Path:
-    """Download an S3 object key to a local path and return the destination."""
     full_key, _ = _normalize_key(raw_key)
     destination.parent.mkdir(parents=True, exist_ok=True)
     _client().download_file(S3_BUCKET, full_key, str(destination))
     return destination
 
+
+# ── Streaming response ──────────────────────────────────────────────────────
 
 def _stream_body(body, chunk_size: int = 1024 * 1024):
     try:
@@ -219,8 +144,7 @@ def _parse_range(range_header: str, total_size: int) -> tuple[int, int]:
             length = int(end_str) if end_str else 0
             if length <= 0:
                 raise HTTPException(status_code=416, detail="Invalid range header")
-            start = max(total_size - length, 0)
-            end = total_size - 1
+            start, end = max(total_size - length, 0), total_size - 1
         else:
             start = int(start_str)
             end = int(end_str) if end_str else total_size - 1
@@ -241,7 +165,6 @@ def _stream_s3_response(raw_key: str, request: Request | None, filename: str) ->
     total_size = int(meta.get("ContentLength", 0))
     media_type = meta.get("ContentType") or "application/octet-stream"
     range_h = request.headers.get("range") if request else None
-
     if range_h:
         start, end = _parse_range(range_h, total_size)
         resp = _client().get_object(Bucket=S3_BUCKET, Key=full_key, Range=f"bytes={start}-{end}")
@@ -249,11 +172,13 @@ def _stream_s3_response(raw_key: str, request: Request | None, filename: str) ->
     else:
         resp = _client().get_object(Bucket=S3_BUCKET, Key=full_key)
         headers = {"Accept-Ranges": "bytes", "Content-Length": str(total_size)}
-    headers["Content-Disposition"] = f"inline; filename={filename}"
+    headers["Content-Disposition"] = f'inline; filename="{filename}"'
     return StreamingResponse(_stream_body(resp["Body"]), status_code=206 if range_h else 200, media_type=media_type, headers=headers)
 
 
-def resolve_system_asset_key(asset_name: str, media_type: str = "file") -> str:
+# ── Asset resolution (DB-backed) ────────────────────────────────────────────
+
+def resolve_system_asset_key(asset_name: str) -> str:
     with SessionLocal() as db:
         row = db.execute(select(MediaAsset).where(MediaAsset.asset_name == asset_name)).scalar_one_or_none()
         if not row:
@@ -261,26 +186,16 @@ def resolve_system_asset_key(asset_name: str, media_type: str = "file") -> str:
         return row.s3_key
 
 
-def resolve_first_system_asset_key(
-    asset_names: list[str] | tuple[str, ...],
-    media_type: str = "file",
-) -> tuple[str, str]:
-    """Return first existing system asset key from ordered *asset_names*.
-
-    Raises HTTP 404 when none of the names exist in media_assets.
-    """
+def resolve_first_system_asset_key(asset_names: list[str] | tuple[str, ...]) -> tuple[str, str]:
     for asset_name in asset_names:
         name = (asset_name or "").strip()
         if not name:
             continue
         try:
-            return name, resolve_system_asset_key(name, media_type)
+            return name, resolve_system_asset_key(name)
         except HTTPException:
             continue
-    raise HTTPException(
-        status_code=404,
-        detail=f"None of the system assets exist in media_assets: {', '.join(asset_names)}",
-    )
+    raise HTTPException(status_code=404, detail=f"None of the system assets exist in media_assets: {', '.join(asset_names)}")
 
 
 def _find_asset_by_key(s3_key: str) -> MediaAsset | None:
@@ -288,101 +203,114 @@ def _find_asset_by_key(s3_key: str) -> MediaAsset | None:
         return db.execute(select(MediaAsset).where(MediaAsset.s3_key == s3_key)).scalar_one_or_none()
 
 
-def _upsert_uploaded_asset(
-    *,
-    s3_key: str,
-    owner_user_id: str,
-    visibility: str,
-    group_id: str | None,
-) -> None:
+def _upsert_uploaded_asset(*, s3_key: str, owner_user_id: str, visibility: str, group_id: str | None, media_type: str = "video") -> None:
     with SessionLocal() as db:
         row = db.execute(select(MediaAsset).where(MediaAsset.s3_key == s3_key)).scalar_one_or_none()
         if row:
             row.owner_user_id = owner_user_id
             row.visibility = visibility if visibility != "custom" else row.visibility
             row.group_id = group_id or row.group_id
-            row.media_type = "video"
+            row.media_type = media_type
             row.is_system = False
         else:
-            db.add(
-                MediaAsset(
-                    s3_key=s3_key,
-                    owner_user_id=owner_user_id,
-                    visibility="private" if visibility == "custom" else visibility,
-                    group_id=group_id,
-                    media_type="video",
-                    is_system=False,
-                )
-            )
+            db.add(MediaAsset(
+                s3_key=s3_key,
+                owner_user_id=owner_user_id,
+                visibility="private" if visibility == "custom" else visibility,
+                group_id=group_id,
+                media_type=media_type,
+                is_system=False,
+            ))
         db.commit()
 
 
 def health_status() -> dict:
-    def _status(k):
+    def _s(k: str) -> dict:
         try:
             meta = head_object(k) if s3_enabled() else None
         except Exception:
             meta = None
-        return {"source": "s3", "path": f"s3://{k}", "exists": bool(meta), "size_mb": round(meta["ContentLength"] / (1024 * 1024), 2) if meta else None}
+        return {"source": "s3", "path": f"s3://{k}", "exists": bool(meta),
+                "size_mb": round(meta["ContentLength"] / (1024 * 1024), 2) if meta else None}
     try:
-        v, f = resolve_system_asset_key("video", "video"), resolve_system_asset_key("fusion_video", "video")
-        vs, fs = _status(v), _status(f)
+        v = resolve_system_asset_key("video")
+        f = resolve_system_asset_key("fusion_video")
+        vs, fs = _s(v), _s(f)
     except HTTPException:
         return {"status": "degraded", "files": {"video": {"exists": False}, "fusion_video": {"exists": False}}}
     return {"status": "healthy" if vs["exists"] else "degraded", "files": {"video": vs, "fusion_video": fs}}
 
+
+# ── High-level asset endpoints ───────────────────────────────────────────────
 
 def _safe_filename(name: str) -> str:
     safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in name)
     return safe[:255] or "file"
 
 
-def _stream_asset(asset_name: str, media_type: str, request: Request | None, filename: str = "") -> StreamingResponse:
-    key = resolve_system_asset_key(asset_name, media_type)
-    fn = _safe_filename(filename or key.rsplit("/", 1)[-1])
-    return _stream_s3_response(key, request, fn)
+def _stream_asset(asset_name: str, request: Request | None, filename: str | None = None) -> StreamingResponse:
+    key = resolve_system_asset_key(asset_name)
+    return _stream_s3_response(key, request, _safe_filename(filename or key.rsplit("/", 1)[-1] or "file"))
 
 
 def video_stream_response(request: Request):
-    return _stream_asset("video", "video", request, "boat-detection-video.mp4")
+    return _stream_asset("video", request, "boat-detection-video.mp4")
 
 
 def fusion_video_response(request: Request):
-    return _stream_asset("fusion_video", "video", request)
+    return _stream_asset("fusion_video", request)
 
 
 def components_background_response():
-    return _stream_asset("components_background", "image", None)
+    return _stream_asset("components_background", None)
 
 
 def detections_response(request: Request):
-    return _stream_asset("detections", "json", request)
+    return _stream_asset("detections", request)
 
 
-def _validate_client_key(raw_key: str) -> str:
-    _, key = _normalize_key(raw_key)
-    if _find_asset_by_key(key):
-        return key
-    if not key.startswith("videos/"):
-        raise HTTPException(
-            status_code=403,
-            detail="key must exist in media_assets or be under videos/ for user uploads",
-        )
-    return key
-
+# ── Presign API ──────────────────────────────────────────────────────────────
 
 _SAFE_SEGMENT_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 
 def _sanitize_segment(value: str | None, fallback: str) -> str:
     raw = (value or "").strip()
-    if not raw:
-        return fallback
     cleaned = _SAFE_SEGMENT_RE.sub("-", raw).strip(".-")
     return cleaned or fallback
 
 
-def _build_owned_upload_key(request: PresignRequest, *, owner_user_id: str, is_admin: bool) -> tuple[str, str]:
+def _media_type_from_content_type(content_type: str | None) -> str:
+    ct = (content_type or "").lower().split(";")[0].strip()
+    if ct.startswith("video/"):
+        return "video"
+    if ct.startswith("image/"):
+        return "image"
+    if ct in {"application/json", "text/plain", "text/csv"}:
+        return "data"
+    return "video"
+
+
+def _validate_client_key(raw_key: str) -> str:
+    _, key = _normalize_key(raw_key)
+    if _find_asset_by_key(key) or key.startswith("videos/"):
+        return key
+    raise HTTPException(status_code=403, detail="key must exist in media_assets or be under videos/ for user uploads")
+
+
+def _ensure_user_can_access_key(key: str, owner_user_id: str, is_admin: bool) -> None:
+    if is_admin or key.startswith("videos/public/"):
+        return
+    if f"/{_sanitize_segment(owner_user_id, 'unknown-user')}/" not in f"/{key}":
+        raise HTTPException(status_code=403, detail="Requested key is outside caller ownership scope")
+
+
+def _resolve_upload_key(request: PresignRequest, owner_user_id: str, is_admin: bool) -> tuple[str, str]:
+    """Return (key, visibility) for an upload, either from explicit key or auto-built."""
+    if request.key:
+        key = _validate_client_key(request.key)
+        _ensure_user_can_access_key(key, owner_user_id, is_admin)
+        return key, "custom"
     visibility = (request.visibility or "private").strip().lower()
     if visibility not in {"private", "group", "public"}:
         raise HTTPException(status_code=400, detail="visibility must be private, group, or public")
@@ -395,146 +323,94 @@ def _build_owned_upload_key(request: PresignRequest, *, owner_user_id: str, is_a
         raise HTTPException(status_code=400, detail="filename is required for PUT when key is not provided")
     stem, dot, ext = filename.rpartition(".")
     if not stem:
-        stem, ext = filename, ""
-        dot = ""
-    unique_suffix = uuid4().hex[:10]
-    unique_filename = f"{stem}-{unique_suffix}{dot}{ext}" if dot else f"{stem}-{unique_suffix}"
+        stem, ext, dot = filename, "", ""
+    unique = f"{stem}-{uuid4().hex[:10]}{dot}{ext}"
     owner_id = _sanitize_segment(owner_user_id, "unknown-user")
-    return f"videos/{visibility}/{group_id}/{owner_id}/{stream_id}/{unique_filename}", visibility
-
-
-def _ensure_user_can_access_key(key: str, owner_user_id: str, is_admin: bool) -> None:
-    if is_admin or key.startswith("videos/public/"):
-        return
-    owner_marker = f"/{_sanitize_segment(owner_user_id, 'unknown-user')}/"
-    if owner_marker not in f"/{key}":
-        raise HTTPException(status_code=403, detail="Requested key is outside caller ownership scope")
+    return f"videos/{visibility}/{group_id}/{owner_id}/{stream_id}/{unique}", visibility
 
 
 def presign_storage(request: PresignRequest, *, owner_user_id: str, is_admin: bool = False) -> dict:
     if not s3_enabled():
         raise HTTPException(status_code=500, detail="S3 is not configured")
     method = request.method.strip().upper()
-    expires_in = request.expires_in or S3_PRESIGN_EXPIRES
+    exp = request.expires_in or S3_PRESIGN_EXPIRES
+    owner = _sanitize_segment(owner_user_id, "unknown-user")
 
     if method == "GET":
         if not request.key:
             raise HTTPException(status_code=400, detail="key is required for GET")
         key = _validate_client_key(request.key)
         asset = _find_asset_by_key(key)
-        if asset:
-            if not (is_admin or asset.is_system or asset.visibility == "public" or asset.owner_user_id == owner_user_id):
-                raise HTTPException(status_code=403, detail="Requested key is not visible for this user")
-        else:
+        if asset and not (is_admin or asset.is_system or asset.visibility == "public" or asset.owner_user_id == owner_user_id):
+            raise HTTPException(status_code=403, detail="Requested key is not visible for this user")
+        if not asset:
             _ensure_user_can_access_key(key, owner_user_id, is_admin)
-        return {"method": "GET", "key": key, "url": presign_get(key, expires=expires_in), "headers": {}, "expires_in": expires_in}
+        return {"method": "GET", "key": key, "url": presign_get(key, expires=exp), "headers": {}, "expires_in": exp}
 
     if method == "PUT":
-        if request.key:
-            key = _validate_client_key(request.key)
-            _ensure_user_can_access_key(key, owner_user_id, is_admin)
-            visibility = "custom"
-        else:
-            key, visibility = _build_owned_upload_key(request, owner_user_id=owner_user_id, is_admin=is_admin)
-        url, headers = presign_put(key, content_type=request.content_type, expires=expires_in)
-        _upsert_uploaded_asset(
-            s3_key=key,
-            owner_user_id=_sanitize_segment(owner_user_id, "unknown-user"),
-            visibility=visibility,
-            group_id=_sanitize_segment(request.group_id, "default-group") if request.group_id else None,
-        )
-        return {
-            "method": "PUT",
-            "key": key,
-            "visibility": visibility,
-            "owner_user_id": _sanitize_segment(owner_user_id, "unknown-user"),
-            "url": url,
-            "headers": headers,
-            "expires_in": expires_in,
-        }
+        key, visibility = _resolve_upload_key(request, owner_user_id, is_admin)
+        url, headers = presign_put(key, content_type=request.content_type, expires=exp)
+        _upsert_uploaded_asset(s3_key=key, owner_user_id=owner, visibility=visibility,
+                               group_id=_sanitize_segment(request.group_id, "default-group") if request.group_id else None,
+                               media_type=_media_type_from_content_type(request.content_type))
+        return {"method": "PUT", "key": key, "visibility": visibility, "owner_user_id": owner,
+                "url": url, "headers": headers, "expires_in": exp}
 
     if method == "MULTIPART_INIT":
-        if request.part_count is None:
-            raise HTTPException(status_code=400, detail="part_count is required for MULTIPART_INIT")
-        if request.part_count < 1 or request.part_count > 10000:
+        if not request.part_count or not (1 <= request.part_count <= 10000):
             raise HTTPException(status_code=400, detail="part_count must be between 1 and 10000")
-
-        if request.key:
-            key = _validate_client_key(request.key)
-            _ensure_user_can_access_key(key, owner_user_id, is_admin)
-            visibility = "custom"
-        else:
-            key, visibility = _build_owned_upload_key(request, owner_user_id=owner_user_id, is_admin=is_admin)
-
-        upload_id = multipart_init(key, content_type=request.content_type)
-        part_urls = [
-            {
-                "part_number": part_number,
-                "url": multipart_presign_part(
-                    key,
-                    upload_id=upload_id,
-                    part_number=part_number,
-                    expires=expires_in,
-                ),
-                "headers": {},
-            }
-            for part_number in range(1, request.part_count + 1)
-        ]
-        return {
-            "method": "MULTIPART_INIT",
-            "key": key,
-            "visibility": visibility,
-            "owner_user_id": _sanitize_segment(owner_user_id, "unknown-user"),
-            "upload_id": upload_id,
-            "part_count": request.part_count,
-            "part_urls": part_urls,
-            "expires_in": expires_in,
-        }
+        key, visibility = _resolve_upload_key(request, owner_user_id, is_admin)
+        full_key, _ = _normalize_key(key)
+        params: dict = {"Bucket": S3_BUCKET, "Key": full_key}
+        if request.content_type:
+            params["ContentType"] = request.content_type
+        upload_id = _client().create_multipart_upload(**params).get("UploadId") or ""
+        if not upload_id:
+            raise RuntimeError("Failed to create multipart upload")
+        part_urls = [{"part_number": n, "url": _client().generate_presigned_url(
+            "upload_part", Params={"Bucket": S3_BUCKET, "Key": full_key, "UploadId": upload_id, "PartNumber": n}, ExpiresIn=exp
+        ), "headers": {}} for n in range(1, request.part_count + 1)]
+        return {"method": "MULTIPART_INIT", "key": key, "visibility": visibility, "owner_user_id": owner,
+                "upload_id": upload_id, "part_count": request.part_count, "part_urls": part_urls, "expires_in": exp}
 
     if method == "MULTIPART_COMPLETE":
-        if not request.key:
-            raise HTTPException(status_code=400, detail="key is required for MULTIPART_COMPLETE")
-        if not request.upload_id:
-            raise HTTPException(status_code=400, detail="upload_id is required for MULTIPART_COMPLETE")
-        if request.completed_parts is None:
-            raise HTTPException(status_code=400, detail="completed_parts is required for MULTIPART_COMPLETE")
-
+        if not request.key or not request.upload_id or request.completed_parts is None:
+            raise HTTPException(status_code=400, detail="key, upload_id, and completed_parts are required")
         key = _validate_client_key(request.key)
         _ensure_user_can_access_key(key, owner_user_id, is_admin)
-        visibility = "custom"
         asset = _find_asset_by_key(key)
-        if asset:
-            visibility = asset.visibility
-
-        multipart_complete(key, upload_id=request.upload_id, completed_parts=request.completed_parts)
-        _upsert_uploaded_asset(
-            s3_key=key,
-            owner_user_id=_sanitize_segment(owner_user_id, "unknown-user"),
-            visibility=visibility,
-            group_id=_sanitize_segment(request.group_id, "default-group") if request.group_id else None,
-        )
-        return {
-            "method": "MULTIPART_COMPLETE",
-            "key": key,
-            "completed": True,
-        }
+        visibility = asset.visibility if asset else "custom"
+        full_key, _ = _normalize_key(key)
+        parts = []
+        for part in request.completed_parts:
+            try:
+                n = int(part.get("part_number") or 0)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Invalid part_number in completed_parts")
+            etag = str(part.get("etag", "")).strip().strip('"')
+            if n <= 0 or not etag:
+                raise HTTPException(status_code=400, detail="Each part requires part_number and etag")
+            parts.append({"PartNumber": n, "ETag": etag})
+        if not parts:
+            raise HTTPException(status_code=400, detail="completed_parts must not be empty")
+        _client().complete_multipart_upload(Bucket=S3_BUCKET, Key=full_key, UploadId=request.upload_id,
+                                            MultipartUpload={"Parts": sorted(parts, key=lambda p: p["PartNumber"])})
+        _upsert_uploaded_asset(s3_key=key, owner_user_id=owner, visibility=visibility,
+                               group_id=_sanitize_segment(request.group_id, "default-group") if request.group_id else None,
+                               media_type=_media_type_from_content_type(request.content_type))
+        return {"method": "MULTIPART_COMPLETE", "key": key, "completed": True}
 
     if method == "MULTIPART_ABORT":
-        if not request.key:
-            raise HTTPException(status_code=400, detail="key is required for MULTIPART_ABORT")
-        if not request.upload_id:
-            raise HTTPException(status_code=400, detail="upload_id is required for MULTIPART_ABORT")
-
+        if not request.key or not request.upload_id:
+            raise HTTPException(status_code=400, detail="key and upload_id are required")
         key = _validate_client_key(request.key)
         _ensure_user_can_access_key(key, owner_user_id, is_admin)
-        multipart_abort(key, upload_id=request.upload_id)
-        return {
-            "method": "MULTIPART_ABORT",
-            "key": key,
-            "aborted": True,
-        }
+        full_key, _ = _normalize_key(key)
+        try:
+            _client().abort_multipart_upload(Bucket=S3_BUCKET, Key=full_key, UploadId=request.upload_id)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") not in {"404", "NoSuchUpload", "NotFound"}:
+                raise
+        return {"method": "MULTIPART_ABORT", "key": key, "aborted": True}
 
-    raise HTTPException(
-        status_code=400,
-        detail="method must be GET, PUT, MULTIPART_INIT, MULTIPART_COMPLETE, or MULTIPART_ABORT",
-    )
+    raise HTTPException(status_code=400, detail="method must be GET, PUT, MULTIPART_INIT, MULTIPART_COMPLETE, or MULTIPART_ABORT")

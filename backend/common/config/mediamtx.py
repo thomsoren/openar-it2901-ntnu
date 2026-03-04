@@ -22,6 +22,7 @@ MEDIAMTX_INCLUDE_READ_CREDENTIALS_IN_URLS = get_bool(
 )
 
 FFMPEG_BIN = get_str("FFMPEG_BIN", "ffmpeg")
+FFPROBE_BIN = get_str("FFPROBE_BIN", "ffprobe")
 FFMPEG_CODEC = get_str("FFMPEG_CODEC", "auto").lower()
 FFMPEG_LIBX264_PRESET = get_str("FFMPEG_LIBX264_PRESET", "ultrafast")
 FFMPEG_NVENC_PRESET = get_str("FFMPEG_NVENC_PRESET", "p1")

@@ -37,7 +37,7 @@ class AISMatcher:
 
     def _load(self) -> None:
         """Load AIS data from NDJSON file."""
-        if not self.ais_log_path:
+        if not self.ais_log_path or not self.video_epoch_utc:
             logger.info("No AIS log path configured - sensor fusion disabled")
             return
 
@@ -48,7 +48,7 @@ class AISMatcher:
 
         try:
             # Parse video epoch timestamp
-            self.video_epoch = datetime.fromisoformat(self.video_epoch_utc.replace("+00:00", "+00:00"))
+            self.video_epoch = datetime.fromisoformat(self.video_epoch_utc.replace("Z", "+00:00"))
 
             # Load NDJSON data
             with open(path, "r") as f:
@@ -64,7 +64,7 @@ class AISMatcher:
                         # Parse AIS message timestamp
                         if "msgtime" in entry:
                             entry["_parsed_time"] = datetime.fromisoformat(
-                                entry["msgtime"].replace("+00:00", "+00:00")
+                                entry["msgtime"].replace("Z", "+00:00")
                             )
                             self.ais_data.append(entry)
                     except (json.JSONDecodeError, ValueError) as e:

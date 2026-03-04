@@ -23,7 +23,7 @@ from webapi.errors import (
 )
 from webapi import state
 from settings import app_settings
-from common.config.mediamtx import FFMPEG_BIN
+from common.config.mediamtx import FFPROBE_BIN
 from orchestrator import (
     ResourceLimitExceededError,
     StreamAlreadyRunningError,
@@ -80,7 +80,7 @@ def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamC
 
 def _load_fusion_ais_text() -> tuple[str | None, str | None]:
     try:
-        asset_name, s3_key = s3.resolve_first_system_asset_key(FUSION_AIS_ASSET_NAMES, "data")
+        asset_name, s3_key = s3.resolve_first_system_asset_key(FUSION_AIS_ASSET_NAMES)
     except Exception:
         return None, None
 
@@ -120,11 +120,10 @@ def _configure_fusion_stream_ais(stream_id: str) -> None:
 
 
 def _probe_video_duration_seconds(source: str) -> float | None:
-    ffprobe_bin = FFMPEG_BIN.replace("ffmpeg", "ffprobe")
     try:
         result = subprocess.run(
             [
-                ffprobe_bin,
+                FFPROBE_BIN,
                 "-v",
                 "error",
                 "-select_streams",
@@ -162,7 +161,7 @@ async def _validate_s3_source_limits(original_source_url: str | None, resolved_s
     if not s3_key.startswith("videos/"):
         return
 
-    meta = await asyncio.get_event_loop().run_in_executor(None, s3.head_object, s3_key)
+    meta = await asyncio.get_running_loop().run_in_executor(None, s3.head_object, s3_key)
     if not meta:
         bad_request("Uploaded S3 object is not available")
     size_bytes = int(meta.get("ContentLength", 0))
@@ -174,7 +173,7 @@ async def _validate_s3_source_limits(original_source_url: str | None, resolved_s
             f"Max allowed is {STREAM_UPLOAD_MAX_SIZE_MB:.0f} MB."
         )
 
-    duration_s = await asyncio.get_event_loop().run_in_executor(
+    duration_s = await asyncio.get_running_loop().run_in_executor(
         None, _probe_video_duration_seconds, resolved_source_url
     )
     if duration_s is None:
@@ -192,7 +191,7 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
     orchestrator = _require_orchestrator()
 
     try:
-        existing_handle = await asyncio.get_event_loop().run_in_executor(
+        existing_handle = await asyncio.get_running_loop().run_in_executor(
             None, orchestrator.get_stream, stream_id
         )
     except StreamNotFoundError:
@@ -201,7 +200,7 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
     if existing_handle is not None:
         if stream_id == FUSION_STREAM_ID:
             try:
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None, _configure_fusion_stream_ais, stream_id
                 )
             except Exception as exc:
@@ -217,7 +216,7 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
         }
 
     try:
-        source_url = await asyncio.get_event_loop().run_in_executor(
+        source_url = await asyncio.get_running_loop().run_in_executor(
             None, resolve_stream_source, request.source_url
         )
     except RuntimeError as exc:
@@ -227,12 +226,12 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
     await _validate_s3_source_limits(request.source_url, source_url)
 
     config = StreamConfig(stream_id=stream_id, source_url=source_url, loop=request.loop)
-    handle = await asyncio.get_event_loop().run_in_executor(
+    handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
     )
     if stream_id == FUSION_STREAM_ID:
         try:
-            await asyncio.get_event_loop().run_in_executor(None, _configure_fusion_stream_ais, stream_id)
+            await asyncio.get_running_loop().run_in_executor(None, _configure_fusion_stream_ais, stream_id)
         except Exception as exc:
             logger.warning("[fusion:%s] Failed to configure AIS enrichment: %s", stream_id, exc)
 

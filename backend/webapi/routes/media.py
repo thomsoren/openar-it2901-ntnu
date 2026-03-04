@@ -17,7 +17,7 @@ PIRBADET_VIDEO_ASSET_NAMES = ("fusion_video_pirbadet",)
 
 def _stream_pirbadet_video(request: Request) -> Response:
     try:
-        _, key = s3.resolve_first_system_asset_key(PIRBADET_VIDEO_ASSET_NAMES, "video")
+        _, key = s3.resolve_first_system_asset_key(PIRBADET_VIDEO_ASSET_NAMES)
         return s3._stream_s3_response(key, request, "Pirbadet-edited.mp4")
     except Exception:
         not_found("Pirbadet fusion video file not found in media_assets/S3")
@@ -59,9 +59,9 @@ def get_fusion_video(request: Request, profile: str = "mock") -> Response:
         return s3.fusion_video_response(request)
     except FileNotFoundError:
         not_found("Fusion video file not found")
-    except HTTPException as exc:
+    except HTTPException:
         # Preserve deliberate 4xx/5xx from helper functions.
-        raise exc
+        raise
     except Exception as exc:
         wrap_internal("Error streaming fusion video", exc)
 
@@ -70,8 +70,8 @@ def get_fusion_video(request: Request, profile: str = "mock") -> Response:
 def get_fusion_video_pirbadet(request: Request) -> Response:
     try:
         return _stream_pirbadet_video(request)
-    except HTTPException as exc:
-        raise exc
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error streaming Pirbadet fusion video", exc)
 
