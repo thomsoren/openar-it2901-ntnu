@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --force",
+    "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -13,7 +13,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ocean-industries-concept-lab/openbridge-webcomponents": "^0.0.20260223174807",
     "better-auth": "^1.4.18",
     "hls.js": "^1.6.15",
     "maplibre-gl": "^5.19.0",

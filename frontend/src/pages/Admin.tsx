@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import {
   type MediaAsset,
+  type MediaVisibility,
   deleteMediaAsset,
   listMediaAssets,
   presignDownload,
@@ -13,6 +14,11 @@ import { removePersistedStreamIds } from "../hooks/stream-tabs/storage";
 import "./Admin.css";
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
+const VISIBILITY_OPTION_LABELS: Record<MediaVisibility, string> = {
+  private: "Private",
+  group: "Group",
+  public: "Public",
+};
 
 export default function Admin() {
   const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge, isAdmin } =
@@ -23,10 +29,13 @@ export default function Admin() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [visibility, setVisibility] = useState<"private" | "group" | "public">("private");
+  const [visibility, setVisibility] = useState<MediaVisibility>("private");
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const visibilityOptions: MediaVisibility[] = isAdmin
+    ? ["private", "group", "public"]
+    : ["private", "group"];
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortUploadRef = useRef<(() => void) | null>(null);
@@ -159,10 +168,7 @@ export default function Admin() {
     }
   };
 
-  const handleVisibilityChange = async (
-    asset: MediaAsset,
-    newVisibility: "private" | "group" | "public"
-  ) => {
+  const handleVisibilityChange = async (asset: MediaAsset, newVisibility: MediaVisibility) => {
     try {
       const updated = await updateVisibility(asset.id, newVisibility);
       setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
@@ -183,8 +189,6 @@ export default function Admin() {
   return (
     <div className="admin-page">
       <h1 className="admin-page__title">Media Library</h1>
-
-      {/* Upload section */}
       <section className="admin-section">
         <h2 className="admin-section__title">Upload Media</h2>
 
@@ -218,11 +222,13 @@ export default function Admin() {
             Visibility:&nbsp;
             <select
               value={visibility}
-              onChange={(e) => setVisibility(e.target.value as "private" | "group" | "public")}
+              onChange={(e) => setVisibility(e.target.value as MediaVisibility)}
             >
-              <option value="private">Private</option>
-              <option value="group">Group</option>
-              {isAdmin && <option value="public">Public</option>}
+              {visibilityOptions.map((option) => (
+                <option key={option} value={option}>
+                  {VISIBILITY_OPTION_LABELS[option]}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -243,8 +249,6 @@ export default function Admin() {
           {uploadError && <span className="admin-upload-error">{uploadError}</span>}
         </div>
       </section>
-
-      {/* Media library table */}
       <section className="admin-section">
         <h2 className="admin-section__title">
           Media Assets
@@ -281,15 +285,14 @@ export default function Admin() {
                       <select
                         value={asset.visibility}
                         onChange={(e) =>
-                          void handleVisibilityChange(
-                            asset,
-                            e.target.value as "private" | "group" | "public"
-                          )
+                          void handleVisibilityChange(asset, e.target.value as MediaVisibility)
                         }
                       >
-                        <option value="private">Private</option>
-                        <option value="group">Group</option>
-                        {isAdmin && <option value="public">Public</option>}
+                        {visibilityOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {VISIBILITY_OPTION_LABELS[option]}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td>{asset.owner_user_id ?? "—"}</td>

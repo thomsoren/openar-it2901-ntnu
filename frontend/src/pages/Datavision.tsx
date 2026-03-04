@@ -32,10 +32,31 @@ const LOADER_STUCK_RECOVERY_MS = 12000;
 const PLAYER_RECOVERY_COOLDOWN_MS = 15000;
 const DETECTION_STALE_RECOVERY_MS = 10000;
 const DETECTION_RECOVERY_COOLDOWN_MS = 8000;
+const LOADER_PROGRESS_STYLE = {
+  "--instrument-enhanced-secondary-color": "#4ea9dd",
+  "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+} as CSSProperties;
 
 interface DatavisionProps {
   externalStreamId?: string | null;
   onAuthGateVisibleChange?: (visible: boolean) => void;
+}
+
+function WorkspaceLoader({ label }: { label: string }) {
+  return (
+    <div className="video-loading-center">
+      <ObcProgressBar
+        className="video-loading-center__progress"
+        type={ProgressBarType.circular}
+        mode={ProgressBarMode.indeterminate}
+        circularState={CircularProgressState.indeterminate}
+        style={LOADER_PROGRESS_STYLE}
+      >
+        <span slot="icon"></span>
+      </ObcProgressBar>
+      <div className="video-loading-center__label">{label}</div>
+    </div>
+  );
 }
 
 function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
@@ -357,25 +378,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
               .filter(Boolean)
               .join(" ")}
           >
-            {!isTabsHydrated && (
-              <div className="video-loading-center">
-                <ObcProgressBar
-                  className="video-loading-center__progress"
-                  type={ProgressBarType.circular}
-                  mode={ProgressBarMode.indeterminate}
-                  circularState={CircularProgressState.indeterminate}
-                  style={
-                    {
-                      "--instrument-enhanced-secondary-color": "#4ea9dd",
-                      "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
-                    } as CSSProperties
-                  }
-                >
-                  <span slot="icon"></span>
-                </ObcProgressBar>
-                <div className="video-loading-center__label">Restoring workspace...</div>
-              </div>
-            )}
+            {!isTabsHydrated && <WorkspaceLoader label="Restoring workspace..." />}
 
             {isTabsHydrated && activeIsSetup && (
               <>
@@ -401,25 +404,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
             {isTabsHydrated &&
               !activeIsSetup &&
               activeTabId === FUSION_TAB_ID &&
-              !fusionRunningStream && (
-                <div className="video-loading-center">
-                  <ObcProgressBar
-                    className="video-loading-center__progress"
-                    type={ProgressBarType.circular}
-                    mode={ProgressBarMode.indeterminate}
-                    circularState={CircularProgressState.indeterminate}
-                    style={
-                      {
-                        "--instrument-enhanced-secondary-color": "#4ea9dd",
-                        "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
-                      } as CSSProperties
-                    }
-                  >
-                    <span slot="icon"></span>
-                  </ObcProgressBar>
-                  <div className="video-loading-center__label">Starting Fusion stream...</div>
-                </div>
-              )}
+              !fusionRunningStream && <WorkspaceLoader label="Starting Fusion stream..." />}
 
             {isTabsHydrated &&
               !activeIsSetup &&
@@ -427,25 +412,9 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
               effectiveActiveStream && (
                 <>
                   {!mediaAuthReady && (
-                    <div className="video-loading-center">
-                      <ObcProgressBar
-                        className="video-loading-center__progress"
-                        type={ProgressBarType.circular}
-                        mode={ProgressBarMode.indeterminate}
-                        circularState={CircularProgressState.indeterminate}
-                        style={
-                          {
-                            "--instrument-enhanced-secondary-color": "#4ea9dd",
-                            "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
-                          } as CSSProperties
-                        }
-                      >
-                        <span slot="icon"></span>
-                      </ObcProgressBar>
-                      <div className="video-loading-center__label">
-                        {mediaAuthLoading ? "Authorizing media..." : "Preparing media..."}
-                      </div>
-                    </div>
+                    <WorkspaceLoader
+                      label={mediaAuthLoading ? "Authorizing media..." : "Preparing media..."}
+                    />
                   )}
 
                   {mediaAuthError && (
@@ -495,27 +464,11 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
                     })}
 
                   {mediaAuthReady && showVideoLoader && (
-                    <div className="video-loading-center">
-                      <ObcProgressBar
-                        className="video-loading-center__progress"
-                        type={ProgressBarType.circular}
-                        mode={ProgressBarMode.indeterminate}
-                        circularState={CircularProgressState.indeterminate}
-                        style={
-                          {
-                            "--instrument-enhanced-secondary-color": "#4ea9dd",
-                            "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
-                          } as CSSProperties
-                        }
-                      >
-                        <span slot="icon"></span>
-                      </ObcProgressBar>
-                      <div className="video-loading-center__label">
-                        {!imageLoaded
-                          ? "Connecting to video stream..."
-                          : "Waiting for detections..."}
-                      </div>
-                    </div>
+                    <WorkspaceLoader
+                      label={
+                        !imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."
+                      }
+                    />
                   )}
 
                   {mediaAuthReady && arControls.detectionVisible && (
