@@ -19,6 +19,8 @@ def _stream_pirbadet_video(request: Request) -> Response:
     try:
         _, key = s3.resolve_first_system_asset_key(PIRBADET_VIDEO_ASSET_NAMES)
         return s3._stream_s3_response(key, request, "Pirbadet-edited.mp4")
+    except HTTPException:
+        raise
     except Exception:
         not_found("Pirbadet fusion video file not found in media_assets/S3")
 
@@ -27,6 +29,8 @@ def _stream_pirbadet_video(request: Request) -> Response:
 def get_detections() -> list[DetectedVessel]:
     try:
         return fusion.get_detections()
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error fetching detections", exc)
 
@@ -37,6 +41,8 @@ def get_detections_file(request: Request) -> Response:
         return s3.detections_response(request)
     except FileNotFoundError:
         not_found("Detections file not found")
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error serving detections file", exc)
 
@@ -47,6 +53,8 @@ def get_video(request: Request) -> Response:
         return s3.video_stream_response(request)
     except FileNotFoundError:
         not_found("Video not found")
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error streaming video", exc)
 
@@ -82,6 +90,8 @@ def get_components_background() -> Response:
         return s3.components_background_response()
     except FileNotFoundError:
         not_found("Background image not found")
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error serving background image", exc)
 
@@ -90,6 +100,8 @@ def get_components_background() -> Response:
 async def stream_video(request: Request) -> Response:
     try:
         return s3.video_stream_response(request)
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error in video stream", exc)
 

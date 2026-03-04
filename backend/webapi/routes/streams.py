@@ -153,11 +153,9 @@ def _probe_video_duration_seconds(source: str) -> float | None:
 
 
 async def _validate_s3_source_limits(original_source_url: str | None, resolved_source_url: str) -> None:
-    raw = (original_source_url or "").strip()
-    if not raw.startswith("s3://"):
+    s3_key = s3.coerce_s3_key(original_source_url)
+    if s3_key is None:
         return
-
-    s3_key = raw[5:]
     if not s3_key.startswith("videos/"):
         return
 

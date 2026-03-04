@@ -16,6 +16,12 @@ from settings import cv_runtime_settings
 logger = logging.getLogger(__name__)
 
 
+def _is_remote_stream_url(source_url: str) -> bool:
+    """True if URL uses a network scheme (rtsp, http, etc.), False for local file paths."""
+    scheme = urlparse(source_url).scheme.lower()
+    return scheme in {"rtsp", "rtsps", "http", "https", "rtmp", "udp", "tcp"}
+
+
 def _is_live_stream_url(source_url: str) -> bool:
     scheme = urlparse(source_url).scheme.lower()
     return scheme in {"rtsp", "rtsps", "rtmp", "udp", "tcp"}

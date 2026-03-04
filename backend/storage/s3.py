@@ -66,6 +66,18 @@ def _client():
     )
 
 
+def coerce_s3_key(raw: str) -> str | None:
+    """Extract S3 key from s3:// URL or raw key. Returns None if invalid."""
+    if not raw or not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if s.startswith("s3://"):
+        s = s[5:].strip().lstrip("/")
+    else:
+        s = s.strip().lstrip("/")
+    return s if s else None
+
+
 def _normalize_key(raw_key: str) -> tuple[str, str]:
     key = raw_key.strip().lstrip("/")
     if not key:

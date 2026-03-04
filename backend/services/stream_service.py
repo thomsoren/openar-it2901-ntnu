@@ -61,9 +61,8 @@ def resolve_stream_source(source_url: str | None) -> str | None:
         return resolve_default_source()
 
     raw = source_url.strip()
-
-    if raw.startswith("s3://"):
-        s3_key = raw[5:]
+    s3_key = s3.coerce_s3_key(raw)
+    if s3_key:
         return _presign_s3_for_ffmpeg(s3_key)
 
     if is_remote_stream(raw):

@@ -54,17 +54,6 @@ function asVideoFitMode(value: unknown, fallback: VideoFitMode): VideoFitMode {
     : fallback;
 }
 
-function ensurePoiLayersVisible(state: ARControlState): ARControlState {
-  if (state.vesselLayerVisible && state.detectionVisible) {
-    return state;
-  }
-  return {
-    ...state,
-    vesselLayerVisible: true,
-    detectionVisible: true,
-  };
-}
-
 function readPanelVisibility(value: unknown): ARControlPanelVisibilityState {
   const obj = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 
@@ -100,10 +89,10 @@ function readStoredState(): {
   panelVisibility: ARControlPanelVisibilityState;
 } {
   const mobileDefault: VideoFitMode = isMobileDevice() ? "contain" : "cover";
-  const defaultState = ensurePoiLayersVisible({
+  const defaultState: ARControlState = {
     ...AR_CONTROL_DEFAULTS,
     videoFitMode: mobileDefault,
-  });
+  };
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -141,7 +130,7 @@ function readStoredState(): {
     };
 
     return {
-      state: ensurePoiLayersVisible(parsedState),
+      state: parsedState,
       panelVisibility: readPanelVisibility(parsed.panelVisibility),
     };
   } catch {

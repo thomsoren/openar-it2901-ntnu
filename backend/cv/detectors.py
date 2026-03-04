@@ -63,11 +63,9 @@ class RTDETRDetector:
         return "cpu"
 
     def _load_model(self, model_path: str | None) -> RTDETR:
-        device = self._select_device()
-        self.device = device
-        self._use_half = device == "cuda"
-        self._device = device
-        logger.info("PyTorch device: %s", device)
+        self.device = self._select_device()
+        self._use_half = self.device == "cuda"
+        logger.info("PyTorch device: %s", self.device)
 
         if model_path:
             path = Path(model_path)
@@ -93,7 +91,7 @@ class RTDETRDetector:
         if track:
             results = self.model.track(
                 frame,
-                device=self._device,
+                device=self.device,
                 conf=self.confidence,
                 iou=IOU_THRESHOLD,
                 imgsz=MODEL_INPUT_SIZE,
@@ -106,7 +104,7 @@ class RTDETRDetector:
         else:
             results = self.model(
                 frame,
-                device=self._device,
+                device=self.device,
                 conf=self.confidence,
                 iou=IOU_THRESHOLD,
                 imgsz=MODEL_INPUT_SIZE,

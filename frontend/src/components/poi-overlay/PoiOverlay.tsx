@@ -274,7 +274,7 @@ function PoiOverlay({
             }}
           >
             <ObcPoiLayer label="Second Layer" className="poi-layer" is-selected>
-              {/* Second layer content */}
+              {/* Can add different POIs here */}
             </ObcPoiLayer>
             <ObcPoiLayer ref={layerRefCallback} label="Vessel Layer" className="poi-layer">
               {/* obc-poi-data elements are managed imperatively in useEffect above */}
