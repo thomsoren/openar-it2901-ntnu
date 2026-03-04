@@ -14,6 +14,18 @@ export default mergeConfig(
       coverage: {
         provider: "v8",
         reporter: ["text", "html"],
+        include: ["src/**/*.{ts,tsx}"],
+        exclude: [
+          "**/*.{test,spec}.{ts,tsx}",
+          "**/*.mocks.ts",
+          "**/test-utils.ts",
+          "**/__tests__/**",
+          "types/**",
+          "utils/**",
+          "node_modules",
+          "dist",
+          "vite-env.d.ts",
+        ],
       },
     },
   })
