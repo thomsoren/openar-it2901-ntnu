@@ -162,7 +162,7 @@ function MediaLibraryActions() {
         <ObcRichButton
           className="media-library-rich-button"
           label="Connect live stream"
-          description="something here two lines?"
+          description="start a new live stream using your own media"
           direction={RichButtonDirection.Horizontal}
           hasTrailingIcon
           fullHeight
@@ -400,7 +400,7 @@ export default function MediaLibrary() {
     <section className="media-library-page">
       <div className="media-library-page__header">
         <h1 className="media-library-page__title">Media Library</h1>
-        <p className="media-library-page__subtitle">Something</p>
+        <p className="media-library-page__subtitle">Manage your own media assets</p>
       </div>
 
       <div className="media-library-page__workspace">
