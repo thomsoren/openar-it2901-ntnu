@@ -8,6 +8,7 @@ import threading
 from redis.exceptions import RedisError
 
 from common.config import create_redis_client, detections_channel
+from sensor_fusion.fusion_config import maybe_configure
 from sensor_fusion.service import SensorFusionService
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class FusionPublisher(DetectionPublisher):
 
         # Attempt synchronous enrichment in a single call (avoids TOCTOU)
         if payload.get("type") == "detections":
+            maybe_configure(stream_id, self.fusion_svc)
             vessels, meta = self.fusion_svc.enrich(
                 stream_id,
                 payload.get("vessels", []),

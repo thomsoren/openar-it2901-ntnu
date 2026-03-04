@@ -14,6 +14,7 @@ interface PoiOverlayProps {
     width: number;
     height: number;
   } | null;
+  onVesselClick?: (vessel: DetectedVessel) => void;
 }
 
 function isLayerVisible(
@@ -28,7 +29,12 @@ function isLayerVisible(
   return arControls.vesselLayerVisible;
 }
 
-function PoiOverlay({ vessels = [], videoTransform, detectionFrame = null }: PoiOverlayProps) {
+function PoiOverlay({
+  vessels = [],
+  videoTransform,
+  detectionFrame = null,
+  onVesselClick,
+}: PoiOverlayProps) {
   const { state: arControls } = useARControls();
 
   const filteredVessels = vessels.filter((item) =>
@@ -70,12 +76,13 @@ function PoiOverlay({ vessels = [], videoTransform, detectionFrame = null }: Poi
         return (
           <ObcPoiData
             key={trackId}
-            style={{ position: "absolute" }}
+            style={{ position: "absolute", cursor: onVesselClick ? "pointer" : undefined }}
             x={screenX}
             y={lineHeight}
             buttonY={buttonY}
             value={PoiDataValue.Unchecked}
             data={vesselData}
+            onClick={onVesselClick ? () => onVesselClick(item) : undefined}
           />
         );
       })}
