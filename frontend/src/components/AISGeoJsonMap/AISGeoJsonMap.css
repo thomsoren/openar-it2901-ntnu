@@ -1,31 +1,23 @@
+:root {
+  --map-primary-color: #2d558c;
+  --map-secondary-color: #cadefc;
+  --map-contrast-border-color: #1d3c67;
+}
+
 .geojson-map-container {
   position: relative;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid #1e3a5f;
+  border: 1px solid var(--map-contrast-border-color);
   border-radius: 8px;
   overflow: hidden;
 }
 
-/* Trap z-index layers within leaflet-container to avoid clipping */
-.geojson-map-container .leaflet-container {
-  isolation: isolate;
-}
-
-.geojson-map-container .leaflet-interactive {
-  cursor: grab !important;
-}
-
-.geojson-map-container .leaflet-interactive:active {
-  cursor: grabbing !important;
-}
-
 .geojson-map-header {
   padding: 8px 14px;
-  background: #0d1526;
-  border-bottom: 1px solid #1e3a5f;
+  background: var(--map-contrast-border-color);
   display: flex;
   gap: 16px;
   align-items: center;
@@ -37,38 +29,64 @@
   font-family: monospace;
 }
 
-.geojson-map-center-button {
+.geojson-map-controls {
   position: absolute;
   right: 0.5rem;
   top: 2rem;
+  display: flex;
+  gap: 0.5rem;
+  z-index: 2;
 }
 
-.geojson-map-range-icon {
-  width: 12px;
-  height: 12px;
-  background: #facc15;
-  border: 2px solid #0a0e1a;
+.geojson-map-range-icon,
+.geojson-map-origin-icon,
+.geojson-map-heading-icon,
+.geojson-map-fov-icon {
   cursor: pointer;
-  transform: rotate(45deg);
-  box-shadow: 0 0 6px #facc1588;
-}
-
-.geojson-map-origin-icon {
-  width: 14px;
-  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--map-primary-color);
   border-radius: 50%;
-  background: #00d4ff;
-  border: 2px solid #0a0e1a;
-  cursor: pointer;
-  box-shadow: 0 0 6px #00d4ff88;
+  width: 32px;
+  height: 32px;
+}
+
+.geojson-map-container obi-placeholder-device-static {
+  width: 20px;
+  height: 20px;
+  color: white;
+  filter: brightness(0) invert(1);
 }
 
 .geojson-map-vessel-icon {
-  width: 10px;
-  height: 10px;
-  background: #ff5722;
-  border: 2px solid #0a0e1a;
-  border-radius: 50%;
-  box-shadow: 0 0 6px #ff572288;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Make vessel markers white in dark themes */
+[data-obc-theme="night"] .geojson-map-vessel-icon,
+[data-obc-theme="dusk"] .geojson-map-vessel-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* Anchor adjustment popup styling */
+.geojson-anchor-popup .maplibregl-popup-content {
+  background: var(--map-primary-color);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 2rem;
+  border: 1px solid var(--map-contrast-border-color);
+}
+
+.geojson-anchor-popup .maplibregl-popup-tip {
+  border-top-color: var(--map-primary-color);
+}
+
+.geojson-anchor-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.geojson-anchor-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: transparent;
+  border-top-color: transparent;
 }

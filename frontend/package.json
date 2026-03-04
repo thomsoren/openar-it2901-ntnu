@@ -16,6 +16,7 @@
     "@ocean-industries-concept-lab/openbridge-webcomponents": "^0.0.20260223174807",
     "better-auth": "^1.4.18",
     "hls.js": "^1.6.15",
+    "maplibre-gl": "^5.19.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-router-dom": "^7.13.1"
@@ -24,7 +25,6 @@
     "@eslint/js": "^9.30.0",
     "@ocean-industries-concept-lab/openbridge-webcomponents": "0.0.20260223174807",
     "@ocean-industries-concept-lab/openbridge-webcomponents-react": "^0.0.20260223174807",
-    "@types/leaflet": "^1.9.21",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.1.0",
     "@vitejs/plugin-react": "^4.5.2",
