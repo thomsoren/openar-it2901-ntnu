@@ -78,8 +78,15 @@ export const ensureDefaultStreamRunning = async (): Promise<StreamSummary[]> => 
   return listStreams();
 };
 
-export const sendStreamHeartbeat = async (streamId: string): Promise<void> => {
-  await apiFetch(`/api/streams/${encodeURIComponent(streamId)}/heartbeat`, {
+export const sendStreamHeartbeat = async (
+  streamId: string,
+  keepWarmSeconds?: number
+): Promise<void> => {
+  const warmParam =
+    typeof keepWarmSeconds === "number" && keepWarmSeconds >= 0
+      ? `?keep_warm_s=${encodeURIComponent(String(keepWarmSeconds))}`
+      : "";
+  await apiFetch(`/api/streams/${encodeURIComponent(streamId)}/heartbeat${warmParam}`, {
     method: "POST",
   });
 };
@@ -128,6 +135,14 @@ export const uploadStreamSource = async (
     }
     xhr.send(formData);
   });
+};
+
+export const startStreamFromKey = async (
+  streamId: string,
+  s3Key: string,
+  loop: boolean = true
+): Promise<void> => {
+  await startStream(streamId, { sourceUrl: `s3://${s3Key}`, loop });
 };
 
 export const toStreamError = (err: unknown, fallback: string): string => {

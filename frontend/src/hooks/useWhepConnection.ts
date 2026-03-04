@@ -1,4 +1,5 @@
-import { RefObject, useEffect, useState } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
+import { getApiAccessToken } from "../lib/api-client";
 
 export type WhepConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
 
@@ -48,6 +49,9 @@ const parseIceServers = (linkHeader: string | null): RTCIceServer[] => {
     .filter((value): value is RTCIceServer => Boolean(value));
 };
 
+const ICE_GATHERING_TIMEOUT_MS = 3000;
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302"] }];
+
 const waitForIceGathering = (pc: RTCPeerConnection): Promise<void> => {
   if (pc.iceGatheringState === "complete") {
     return Promise.resolve();
@@ -57,7 +61,7 @@ const waitForIceGathering = (pc: RTCPeerConnection): Promise<void> => {
     const timeout = window.setTimeout(() => {
       cleanup();
       resolve();
-    }, 500);
+    }, ICE_GATHERING_TIMEOUT_MS);
 
     const onChange = () => {
       if (pc.iceGatheringState !== "complete") {
@@ -76,24 +80,42 @@ const waitForIceGathering = (pc: RTCPeerConnection): Promise<void> => {
   });
 };
 
+const parseEnvNumber = (name: string, fallback: number): number => {
+  const raw = (import.meta.env as Record<string, string | undefined>)[name];
+  const parsed = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+};
+
+const withAccessToken = (url: string): string => {
+  const token = getApiAccessToken();
+  if (!token) {
+    return url;
+  }
+  const urlObj = new URL(url, window.location.href);
+  urlObj.searchParams.set("access_token", token);
+  return urlObj.toString();
+};
+
+const MAX_WHEP_RETRIES = parseEnvNumber("VITE_WHEP_MAX_RETRIES", 12);
+const WHEP_RETRY_DELAY_MS = parseEnvNumber("VITE_WHEP_RETRY_DELAY_MS", 750);
+const WHEP_RETRY_MAX_DELAY_MS = parseEnvNumber("VITE_WHEP_RETRY_MAX_DELAY_MS", 4000);
+const ICE_CONNECTION_TIMEOUT_MS = parseEnvNumber("VITE_WHEP_ICE_TIMEOUT_MS", 8000);
+const WHEP_RETRYABLE_HTTP_STATUSES = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
+
+const isRetryableWhepStatus = (status: number): boolean => WHEP_RETRYABLE_HTTP_STATUSES.has(status);
+
 /**
  * Hook for establishing and managing a WHEP/WebRTC receive-only session.
  * Negotiates SDP against MediaMTX WHEP endpoint and maps connection/media events to UI state.
+ * Retries the WHEP offer automatically when the stream is not yet available (404/503).
  *
  * @param whepUrl - WHEP endpoint URL; when null the hook stays idle
  * @param videoRef - Target video element ref for attaching remote stream
  * @param enabled - Whether connection should be active
  * @param sessionToken - Token used to force reconnect when incremented
- *
- * @example
- * ```tsx
- * const { status, error } = useWhepConnection({
- *   whepUrl,
- *   videoRef,
- *   enabled: true,
- *   sessionToken,
- * });
- * ```
  */
 export function useWhepConnection({
   whepUrl,
@@ -103,6 +125,9 @@ export function useWhepConnection({
 }: UseWhepConnectionOptions): UseWhepConnectionResult {
   const [status, setStatus] = useState<WhepConnectionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
+  const iceTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!enabled || !whepUrl) {
@@ -121,6 +146,16 @@ export function useWhepConnection({
     let cancelled = false;
     let pc: RTCPeerConnection | null = null;
     let sessionUrl: string | null = null;
+    let mediaPlayable = videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    const fetchController = new AbortController();
+    retryCountRef.current = 0;
+
+    const clearIceTimeout = () => {
+      if (iceTimeoutRef.current !== null) {
+        window.clearTimeout(iceTimeoutRef.current);
+        iceTimeoutRef.current = null;
+      }
+    };
 
     const markError = (message: string) => {
       if (cancelled) {
@@ -130,26 +165,52 @@ export function useWhepConnection({
       setStatus("error");
     };
 
+    const scheduleRetry = (reason: string): boolean => {
+      if (cancelled) {
+        return true;
+      }
+      if (retryCountRef.current >= MAX_WHEP_RETRIES) {
+        return false;
+      }
+      retryCountRef.current += 1;
+      const delay = Math.min(
+        WHEP_RETRY_DELAY_MS * Math.pow(1.5, retryCountRef.current - 1),
+        WHEP_RETRY_MAX_DELAY_MS
+      );
+      setError(`${reason}; retrying (${retryCountRef.current}/${MAX_WHEP_RETRIES})`);
+      retryTimerRef.current = window.setTimeout(() => {
+        retryTimerRef.current = null;
+        void connect();
+      }, delay);
+      return true;
+    };
+
     const handleLoadedData = () => {
       if (!cancelled) {
+        mediaPlayable = true;
         setStatus("playing");
       }
     };
+
     const handlePlaying = () => {
       if (!cancelled) {
+        mediaPlayable = true;
         setStatus("playing");
       }
     };
+
     const handleWaiting = () => {
       if (!cancelled) {
         setStatus("stalled");
       }
     };
+
     const handleStalled = () => {
       if (!cancelled) {
         setStatus("stalled");
       }
     };
+
     const handleError = () => {
       markError("WebRTC video element error");
     };
@@ -161,21 +222,51 @@ export function useWhepConnection({
     videoEl.addEventListener("error", handleError);
 
     const connect = async () => {
+      if (cancelled) return;
+
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+
+      mediaPlayable = videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
       try {
         setStatus("connecting");
         setError(null);
+        const authWhepUrl = withAccessToken(whepUrl);
 
-        const optionsResponse = await fetch(whepUrl, { method: "OPTIONS" });
-        const iceServers = parseIceServers(optionsResponse.headers.get("Link"));
+        const optionsResponse = await fetch(authWhepUrl, {
+          method: "OPTIONS",
+          signal: fetchController.signal,
+        });
+        if (cancelled) return;
+
+        if (!optionsResponse.ok) {
+          if (
+            isRetryableWhepStatus(optionsResponse.status) &&
+            scheduleRetry("WHEP OPTIONS pending")
+          ) {
+            return;
+          }
+          markError(`WHEP OPTIONS rejected (${optionsResponse.status})`);
+          return;
+        }
+
+        const parsedIceServers = parseIceServers(optionsResponse.headers.get("Link"));
+        const iceServers = parsedIceServers.length > 0 ? parsedIceServers : DEFAULT_ICE_SERVERS;
         pc = new RTCPeerConnection({ iceServers });
 
         pc.onconnectionstatechange = () => {
           if (cancelled) {
             return;
           }
-          if (pc?.connectionState === "disconnected") {
+          if (pc?.connectionState === "connected") {
+            clearIceTimeout();
+          } else if (pc?.connectionState === "disconnected") {
             setStatus("stalled");
           } else if (pc?.connectionState === "failed") {
+            clearIceTimeout();
             markError("WebRTC connection failed");
           }
         };
@@ -184,8 +275,9 @@ export function useWhepConnection({
           if (cancelled) {
             return;
           }
-          // Chromium can default to a larger jitter/playout buffer than Safari.
-          // Request minimum playout delay when supported to keep glass-to-glass latency low.
+          mediaPlayable = videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+          clearIceTimeout();
+
           try {
             const receiver = event.receiver as RTCRtpReceiver & {
               playoutDelayHint?: number;
@@ -200,6 +292,7 @@ export function useWhepConnection({
           } catch {
             // Ignore unsupported receiver tuning knobs.
           }
+
           const [stream] = event.streams;
           if (!stream) {
             return;
@@ -214,29 +307,62 @@ export function useWhepConnection({
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         await waitForIceGathering(pc);
+        if (cancelled) return;
 
         const localSdp = pc.localDescription?.sdp;
         if (!localSdp) {
           throw new Error("WebRTC offer generation failed");
         }
 
-        const offerResponse = await fetch(whepUrl, {
+        const offerResponse = await fetch(authWhepUrl, {
           method: "POST",
           headers: { "Content-Type": "application/sdp" },
           body: localSdp,
+          signal: fetchController.signal,
         });
+        if (cancelled) return;
+
         if (!offerResponse.ok) {
-          throw new Error(`WHEP offer rejected (${offerResponse.status})`);
+          pc.close();
+          pc = null;
+
+          if (
+            isRetryableWhepStatus(offerResponse.status) &&
+            scheduleRetry(`WHEP offer pending (${offerResponse.status})`)
+          ) {
+            return;
+          }
+
+          markError(`WHEP offer rejected (${offerResponse.status})`);
+          return;
         }
 
         const location = offerResponse.headers.get("Location");
         if (location) {
-          sessionUrl = new URL(location, whepUrl).toString();
+          sessionUrl = new URL(location, authWhepUrl).toString();
         }
 
         const answerSdp = await offerResponse.text();
+        if (cancelled) return;
         await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+        if (cancelled) return;
+
+        iceTimeoutRef.current = window.setTimeout(() => {
+          iceTimeoutRef.current = null;
+          const effectivelyPlayable =
+            mediaPlayable || videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+          if (!cancelled && pc?.connectionState !== "connected" && !effectivelyPlayable) {
+            markError("WebRTC ICE connection timeout");
+          }
+        }, ICE_CONNECTION_TIMEOUT_MS);
       } catch (err) {
+        const isAbort = err instanceof DOMException && err.name === "AbortError";
+        if (cancelled || isAbort) {
+          return;
+        }
+        if (scheduleRetry("WHEP connection failed")) {
+          return;
+        }
         markError(err instanceof Error ? err.message : "WebRTC session setup failed");
       }
     };
@@ -245,6 +371,14 @@ export function useWhepConnection({
 
     return () => {
       cancelled = true;
+      fetchController.abort();
+
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+
+      clearIceTimeout();
 
       videoEl.removeEventListener("loadeddata", handleLoadedData);
       videoEl.removeEventListener("playing", handlePlaying);
@@ -253,7 +387,7 @@ export function useWhepConnection({
       videoEl.removeEventListener("error", handleError);
 
       if (sessionUrl) {
-        void fetch(sessionUrl, { method: "DELETE" }).catch(() => {
+        void fetch(withAccessToken(sessionUrl), { method: "DELETE" }).catch(() => {
           // Ignore teardown errors.
         });
       }

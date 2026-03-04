@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi import HTTPException
 
 from webapi.errors import bad_request, wrap_internal
-from auth.deps import require_admin
+from auth.deps import get_current_user
 from common.config import load_samples
 from db.models import AppUser
 from fusion import fusion
@@ -57,10 +58,10 @@ def list_samples() -> dict[str, Any]:
 
 
 @router.post("/api/fusion/reset")
-def reset_fusion_timer() -> dict[str, Any]:
+def reset_fusion_timer(profile: str = "mock") -> dict[str, Any]:
     try:
-        start = fusion.reset_sample_timer()
-        return {"status": "ok", "start_mono": start}
+        start = fusion.reset_sample_timer(profile=profile)
+        return {"status": "ok", "profile": profile, "start_mono": start}
     except Exception as exc:
         wrap_internal("Error resetting fusion timer", exc)
 
@@ -68,11 +69,17 @@ def reset_fusion_timer() -> dict[str, Any]:
 @router.post("/api/storage/presign")
 def presign_storage(
     request: s3.PresignRequest,
-    _: AppUser = Depends(require_admin),
+    current_user: AppUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     try:
-        return s3.presign_storage(request)
+        return s3.presign_storage(
+            request,
+            owner_user_id=current_user.id,
+            is_admin=current_user.is_admin,
+        )
     except ValueError as exc:
         bad_request(str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         wrap_internal("Error generating presigned URL", exc)

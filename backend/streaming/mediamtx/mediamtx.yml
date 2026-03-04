@@ -24,6 +24,13 @@ webrtcAllowOrigins: ['*']
 webrtcLocalUDPAddress: :8189
 webrtcAdditionalHosts: [127.0.0.1, localhost, host.docker.internal]
 
+authMethod: http
+authHTTPAddress: http://host.docker.internal:8000/api/mediamtx/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
 pathDefaults:
   source: publisher
 

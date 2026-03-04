@@ -9,6 +9,9 @@ import { persistActiveTabId, persistJoinedStreamIds } from "./storage";
 import { setRunningStreamsSnapshot } from "./running-streams-store";
 import type { StreamTabAction } from "./reducer";
 
+const WARM_HEARTBEAT_INTERVAL_MS = 8_000;
+const DEFAULT_KEEP_WARM_SECONDS = 30;
+
 interface EffectOptions {
   dispatch: (action: StreamTabAction) => void;
   setStreamError: (value: string | null) => void;
@@ -30,37 +33,45 @@ export function useEnsureDefaultStream({ dispatch, setStreamError }: EffectOptio
 }
 
 export function useStreamHeartbeats(
-  joinedStreamIds: string[],
-  configureTabId: string | null
+  warmStreamIds: string[],
+  keepWarmSeconds = DEFAULT_KEEP_WARM_SECONDS
 ): void {
-  const joinedIdsRef = useRef(joinedStreamIds);
-  const configureTabIdRef = useRef(configureTabId);
+  const warmStreamIdsRef = useRef(warmStreamIds);
+  const keepWarmSecondsRef = useRef(keepWarmSeconds);
 
   useEffect(() => {
-    joinedIdsRef.current = joinedStreamIds;
-    configureTabIdRef.current = configureTabId;
-  }, [joinedStreamIds, configureTabId]);
+    warmStreamIdsRef.current = warmStreamIds;
+    keepWarmSecondsRef.current = keepWarmSeconds;
+  }, [warmStreamIds, keepWarmSeconds]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      for (const id of joinedIdsRef.current) {
-        if (id === configureTabIdRef.current) continue;
-        sendStreamHeartbeat(id).catch((err) => console.warn("stream heartbeat failed", err));
+      for (const id of warmStreamIdsRef.current) {
+        sendStreamHeartbeat(id, keepWarmSecondsRef.current).catch((err) =>
+          console.warn("stream heartbeat failed", err)
+        );
       }
-    }, 60_000);
+    }, WARM_HEARTBEAT_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
   }, []);
 }
 
-export function usePersistStreamTabs(activeTabId: string, joinedStreamIds: string[]): void {
+export function usePersistStreamTabs(
+  activeTabId: string,
+  joinedStreamIds: string[],
+  storageScope?: string,
+  enabled = true
+): void {
   useEffect(() => {
-    persistActiveTabId(activeTabId);
-  }, [activeTabId]);
+    if (!enabled) return;
+    persistActiveTabId(activeTabId, storageScope);
+  }, [activeTabId, storageScope, enabled]);
 
   useEffect(() => {
-    persistJoinedStreamIds(joinedStreamIds);
-  }, [joinedStreamIds]);
+    if (!enabled) return;
+    persistJoinedStreamIds(joinedStreamIds, storageScope);
+  }, [joinedStreamIds, storageScope, enabled]);
 }
 
 export function useExternalStreamSelection(

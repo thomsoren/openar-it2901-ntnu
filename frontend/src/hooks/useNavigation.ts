@@ -1,39 +1,37 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-export type PageId = "datavision" | "ais" | "components" | "fusion" | "control-customization";
+export type PageId = "ar" | "ais" | "components" | "media-library";
 
 const PAGE_PATHS: Record<PageId, string> = {
-  datavision: "/datavision",
+  ar: "/ar",
   ais: "/ais",
   components: "/components",
-  fusion: "/fusion",
-  "control-customization": "/control-customization",
+  "media-library": "/media-library",
 };
 
 const pageLabels: Record<PageId, string> = {
-  datavision: "Datavision",
+  ar: "AR",
   ais: "AIS",
   components: "Components",
-  fusion: "Fusion",
-  "control-customization": "Control Customization",
+  "media-library": "Media Library",
 };
-
-const PATH_TO_PAGE = new Map(
-  (Object.entries(PAGE_PATHS) as [PageId, string][]).map(([id, path]) => [path.slice(1), id])
-);
 
 const getPageFromPath = (pathname: string): PageId => {
   const rootSegment = pathname.replace(/^\/+/, "").split("/")[0];
-  return PATH_TO_PAGE.get(rootSegment) ?? "datavision";
+  switch (rootSegment) {
+    case "ais":
+      return "ais";
+    case "components":
+      return "components";
+    case "media-library":
+      return "media-library";
+    case "ar":
+    default:
+      return "ar";
+  }
 };
 
-/**
- * @example
- * ```tsx
- * const { currentPage, handleNavigationItemClick } = useNavigation();
- * ```
- */
 export function useNavigation() {
   const location = useLocation();
   const navigate = useNavigate();

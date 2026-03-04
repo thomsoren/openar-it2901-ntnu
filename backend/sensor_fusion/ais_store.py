@@ -23,7 +23,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -31,65 +31,81 @@ logger = logging.getLogger(__name__)
 class AISStore:
     """In-memory index of pre-recorded AIS track points from an NDJSON log."""
 
-    def __init__(self, ndjson_path: str | Path, time_window_s: float = 10.0):
+    def __init__(
+        self,
+        ndjson_path: str | Path | None = None,
+        time_window_s: float = 10.0,
+        ndjson_text: str | None = None,
+    ):
         """
         Args:
             ndjson_path: Path to the NDJSON session log file.
+            ndjson_text: Optional NDJSON text payload; when provided, no file path is required.
             time_window_s: How many seconds either side of the query time
                            to consider a record a candidate.
         """
-        self.path = Path(ndjson_path)
+        self.path = Path(ndjson_path) if ndjson_path is not None else None
         self.time_window_s = time_window_s
+        self._source_label = "<memory>" if ndjson_text is not None else str(self.path)
 
         # Sorted list of (unix_ts, record_dict) tuples — built at load time.
         self._records: list[tuple[float, dict[str, Any]]] = []
         self._sorted_ts: list[float] = []
 
-        self._load()
+        if ndjson_text is not None:
+            self._load_from_lines(ndjson_text.splitlines())
+        else:
+            self._load_from_path()
 
-    def _load(self) -> None:
-        """Parse the NDJSON file and build the time index."""
-        if not self.path.exists():
-            raise FileNotFoundError(f"AIS log not found: {self.path}")
+    def _load_from_lines(self, lines: Iterable[str]) -> None:
+        """Parse NDJSON lines and build the time index."""
 
         records: list[tuple[float, dict[str, Any]]] = []
         skipped = 0
 
-        with open(self.path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    skipped += 1
-                    continue
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                skipped += 1
+                continue
 
-                if obj.get("type") in {"session_start", "session_end"}:
-                    continue
+            if obj.get("type") in {"session_start", "session_end"}:
+                continue
 
-                raw_ts = obj.get("msgtime") or obj.get("logReceivedAt") or obj.get("timestamp")
-                if not raw_ts:
-                    skipped += 1
-                    continue
+            raw_ts = obj.get("msgtime") or obj.get("logReceivedAt") or obj.get("timestamp")
+            if not raw_ts:
+                skipped += 1
+                continue
 
-                try:
-                    dt = datetime.fromisoformat(raw_ts)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    records.append((dt.timestamp(), obj))
-                except ValueError:
-                    skipped += 1
-                    continue
+            try:
+                dt = datetime.fromisoformat(raw_ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                records.append((dt.timestamp(), obj))
+            except ValueError:
+                skipped += 1
+                continue
 
         records.sort(key=lambda r: r[0])
         self._records = records
         self._sorted_ts = [r[0] for r in records]
         logger.info(
             "[AISStore] Loaded %d records from %s (skipped %d)",
-            len(records), self.path.name, skipped,
+            len(records), self._source_label, skipped,
         )
+
+    def _load_from_path(self) -> None:
+        """Parse the NDJSON file from disk and build the time index."""
+        if self.path is None:
+            raise ValueError("Either ndjson_path or ndjson_text must be provided")
+        if not self.path.exists():
+            raise FileNotFoundError(f"AIS log not found: {self.path}")
+        with open(self.path, encoding="utf-8") as f:
+            self._load_from_lines(f)
 
 
     def get_snapshot(self, query_utc: datetime) -> list[dict[str, Any]]:

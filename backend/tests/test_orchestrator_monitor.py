@@ -83,6 +83,36 @@ class TestNoViewerTimeout:
         assert orch.list_streams() == []
         assert "nv3" in orch._stream_configs
 
+    def test_warm_lease_prevents_no_viewer_stop(self, orchestrator_factory):
+        orch = orchestrator_factory(
+            monitor_interval_seconds=0.02,
+            no_viewer_timeout_seconds=0.05,
+            idle_timeout_seconds=999,
+        )
+        orch.start_stream(_cfg("warm-keep"))
+        orch.start_monitoring()
+
+        deadline = time.monotonic() + 0.25
+        while time.monotonic() < deadline:
+            orch.touch_stream("warm-keep", keep_warm_s=0.1)
+            time.sleep(0.02)
+
+        assert len(orch.list_streams()) == 1
+
+    def test_stops_after_warm_lease_expires(self, orchestrator_factory):
+        orch = orchestrator_factory(
+            monitor_interval_seconds=0.02,
+            no_viewer_timeout_seconds=0.05,
+            idle_timeout_seconds=999,
+        )
+        orch.start_stream(_cfg("warm-expire"))
+        orch.start_monitoring()
+        orch.touch_stream("warm-expire", keep_warm_s=0.08)
+
+        # Warm lease + no-viewer grace should eventually expire.
+        time.sleep(0.35)
+        assert orch.list_streams() == []
+
     def test_idle_stop_removes_config(self, orchestrator_factory):
         orch = orchestrator_factory(
             monitor_interval_seconds=0.02,

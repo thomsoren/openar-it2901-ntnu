@@ -17,7 +17,12 @@ def is_remote_stream(source_url: str) -> bool:
 def resolve_default_source() -> str | None:
     if VIDEO_PATH and VIDEO_PATH.exists():
         return str(VIDEO_PATH)
-    return None
+    # Fall back to S3 system asset if local file not present
+    try:
+        key = s3.resolve_system_asset_key("video")
+        return _presign_s3_for_ffmpeg(key)
+    except Exception:
+        return None
 
 
 def _download_s3_to_cache(s3_key: str) -> str:
@@ -40,15 +45,25 @@ def _download_s3_to_cache(s3_key: str) -> str:
         raise RuntimeError(f"Failed to download s3://{s3_key}: {exc}") from exc
 
 
+def _presign_s3_for_ffmpeg(s3_key: str, expires: int = 7200) -> str:
+    """Return a presigned HTTPS URL so FFmpeg can start immediately without downloading."""
+    try:
+        url = s3.presign_get(s3_key, expires=expires)
+        logger.info("[s3] Presigned URL for s3://%s (expires %ds)", s3_key, expires)
+        return url
+    except Exception as exc:
+        logger.warning("[s3] Presign failed, falling back to download: %s", exc)
+        return _download_s3_to_cache(s3_key)
+
+
 def resolve_stream_source(source_url: str | None) -> str | None:
     if not source_url or not source_url.strip():
         return resolve_default_source()
 
     raw = source_url.strip()
-
-    if raw.startswith("s3://"):
-        s3_key = raw[5:]
-        return _download_s3_to_cache(s3_key)
+    s3_key = s3.coerce_s3_key(raw)
+    if s3_key:
+        return _presign_s3_for_ffmpeg(s3_key)
 
     if is_remote_stream(raw):
         return raw
