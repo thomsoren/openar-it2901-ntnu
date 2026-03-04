@@ -2,6 +2,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import { VIDEO_CONFIG } from "../../config/video";
 import { useWhepConnection } from "../../hooks/useWhepConnection";
+import { getApiAccessToken } from "../../lib/api-client";
 
 type VideoTransport = "webrtc" | "hls";
 type VideoConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
@@ -30,6 +31,16 @@ export interface VideoPlayerProps {
 
 const withCacheBust = (url: string, sessionToken: number): string =>
   `${url}${url.includes("?") ? "&" : "?"}v=${sessionToken}`;
+
+const withAccessToken = (url: string): string => {
+  const token = getApiAccessToken();
+  if (!token) {
+    return url;
+  }
+  const urlObj = new URL(url, window.location.href);
+  urlObj.searchParams.set("access_token", token);
+  return urlObj.toString();
+};
 
 function VideoPlayer({
   streamId,
@@ -128,7 +139,7 @@ function VideoPlayer({
     }
 
     let hls: Hls | null = null;
-    const sourceUrl = withCacheBust(resolvedHlsUrl, sessionToken);
+    const sourceUrl = withCacheBust(withAccessToken(resolvedHlsUrl), sessionToken);
 
     setHlsState("connecting");
     setHlsError(null);
@@ -152,6 +163,12 @@ function VideoPlayer({
       hls = new Hls({
         lowLatencyMode: true,
         backBufferLength: 30,
+        xhrSetup: (xhr) => {
+          const token = getApiAccessToken();
+          if (token) {
+            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+          }
+        },
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) {

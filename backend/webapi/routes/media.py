@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import os
-from urllib.parse import urlparse
-
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import Response
 
@@ -15,49 +12,15 @@ router = APIRouter()
 
 # API boundary note: handlers intentionally catch broad exceptions and map
 # them to HTTP errors so failures are returned consistently.
-
-PIRBADET_VIDEO_S3_KEY_DEFAULT = (
-    "videos/private/default-group/HuWS2pHe8cZeuro8llQ2bGOdacTv4GsJ/manual/Pirbadet-edited.mp4"
-)
-
-
-def _coerce_s3_key(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    value = raw.strip()
-    if not value:
-        return None
-    if value.startswith("s3://"):
-        return value[5:]
-    if value.startswith("http://") or value.startswith("https://"):
-        parsed = urlparse(value)
-        path = parsed.path.strip("/")
-        if path.startswith("openar/"):
-            return path[len("openar/") :]
-        return path
-    return value
+PIRBADET_VIDEO_ASSET_NAMES = ("fusion_video_pirbadet",)
 
 
 def _stream_pirbadet_video(request: Request) -> Response:
-    configured = os.getenv("FUSION_PIRBADET_VIDEO_S3_KEY", PIRBADET_VIDEO_S3_KEY_DEFAULT)
-    key = _coerce_s3_key(configured)
-    if key:
-        try:
-            return s3._stream_s3_response(key, request, "Pirbadet-edited.mp4")
-        except HTTPException:
-            # Continue to DB/local fallbacks when configured key is unavailable.
-            pass
-
     try:
-        key = s3.resolve_system_asset_key("fusion_video_pirbadet", "video")
-        try:
-            return s3._stream_s3_response(key, request, "Pirbadet-edited.mp4")
-        except HTTPException:
-            pass
+        _, key = s3.resolve_first_system_asset_key(PIRBADET_VIDEO_ASSET_NAMES, "video")
+        return s3._stream_s3_response(key, request, "Pirbadet-edited.mp4")
     except Exception:
-        pass
-
-    not_found("Pirbadet fusion video file not found on S3")
+        not_found("Pirbadet fusion video file not found in media_assets/S3")
 
 
 @router.get("/api/detections", response_model=list[DetectedVessel])

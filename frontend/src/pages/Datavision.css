@@ -106,3 +106,37 @@
   display: block;
   margin: 0 auto;
 }
+
+.stream-error {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1d2b36;
+  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+.stream-error__message {
+  white-space: nowrap;
+}
+
+.stream-error__action {
+  border: 1px solid #7f90a2;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #1d2b36;
+  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+}

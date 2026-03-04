@@ -7,8 +7,6 @@ import math
 import os
 import subprocess
 from typing import Any
-from urllib.parse import urlparse
-from urllib.request import urlopen
 
 from fastapi import APIRouter, Query, Response, UploadFile
 from pydantic import BaseModel
@@ -25,7 +23,6 @@ from webapi.errors import (
 )
 from webapi import state
 from settings import app_settings
-from common.config import BASE_DIR
 from common.config.mediamtx import FFMPEG_BIN
 from orchestrator import (
     ResourceLimitExceededError,
@@ -49,10 +46,7 @@ logger = logging.getLogger(__name__)
 # them to HTTP errors so failures are returned consistently.
 
 FUSION_STREAM_ID = "fusion"
-FUSION_AIS_URL_DEFAULT = (
-    "https://bridgable.hel1.your-objectstorage.com/openar/ais-data/fusion-trondheim/Pirbadet.ndjson"
-)
-FUSION_AIS_CACHE_PATH = BASE_DIR / "data" / "cache" / "fusion" / "Pirbadet.ndjson"
+FUSION_AIS_ASSET_NAMES = ("fusion_ais_pirbadet",)
 FUSION_AIS_TIME_WINDOW_S = float(os.getenv("FUSION_STREAM_AIS_TIME_WINDOW_S", "900"))
 STREAM_UPLOAD_MAX_DURATION_S = float(os.getenv("STREAM_UPLOAD_MAX_DURATION_S", "300"))
 STREAM_UPLOAD_MAX_SIZE_MB = float(os.getenv("STREAM_UPLOAD_MAX_SIZE_MB", "300"))
@@ -84,54 +78,16 @@ def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamC
         service_unavailable(str(exc))
 
 
-def _coerce_s3_key(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    value = raw.strip()
-    if not value:
-        return None
-    if value.startswith("s3://"):
-        return value[5:]
-    if value.startswith("http://") or value.startswith("https://"):
-        parsed = urlparse(value)
-        path = parsed.path.strip("/")
-        if path.startswith("openar/"):
-            return path[len("openar/") :]
-        return path
-    return value
-
-
 def _load_fusion_ais_text() -> tuple[str | None, str | None]:
-    source = os.getenv("FUSION_STREAM_AIS_URL", FUSION_AIS_URL_DEFAULT).strip()
-    if not source:
+    try:
+        asset_name, s3_key = s3.resolve_first_system_asset_key(FUSION_AIS_ASSET_NAMES, "data")
+    except Exception:
         return None, None
 
-    s3_key = _coerce_s3_key(source)
-    if s3_key:
-        text = s3.read_text_from_sources(s3_key)
-        if text:
-            return text, f"s3://{s3_key}"
-
-    if source.startswith(("http://", "https://")):
-        try:
-            with urlopen(source, timeout=20) as response:
-                body = response.read()
-            text = body.decode("utf-8", errors="ignore")
-            if text.strip():
-                return text, source
-        except Exception as exc:
-            logger.warning("[fusion:%s] Failed to download AIS NDJSON from URL: %s", FUSION_STREAM_ID, exc)
-
-    fallback = BASE_DIR / "data" / "raw" / "video" / "Pirbadet.ndjson"
-    try:
-        if fallback.exists():
-            text = fallback.read_text(encoding="utf-8")
-            if text.strip():
-                return text, str(fallback)
-    except OSError as exc:
-        logger.warning("[fusion:%s] Failed to read local fallback NDJSON: %s", FUSION_STREAM_ID, exc)
-
-    return None, None
+    text = s3.read_text_from_sources(s3_key)
+    if text and text.strip():
+        return text, f"{asset_name} (s3://{s3_key})"
+    return None, f"{asset_name} (s3://{s3_key})"
 
 
 def _configure_fusion_stream_ais(stream_id: str) -> None:
@@ -143,10 +99,7 @@ def _configure_fusion_stream_ais(stream_id: str) -> None:
         logger.warning("[fusion:%s] No AIS NDJSON available; fusion enrichment disabled", stream_id)
         return
 
-    FUSION_AIS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    FUSION_AIS_CACHE_PATH.write_text(text, encoding="utf-8")
-
-    store = AISStore(FUSION_AIS_CACHE_PATH, time_window_s=FUSION_AIS_TIME_WINDOW_S)
+    store = AISStore(ndjson_text=text, time_window_s=FUSION_AIS_TIME_WINDOW_S)
     time_range = store.time_range
     if not time_range:
         logger.warning("[fusion:%s] AIS NDJSON had no usable records", stream_id)

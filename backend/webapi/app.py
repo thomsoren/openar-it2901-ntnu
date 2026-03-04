@@ -15,6 +15,7 @@ from webapi.routes.admin_media import router as admin_media_router
 from webapi.routes.ais import router as ais_router
 from webapi.routes.detections import router as detections_router
 from webapi.routes.media import router as media_router
+from webapi.routes.mediamtx_auth import router as mediamtx_auth_router
 from webapi.routes.streams import router as streams_router
 from webapi.routes.system import router as system_router
 from settings import app_settings
@@ -62,6 +63,7 @@ app.include_router(auth_router)
 app.include_router(admin_media_router)
 app.include_router(system_router)
 app.include_router(media_router)
+app.include_router(mediamtx_auth_router)
 app.include_router(ais_router)
 app.include_router(streams_router)
 app.include_router(detections_router)

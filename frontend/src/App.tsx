@@ -127,7 +127,6 @@ function App() {
           <Route path="/ais" element={<Ais />} />
           <Route path="/components" element={<Components />} />
           <Route path="/media-library" element={<Admin />} />
-          <Route path="/admin" element={<Navigate to="/media-library" replace />} />
           <Route path="/" element={<Navigate to="/ar" replace />} />
           <Route path="*" element={<Navigate to="/ar" replace />} />
         </Routes>

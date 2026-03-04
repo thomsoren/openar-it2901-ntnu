@@ -261,6 +261,28 @@ def resolve_system_asset_key(asset_name: str, media_type: str = "file") -> str:
         return row.s3_key
 
 
+def resolve_first_system_asset_key(
+    asset_names: list[str] | tuple[str, ...],
+    media_type: str = "file",
+) -> tuple[str, str]:
+    """Return first existing system asset key from ordered *asset_names*.
+
+    Raises HTTP 404 when none of the names exist in media_assets.
+    """
+    for asset_name in asset_names:
+        name = (asset_name or "").strip()
+        if not name:
+            continue
+        try:
+            return name, resolve_system_asset_key(name, media_type)
+        except HTTPException:
+            continue
+    raise HTTPException(
+        status_code=404,
+        detail=f"None of the system assets exist in media_assets: {', '.join(asset_names)}",
+    )
+
+
 def _find_asset_by_key(s3_key: str) -> MediaAsset | None:
     with SessionLocal() as db:
         return db.execute(select(MediaAsset).where(MediaAsset.s3_key == s3_key)).scalar_one_or_none()

@@ -25,10 +25,8 @@ const getPageFromPath = (pathname: string): PageId => {
     case "components":
       return "components";
     case "media-library":
-    case "admin":
       return "media-library";
     case "ar":
-    case "datavision":
     default:
       return "ar";
   }

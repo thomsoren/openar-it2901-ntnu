@@ -14,7 +14,7 @@ import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useAuth } from "../hooks/useAuth";
-import { DETECTION_CONFIG, VIDEO_CONFIG } from "../config/video";
+import { DETECTION_CONFIG, FUSION_PIRBADET_CONFIG } from "../config/video";
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import { startStream, stopStream, toStreamError } from "../services/streams";
@@ -25,10 +25,13 @@ import {
   FUSION_MOCK_TAB_ID,
   FUSION_TAB_ID,
 } from "../hooks/stream-tabs/constants";
-import { FUSION_PIRBADET_CONFIG } from "../config/video";
 import { FusionMockDataView } from "./Fusion";
-import type { StreamSummary } from "../types/stream";
 import "./Datavision.css";
+
+const LOADER_STUCK_RECOVERY_MS = 12000;
+const PLAYER_RECOVERY_COOLDOWN_MS = 15000;
+const DETECTION_STALE_RECOVERY_MS = 10000;
+const DETECTION_RECOVERY_COOLDOWN_MS = 8000;
 
 interface DatavisionProps {
   externalStreamId?: string | null;
@@ -38,6 +41,10 @@ interface DatavisionProps {
 function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fusionStartInFlightRef = useRef(false);
+  const fusionStartLastAttemptMsRef = useRef(0);
+  const playerRecoveryLastAtRef = useRef(0);
+  const detectionRecoveryLastAtRef = useRef(0);
   const { state: arControls } = useARControls();
   const auth = useAuth();
 
@@ -69,28 +76,20 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     showVideoLoader,
     setControlError,
     handleVideoStatusChange,
+    forceReconnect,
   } = useVideoSessionRecovery({ streamKey: activeTabId, initialSession: activeInitialSession });
 
   const showingAuthGate = activeIsSetup && !auth.session;
+  const mediaAuthLoading = Boolean(auth.session) && auth.authBridgeStatus === "loading";
+  const mediaAuthError = Boolean(auth.session) && auth.authBridgeStatus === "error";
+  const mediaAuthReady = !auth.session || auth.authBridgeStatus === "ready";
   const activeIsFusionMock = activeTabId === FUSION_MOCK_TAB_ID;
   const activeIsSpecialFusionTab = activeIsFusionMock;
-  const fusionFallbackStream = useMemo<StreamSummary>(
-    () => ({
-      stream_id: FUSION_TAB_ID,
-      status: "starting",
-      pid: null,
-      restart_count: 0,
-      source_url: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
-      playback_urls: {
-        whep_url: VIDEO_CONFIG.MEDIAMTX_WHEP_URL(FUSION_TAB_ID),
-        hls_url: VIDEO_CONFIG.MEDIAMTX_HLS_URL(FUSION_TAB_ID),
-        rtsp_url: `rtsp://localhost:8854/${FUSION_TAB_ID}`,
-      },
-    }),
-    []
+  const fusionRunningStream = useMemo(
+    () => runningStreams.find((stream) => stream.stream_id === FUSION_TAB_ID) ?? null,
+    [runningStreams]
   );
-  const effectiveActiveStream =
-    activeStream ?? (activeTabId === FUSION_TAB_ID ? fusionFallbackStream : null);
+  const effectiveActiveStream = activeTabId === FUSION_TAB_ID ? fusionRunningStream : activeStream;
   const activePlayableStreamId =
     !activeIsSetup && !activeIsSpecialFusionTab && effectiveActiveStream
       ? effectiveActiveStream.stream_id
@@ -113,18 +112,22 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   }, [activePlayableStreamId, videoSession]);
 
   const detectionWsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
-  const { vessels, videoInfo } = useDetectionsWebSocket({
+  const { vessels, videoInfo, lastMessageAtMs, connect, disconnect } = useDetectionsWebSocket({
     url: detectionWsUrl,
-    enabled: wsEnabled && !activeIsSpecialFusionTab,
+    enabled:
+      wsEnabled &&
+      !activeIsSpecialFusionTab &&
+      (activeTabId !== FUSION_TAB_ID || Boolean(fusionRunningStream)),
   });
   const overlayVessels = vessels;
-  const streamsById = useMemo(() => {
-    const map = new Map(runningStreams.map((stream) => [stream.stream_id, stream] as const));
-    if (activeTabId === FUSION_TAB_ID && !map.has(FUSION_TAB_ID)) {
-      map.set(FUSION_TAB_ID, fusionFallbackStream);
-    }
-    return map;
-  }, [activeTabId, fusionFallbackStream, runningStreams]);
+  const streamsById = useMemo(
+    () => new Map(runningStreams.map((stream) => [stream.stream_id, stream] as const)),
+    [runningStreams]
+  );
+
+  const handleActiveVideoReady = useCallback((videoEl: HTMLVideoElement) => {
+    videoRef.current = videoEl;
+  }, []);
 
   const cachedStreamIds = useMemo(() => {
     const seen = new Set<string>();
@@ -175,12 +178,15 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   );
 
   useEffect(() => {
-    if (
-      activeTabId !== FUSION_TAB_ID ||
-      runningStreams.some((s) => s.stream_id === FUSION_TAB_ID)
-    ) {
+    if (activeTabId !== FUSION_TAB_ID || fusionRunningStream) {
       return;
     }
+    const now = Date.now();
+    if (fusionStartInFlightRef.current || now - fusionStartLastAttemptMsRef.current < 1500) {
+      return;
+    }
+    fusionStartInFlightRef.current = true;
+    fusionStartLastAttemptMsRef.current = now;
 
     let cancelled = false;
     const ensureFusionStreamRunning = async () => {
@@ -190,11 +196,15 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
           loop: true,
           allowExisting: true,
         });
-        await refreshStreams();
       } catch (err) {
         if (!cancelled) {
           setControlError(toStreamError(err, "Failed to start Fusion stream"));
         }
+      } finally {
+        fusionStartInFlightRef.current = false;
+      }
+      if (!cancelled) {
+        await refreshStreams();
       }
     };
 
@@ -202,7 +212,101 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     return () => {
       cancelled = true;
     };
-  }, [activeTabId, refreshStreams, runningStreams, setControlError]);
+  }, [activeTabId, fusionRunningStream, refreshStreams, setControlError]);
+
+  useEffect(() => {
+    if (
+      !isTabsHydrated ||
+      activeIsSetup ||
+      activeIsSpecialFusionTab ||
+      !mediaAuthReady ||
+      !effectiveActiveStream ||
+      !showVideoLoader
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const now = Date.now();
+      if (now - playerRecoveryLastAtRef.current < PLAYER_RECOVERY_COOLDOWN_MS) {
+        return;
+      }
+      playerRecoveryLastAtRef.current = now;
+      forceReconnect("Recovering stream...");
+
+      if (activeTabId === FUSION_TAB_ID) {
+        void startStream(FUSION_TAB_ID, {
+          sourceUrl: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
+          loop: true,
+          allowExisting: true,
+        })
+          .catch((err) => {
+            setControlError(toStreamError(err, "Failed to recover Fusion stream"));
+          })
+          .finally(() => {
+            void refreshStreams();
+          });
+        return;
+      }
+
+      void refreshStreams();
+    }, LOADER_STUCK_RECOVERY_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeIsSetup,
+    activeIsSpecialFusionTab,
+    activeTabId,
+    effectiveActiveStream,
+    forceReconnect,
+    isTabsHydrated,
+    mediaAuthReady,
+    refreshStreams,
+    setControlError,
+    showVideoLoader,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isTabsHydrated ||
+      activeIsSetup ||
+      activeIsSpecialFusionTab ||
+      !mediaAuthReady ||
+      !effectiveActiveStream ||
+      !imageLoaded
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    const isStale = lastMessageAtMs <= 0 || now - lastMessageAtMs > DETECTION_STALE_RECOVERY_MS;
+    if (!isStale) {
+      return;
+    }
+    if (now - detectionRecoveryLastAtRef.current < DETECTION_RECOVERY_COOLDOWN_MS) {
+      return;
+    }
+    detectionRecoveryLastAtRef.current = now;
+    disconnect();
+    const timer = window.setTimeout(() => {
+      connect();
+    }, 180);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeIsSetup,
+    activeIsSpecialFusionTab,
+    connect,
+    disconnect,
+    effectiveActiveStream,
+    imageLoaded,
+    isTabsHydrated,
+    lastMessageAtMs,
+    mediaAuthReady,
+  ]);
 
   const onTabClosed = useCallback(
     async (event: CustomEvent<{ id?: string }>) => {
@@ -291,60 +395,106 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
               !activeIsSetup &&
               !activeIsSpecialFusionTab &&
               !effectiveActiveStream &&
+              activeTabId !== FUSION_TAB_ID &&
               "No running streams. Join or create one from the sidebar."}
+
+            {isTabsHydrated &&
+              !activeIsSetup &&
+              activeTabId === FUSION_TAB_ID &&
+              !fusionRunningStream && (
+                <div className="video-loading-center">
+                  <ObcProgressBar
+                    className="video-loading-center__progress"
+                    type={ProgressBarType.circular}
+                    mode={ProgressBarMode.indeterminate}
+                    circularState={CircularProgressState.indeterminate}
+                    style={
+                      {
+                        "--instrument-enhanced-secondary-color": "#4ea9dd",
+                        "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+                      } as CSSProperties
+                    }
+                  >
+                    <span slot="icon"></span>
+                  </ObcProgressBar>
+                  <div className="video-loading-center__label">Starting Fusion stream...</div>
+                </div>
+              )}
 
             {isTabsHydrated &&
               !activeIsSetup &&
               !activeIsSpecialFusionTab &&
               effectiveActiveStream && (
                 <>
-                  {cachedStreamIds.map((streamId) => {
-                    const stream = streamsById.get(streamId);
-                    if (!stream) {
-                      return null;
-                    }
-                    const playbackUrls = stream.playback_urls;
-                    const isActivePlayer = streamId === activePlayableStreamId;
-
-                    return (
-                      <VideoPlayer
-                        key={`cached-player-${streamId}`}
-                        streamId={streamId}
-                        whepUrl={playbackUrls?.whep_url}
-                        hlsUrl={playbackUrls?.hls_url}
-                        sessionToken={getSessionTokenForStream(streamId)}
-                        allowHlsFallback={isActivePlayer}
-                        className="background-video"
-                        style={{
-                          objectFit: arControls.videoFitMode,
-                          backgroundColor: "#e5e9ef",
-                          opacity: isActivePlayer ? 1 : 0,
-                          pointerEvents: "none",
-                          transition: "opacity 120ms linear",
-                        }}
-                        onVideoReady={
-                          isActivePlayer
-                            ? (videoEl) => {
-                                videoRef.current = videoEl;
-                                // If this player was already warm and rendering while hidden,
-                                // immediately reflect playing state when it becomes active.
-                                if (videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-                                  const transport = videoEl.srcObject ? "webrtc" : "hls";
-                                  handleVideoStatusChange({
-                                    transport,
-                                    status: "playing",
-                                    error: null,
-                                  });
-                                }
-                              }
-                            : undefined
+                  {!mediaAuthReady && (
+                    <div className="video-loading-center">
+                      <ObcProgressBar
+                        className="video-loading-center__progress"
+                        type={ProgressBarType.circular}
+                        mode={ProgressBarMode.indeterminate}
+                        circularState={CircularProgressState.indeterminate}
+                        style={
+                          {
+                            "--instrument-enhanced-secondary-color": "#4ea9dd",
+                            "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
+                          } as CSSProperties
                         }
-                        onStatusChange={isActivePlayer ? handleVideoStatusChange : undefined}
-                      />
-                    );
-                  })}
+                      >
+                        <span slot="icon"></span>
+                      </ObcProgressBar>
+                      <div className="video-loading-center__label">
+                        {mediaAuthLoading ? "Authorizing media..." : "Preparing media..."}
+                      </div>
+                    </div>
+                  )}
 
-                  {showVideoLoader && (
+                  {mediaAuthError && (
+                    <div className="stream-error">
+                      <div className="stream-error__message">
+                        {auth.authBridgeError || "Media authentication failed."}
+                      </div>
+                      <button
+                        type="button"
+                        className="stream-error__action"
+                        onClick={auth.retryAuthBridge}
+                      >
+                        Retry auth
+                      </button>
+                    </div>
+                  )}
+
+                  {mediaAuthReady &&
+                    cachedStreamIds.map((streamId) => {
+                      const stream = streamsById.get(streamId);
+                      if (!stream) {
+                        return null;
+                      }
+                      const playbackUrls = stream.playback_urls;
+                      const isActivePlayer = streamId === activePlayableStreamId;
+
+                      return (
+                        <VideoPlayer
+                          key={`cached-player-${streamId}`}
+                          streamId={streamId}
+                          whepUrl={playbackUrls?.whep_url}
+                          hlsUrl={playbackUrls?.hls_url}
+                          sessionToken={getSessionTokenForStream(streamId)}
+                          allowHlsFallback={isActivePlayer}
+                          className="background-video"
+                          style={{
+                            objectFit: arControls.videoFitMode,
+                            backgroundColor: "#e5e9ef",
+                            opacity: isActivePlayer ? 1 : 0,
+                            pointerEvents: "none",
+                            transition: "opacity 120ms linear",
+                          }}
+                          onVideoReady={isActivePlayer ? handleActiveVideoReady : undefined}
+                          onStatusChange={isActivePlayer ? handleVideoStatusChange : undefined}
+                        />
+                      );
+                    })}
+
+                  {mediaAuthReady && showVideoLoader && (
                     <div className="video-loading-center">
                       <ObcProgressBar
                         className="video-loading-center__progress"
@@ -368,7 +518,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
                     </div>
                   )}
 
-                  {arControls.detectionVisible && (
+                  {mediaAuthReady && arControls.detectionVisible && (
                     <PoiErrorBoundary>
                       <PoiOverlay
                         vessels={overlayVessels}

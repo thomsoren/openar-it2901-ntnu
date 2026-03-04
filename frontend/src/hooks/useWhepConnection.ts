@@ -1,4 +1,5 @@
 import { RefObject, useEffect, useRef, useState } from "react";
+import { getApiAccessToken } from "../lib/api-client";
 
 export type WhepConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
 
@@ -86,6 +87,16 @@ const parseEnvNumber = (name: string, fallback: number): number => {
     return fallback;
   }
   return parsed;
+};
+
+const withAccessToken = (url: string): string => {
+  const token = getApiAccessToken();
+  if (!token) {
+    return url;
+  }
+  const urlObj = new URL(url, window.location.href);
+  urlObj.searchParams.set("access_token", token);
+  return urlObj.toString();
 };
 
 const MAX_WHEP_RETRIES = parseEnvNumber("VITE_WHEP_MAX_RETRIES", 12);
@@ -223,8 +234,9 @@ export function useWhepConnection({
       try {
         setStatus("connecting");
         setError(null);
+        const authWhepUrl = withAccessToken(whepUrl);
 
-        const optionsResponse = await fetch(whepUrl, {
+        const optionsResponse = await fetch(authWhepUrl, {
           method: "OPTIONS",
           signal: fetchController.signal,
         });
@@ -302,7 +314,7 @@ export function useWhepConnection({
           throw new Error("WebRTC offer generation failed");
         }
 
-        const offerResponse = await fetch(whepUrl, {
+        const offerResponse = await fetch(authWhepUrl, {
           method: "POST",
           headers: { "Content-Type": "application/sdp" },
           body: localSdp,
@@ -327,7 +339,7 @@ export function useWhepConnection({
 
         const location = offerResponse.headers.get("Location");
         if (location) {
-          sessionUrl = new URL(location, whepUrl).toString();
+          sessionUrl = new URL(location, authWhepUrl).toString();
         }
 
         const answerSdp = await offerResponse.text();
@@ -375,7 +387,7 @@ export function useWhepConnection({
       videoEl.removeEventListener("error", handleError);
 
       if (sessionUrl) {
-        void fetch(sessionUrl, { method: "DELETE" }).catch(() => {
+        void fetch(withAccessToken(sessionUrl), { method: "DELETE" }).catch(() => {
           // Ignore teardown errors.
         });
       }

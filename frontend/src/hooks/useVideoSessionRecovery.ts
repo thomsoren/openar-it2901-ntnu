@@ -16,6 +16,7 @@ interface UseVideoSessionRecoveryResult {
   controlError: string | null;
   setControlError: (value: string | null) => void;
   handleVideoStatusChange: (next: VideoPlayerState) => void;
+  forceReconnect: (reason?: string) => void;
 }
 
 interface RecoveryState {
@@ -259,6 +260,19 @@ export function useVideoSessionRecovery({
     [clearReconnectTimers, scheduleReconnect]
   );
 
+  const forceReconnect = useCallback(
+    (reason: string = "Recovering stream...") => {
+      reconnectCountRef.current = 0;
+      firstFrameRetryDoneRef.current = false;
+      imageLoadedRef.current = false;
+      clearReconnectTimers();
+      dispatch({ type: "SET_IMAGE_LOADED", payload: false });
+      dispatch({ type: "SET_CONTROL_ERROR", payload: reason });
+      dispatch({ type: "BUMP_SESSION" });
+    },
+    [clearReconnectTimers]
+  );
+
   return {
     recoveryStreamKey,
     videoSession,
@@ -268,5 +282,6 @@ export function useVideoSessionRecovery({
     controlError,
     setControlError,
     handleVideoStatusChange,
+    forceReconnect,
   };
 }
