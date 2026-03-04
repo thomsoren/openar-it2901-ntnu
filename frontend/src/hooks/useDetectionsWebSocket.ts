@@ -80,6 +80,7 @@ function createWebSocketStore(
   const listeners = new Set<() => void>();
   let ws: WebSocket | null = null;
   let reconnectTimeout: number | null = null;
+  let socketEpoch = 0;
 
   const notify = () => listeners.forEach((l) => l());
 
@@ -94,35 +95,54 @@ function createWebSocketStore(
       reconnectTimeout = null;
     }
     if (ws) {
+      // Detach handlers before close to avoid stale onclose events from
+      // mutating state after a replacement socket is created.
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
       ws.close();
       ws = null;
     }
   };
 
-  const connect = () => {
+  const connect = (preserveData = false) => {
     cleanup();
-    setState({
-      vessels: [],
-      frameIndex: 0,
-      fps: 0,
-      detectionTimestampMs: 0,
-      lastMessageAtMs: 0,
-      detectionFrameSentAtMs: 0,
-      videoInfo: null,
-      isConnected: false,
-      isLoading: true,
-      error: null,
-      isComplete: false,
-    });
+    if (preserveData) {
+      setState({
+        isConnected: false,
+        isLoading: true,
+        error: null,
+      });
+    } else {
+      setState({
+        vessels: [],
+        frameIndex: 0,
+        fps: 0,
+        detectionTimestampMs: 0,
+        lastMessageAtMs: 0,
+        detectionFrameSentAtMs: 0,
+        videoInfo: null,
+        isConnected: false,
+        isLoading: true,
+        error: null,
+        isComplete: false,
+      });
+    }
 
     try {
-      ws = new WebSocket(url);
+      const currentEpoch = socketEpoch + 1;
+      socketEpoch = currentEpoch;
+      const socket = new WebSocket(url);
+      ws = socket;
 
-      ws.onopen = () => {
+      socket.onopen = () => {
+        if (socketEpoch !== currentEpoch || ws !== socket) return;
         setState({ isConnected: true, isLoading: false, error: null });
       };
 
-      ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (socketEpoch !== currentEpoch || ws !== socket) return;
         try {
           const data = JSON.parse(event.data);
 
@@ -163,25 +183,24 @@ function createWebSocketStore(
         }
       };
 
-      ws.onerror = () => {
+      socket.onerror = () => {
+        if (socketEpoch !== currentEpoch || ws !== socket) return;
         setState({ error: "WebSocket connection error", isLoading: false });
       };
 
-      ws.onclose = (event) => {
+      socket.onclose = (event) => {
+        if (socketEpoch !== currentEpoch) return;
+        if (ws === socket) {
+          ws = null;
+        }
+
         setState({
           isConnected: false,
           isLoading: false,
-          vessels: [],
-          frameIndex: 0,
-          detectionTimestampMs: 0,
-          lastMessageAtMs: 0,
-          detectionFrameSentAtMs: 0,
-          fps: 0,
         });
-        ws = null;
 
         if (!event.wasClean && autoReconnect && !state.isComplete) {
-          reconnectTimeout = window.setTimeout(connect, reconnectDelay);
+          reconnectTimeout = window.setTimeout(() => connect(true), reconnectDelay);
         }
       };
     } catch (err) {
@@ -212,7 +231,7 @@ function createWebSocketStore(
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    connect,
+    connect: () => connect(false),
     disconnect,
     cleanup,
   };

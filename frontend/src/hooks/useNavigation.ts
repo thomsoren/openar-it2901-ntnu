@@ -34,12 +34,6 @@ const getPageFromPath = (pathname: string): PageId => {
   }
 };
 
-/**
- * @example
- * ```tsx
- * const { currentPage, handleNavigationItemClick } = useNavigation();
- * ```
- */
 export function useNavigation() {
   const location = useLocation();
   const navigate = useNavigate();

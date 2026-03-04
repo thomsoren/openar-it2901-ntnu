@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from fastapi import APIRouter, Response, UploadFile
+from fastapi import APIRouter, Query, Response, UploadFile
 from pydantic import BaseModel
 
 from cv.publisher import get_fusion_publisher
@@ -345,8 +345,14 @@ async def get_stream_playback(stream_id: str) -> dict[str, Any]:
 
 
 @router.post("/api/streams/{stream_id}/heartbeat", status_code=204, response_class=Response)
-async def heartbeat_stream(stream_id: str) -> Response:
+async def heartbeat_stream(
+    stream_id: str,
+    keep_warm_s: float | None = Query(default=None, ge=0.0),
+) -> Response:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
-    orchestrator.touch_stream(stream_id)
+    warm_lease_s = (
+        app_settings.stream_warm_lease_seconds if keep_warm_s is None else keep_warm_s
+    )
+    orchestrator.touch_stream(stream_id, keep_warm_s=warm_lease_s)
     return Response(status_code=204)

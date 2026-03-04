@@ -1,11 +1,14 @@
-import { useState, useCallback, useMemo, useEffect, ReactNode } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ARBooleanControlKey,
   ARControlContext,
+  ARControlPanelVisibilityKey,
+  ARControlPanelVisibilityState,
   ARControlState,
   AR_CONTROL_DEFAULTS,
-  ARBooleanControlKey,
-  RangeValue,
+  AR_CONTROL_PANEL_VISIBILITY_DEFAULTS,
   PoiDropdownValue,
+  RangeValue,
   VideoFitMode,
 } from "./ar-control-context";
 
@@ -18,6 +21,11 @@ const POI_DROPDOWN_VALUES: ReadonlySet<PoiDropdownValue> = new Set([
   "poi-icon",
 ]);
 const VIDEO_FIT_MODES: ReadonlySet<VideoFitMode> = new Set(["contain", "cover"]);
+
+interface StoredARControlState extends Partial<ARControlState> {
+  rangeVisible?: boolean;
+  panelVisibility?: Partial<ARControlPanelVisibilityState>;
+}
 
 function isMobileDevice(): boolean {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
@@ -57,16 +65,58 @@ function ensurePoiLayersVisible(state: ARControlState): ARControlState {
   };
 }
 
-function readStoredState(): ARControlState {
+function readPanelVisibility(value: unknown): ARControlPanelVisibilityState {
+  const obj = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+
+  return {
+    rangeVisible: asBoolean(obj.rangeVisible, AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.rangeVisible),
+    rulerVisible: asBoolean(obj.rulerVisible, AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.rulerVisible),
+    buoyLightsVisible: asBoolean(
+      obj.buoyLightsVisible,
+      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.buoyLightsVisible
+    ),
+    vesselVisible: asBoolean(obj.vesselVisible, AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.vesselVisible),
+    aisDataVisible: asBoolean(
+      obj.aisDataVisible,
+      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.aisDataVisible
+    ),
+    imageDataVisible: asBoolean(
+      obj.imageDataVisible,
+      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.imageDataVisible
+    ),
+    poiSettingsVisible: asBoolean(
+      obj.poiSettingsVisible,
+      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.poiSettingsVisible
+    ),
+    videoFitVisible: asBoolean(
+      obj.videoFitVisible,
+      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.videoFitVisible
+    ),
+  };
+}
+
+function readStoredState(): {
+  state: ARControlState;
+  panelVisibility: ARControlPanelVisibilityState;
+} {
   const mobileDefault: VideoFitMode = isMobileDevice() ? "contain" : "cover";
+  const defaultState = ensurePoiLayersVisible({
+    ...AR_CONTROL_DEFAULTS,
+    videoFitMode: mobileDefault,
+  });
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return ensurePoiLayersVisible({ ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault });
+      return {
+        state: defaultState,
+        panelVisibility: { ...AR_CONTROL_PANEL_VISIBILITY_DEFAULTS },
+      };
     }
-    const parsed = JSON.parse(raw) as Partial<ARControlState> & { rangeVisible?: boolean };
+
+    const parsed = JSON.parse(raw) as StoredARControlState;
     const fallbackRange = parsed.rangeVisible ? "10.5" : AR_CONTROL_DEFAULTS.rangeValue;
-    return ensurePoiLayersVisible({
+    const parsedState: ARControlState = {
       vesselLayerVisible: asBoolean(
         parsed.vesselLayerVisible,
         AR_CONTROL_DEFAULTS.vesselLayerVisible
@@ -88,42 +138,95 @@ function readStoredState(): ARControlState {
       aisCardsVisible: asBoolean(parsed.aisCardsVisible, AR_CONTROL_DEFAULTS.aisCardsVisible),
       detectionVisible: asBoolean(parsed.detectionVisible, AR_CONTROL_DEFAULTS.detectionVisible),
       videoFitMode: asVideoFitMode(parsed.videoFitMode, mobileDefault),
-    });
+    };
+
+    return {
+      state: ensurePoiLayersVisible(parsedState),
+      panelVisibility: readPanelVisibility(parsed.panelVisibility),
+    };
   } catch {
-    return ensurePoiLayersVisible({ ...AR_CONTROL_DEFAULTS, videoFitMode: mobileDefault });
+    return {
+      state: defaultState,
+      panelVisibility: { ...AR_CONTROL_PANEL_VISIBILITY_DEFAULTS },
+    };
   }
 }
 
 export function ARControlProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<ARControlState>(readStoredState);
+  const [storedState, setStoredState] = useState(readStoredState);
+  const { state, panelVisibility } = storedState;
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          ...state,
+          panelVisibility,
+        })
+      );
     } catch {
-      // Ignore storage failures (private mode, blocked storage, etc.)
+      // Ignore storage failures.
     }
-  }, [state]);
+  }, [panelVisibility, state]);
 
   const toggle = useCallback((key: ARBooleanControlKey) => {
-    setState((prev) => ({ ...prev, [key]: !prev[key] }));
+    setStoredState((prev) => ({
+      ...prev,
+      state: { ...prev.state, [key]: !prev.state[key] },
+    }));
   }, []);
 
   const setRangeValue = useCallback((value: RangeValue) => {
-    setState((prev) => ({ ...prev, rangeValue: value }));
+    setStoredState((prev) => ({
+      ...prev,
+      state: { ...prev.state, rangeValue: value },
+    }));
   }, []);
 
   const setPoiDropdownValue = useCallback((value: PoiDropdownValue) => {
-    setState((prev) => ({ ...prev, poiDropdownValue: value }));
+    setStoredState((prev) => ({
+      ...prev,
+      state: { ...prev.state, poiDropdownValue: value },
+    }));
   }, []);
 
   const setVideoFitMode = useCallback((value: VideoFitMode) => {
-    setState((prev) => ({ ...prev, videoFitMode: value }));
+    setStoredState((prev) => ({
+      ...prev,
+      state: { ...prev.state, videoFitMode: value },
+    }));
   }, []);
 
+  const setPanelControlVisibility = useCallback(
+    (key: ARControlPanelVisibilityKey, visible: boolean) => {
+      setStoredState((prev) => ({
+        ...prev,
+        panelVisibility: { ...prev.panelVisibility, [key]: visible },
+      }));
+    },
+    []
+  );
+
   const value = useMemo(
-    () => ({ state, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode }),
-    [state, toggle, setRangeValue, setPoiDropdownValue, setVideoFitMode]
+    () => ({
+      state,
+      panelVisibility,
+      toggle,
+      setRangeValue,
+      setPoiDropdownValue,
+      setVideoFitMode,
+      setPanelControlVisibility,
+    }),
+    [
+      state,
+      panelVisibility,
+      toggle,
+      setRangeValue,
+      setPoiDropdownValue,
+      setVideoFitMode,
+      setPanelControlVisibility,
+    ]
   );
 
   return <ARControlContext.Provider value={value}>{children}</ARControlContext.Provider>;

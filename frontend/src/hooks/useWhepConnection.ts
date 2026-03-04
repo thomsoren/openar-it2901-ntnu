@@ -48,7 +48,7 @@ const parseIceServers = (linkHeader: string | null): RTCIceServer[] => {
     .filter((value): value is RTCIceServer => Boolean(value));
 };
 
-const ICE_GATHERING_TIMEOUT_MS = 1500;
+const ICE_GATHERING_TIMEOUT_MS = 3000;
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302"] }];
 
 const waitForIceGathering = (pc: RTCPeerConnection): Promise<void> => {
@@ -88,9 +88,13 @@ const parseEnvNumber = (name: string, fallback: number): number => {
   return parsed;
 };
 
-const MAX_WHEP_RETRIES = parseEnvNumber("VITE_WHEP_MAX_RETRIES", 2);
-const WHEP_RETRY_DELAY_MS = parseEnvNumber("VITE_WHEP_RETRY_DELAY_MS", 1000);
-const ICE_CONNECTION_TIMEOUT_MS = parseEnvNumber("VITE_WHEP_ICE_TIMEOUT_MS", 3000);
+const MAX_WHEP_RETRIES = parseEnvNumber("VITE_WHEP_MAX_RETRIES", 12);
+const WHEP_RETRY_DELAY_MS = parseEnvNumber("VITE_WHEP_RETRY_DELAY_MS", 750);
+const WHEP_RETRY_MAX_DELAY_MS = parseEnvNumber("VITE_WHEP_RETRY_MAX_DELAY_MS", 4000);
+const ICE_CONNECTION_TIMEOUT_MS = parseEnvNumber("VITE_WHEP_ICE_TIMEOUT_MS", 8000);
+const WHEP_RETRYABLE_HTTP_STATUSES = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
+
+const isRetryableWhepStatus = (status: number): boolean => WHEP_RETRYABLE_HTTP_STATUSES.has(status);
 
 /**
  * Hook for establishing and managing a WHEP/WebRTC receive-only session.
@@ -150,6 +154,26 @@ export function useWhepConnection({
       setStatus("error");
     };
 
+    const scheduleRetry = (reason: string): boolean => {
+      if (cancelled) {
+        return true;
+      }
+      if (retryCountRef.current >= MAX_WHEP_RETRIES) {
+        return false;
+      }
+      retryCountRef.current += 1;
+      const delay = Math.min(
+        WHEP_RETRY_DELAY_MS * Math.pow(1.5, retryCountRef.current - 1),
+        WHEP_RETRY_MAX_DELAY_MS
+      );
+      setError(`${reason}; retrying (${retryCountRef.current}/${MAX_WHEP_RETRIES})`);
+      retryTimerRef.current = window.setTimeout(() => {
+        retryTimerRef.current = null;
+        void connect();
+      }, delay);
+      return true;
+    };
+
     const handleLoadedData = () => {
       if (!cancelled) {
         mediaPlayable = true;
@@ -207,6 +231,12 @@ export function useWhepConnection({
         if (cancelled) return;
 
         if (!optionsResponse.ok) {
+          if (
+            isRetryableWhepStatus(optionsResponse.status) &&
+            scheduleRetry("WHEP OPTIONS pending")
+          ) {
+            return;
+          }
           markError(`WHEP OPTIONS rejected (${optionsResponse.status})`);
           return;
         }
@@ -284,12 +314,10 @@ export function useWhepConnection({
           pc.close();
           pc = null;
 
-          if (retryCountRef.current < MAX_WHEP_RETRIES) {
-            retryCountRef.current++;
-            retryTimerRef.current = window.setTimeout(() => {
-              retryTimerRef.current = null;
-              void connect();
-            }, WHEP_RETRY_DELAY_MS);
+          if (
+            isRetryableWhepStatus(offerResponse.status) &&
+            scheduleRetry(`WHEP offer pending (${offerResponse.status})`)
+          ) {
             return;
           }
 
@@ -318,6 +346,9 @@ export function useWhepConnection({
       } catch (err) {
         const isAbort = err instanceof DOMException && err.name === "AbortError";
         if (cancelled || isAbort) {
+          return;
+        }
+        if (scheduleRetry("WHEP connection failed")) {
           return;
         }
         markError(err instanceof Error ? err.message : "WebRTC session setup failed");

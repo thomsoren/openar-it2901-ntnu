@@ -124,11 +124,20 @@ class WorkerOrchestrator:
                 raise StreamNotFoundError(f"Stream '{stream_id}' not found")
             return handle
 
-    def touch_stream(self, stream_id: str) -> None:
+    def touch_stream(self, stream_id: str, keep_warm_s: float | None = None) -> None:
         with self._lock:
             handle = self._workers.get(stream_id)
             if handle:
-                handle.last_heartbeat = time.monotonic()
+                now = time.monotonic()
+                handle.last_heartbeat = now
+                if keep_warm_s is not None and keep_warm_s > 0:
+                    handle.warm_until = max(handle.warm_until, now + keep_warm_s)
+                    logger.debug(
+                        "Warm lease extended for stream '%s' by %.1fs (warm_until=%.3f)",
+                        stream_id,
+                        keep_warm_s,
+                        handle.warm_until,
+                    )
 
     def acquire_stream_viewer(self, stream_id: str) -> StreamHandle:
         with self._lock:
@@ -213,6 +222,11 @@ class WorkerOrchestrator:
                 if handle.viewer_count > 0:
                     handle.no_viewer_since = 0.0
                     continue
+                if handle.warm_until > now:
+                    # Keep no_viewer_since fresh while a warm lease is active so
+                    # streams still get the full no-viewer grace period once lease ends.
+                    handle.no_viewer_since = now
+                    continue
                 if handle.no_viewer_since == 0.0:
                     handle.no_viewer_since = now
                     continue
@@ -264,14 +278,25 @@ class WorkerOrchestrator:
                     pass
 
             for sid in no_viewer_ids:
+                no_viewer_for = 0.0
+                warm_remaining = 0.0
                 with self._lock:
                     handle = self._workers.get(sid)
                     if not handle or handle.viewer_count != 0:
                         continue
+                    no_viewer_for = (
+                        now - handle.no_viewer_since if handle.no_viewer_since > 0 else 0.0
+                    )
+                    warm_remaining = max(0.0, handle.warm_until - now)
                 logger.info(
-                    "Stopping stream '%s' (no active viewers for %.0fs)",
+                    (
+                        "Stopping stream '%s' (no active viewers for %.0fs, "
+                        "elapsed_no_viewer=%.1fs, warm_remaining=%.1fs)"
+                    ),
                     sid,
                     self._no_viewer_timeout_seconds,
+                    no_viewer_for,
+                    warm_remaining,
                 )
                 try:
                     # Keep stream config so a later viewer can auto-restart.

@@ -18,6 +18,7 @@ interface PoiOverlayProps {
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   videoSource?: string;
   videoFitMode?: string;
+  metricsMode?: "default" | "fusion";
 }
 
 type PoiMetric = {
@@ -67,6 +68,7 @@ function PoiOverlay({
   videoRef,
   videoSource,
   videoFitMode = "cover",
+  metricsMode = "default",
 }: PoiOverlayProps) {
   const { state: arControls } = useARControls();
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -142,8 +144,8 @@ function PoiOverlay({
 
       const scaledX = detection.x * mapX * videoTransform.scaleX;
       const scaledY = detection.y * mapY * videoTransform.scaleY;
-      const scaledWidth = detection.width * mapX * videoTransform.scaleX;
-      const scaledHeight = detection.height * mapY * videoTransform.scaleY;
+      const scaledWidth = Math.max(1, Math.abs(detection.width * mapX * videoTransform.scaleX));
+      const scaledHeight = Math.max(1, Math.abs(detection.height * mapY * videoTransform.scaleY));
       const screenX = scaledX + videoTransform.offsetX;
       const screenY = scaledY + videoTransform.offsetY;
       const lineLength = Math.max(0, screenY - layerTopOffset);
@@ -152,14 +154,23 @@ function PoiOverlay({
       const hasFusionMetrics =
         Boolean(item.vessel) && matchDistancePx !== null && matchDistancePx !== undefined;
 
+      const trackingId =
+        typeof detection.track_id === "number" ? String(detection.track_id) : "N/A";
       const vesselData =
         arControls.aisCardsVisible && item.vessel
-          ? hasFusionMetrics
+          ? metricsMode === "fusion"
             ? [
                 { value: formatMmsiPrefix(item.vessel.mmsi), label: "MMSI", unit: "" },
-                { value: formatNumber(matchDistancePx, 1), label: "Dpx", unit: "px" },
+                hasFusionMetrics
+                  ? { value: formatNumber(matchDistancePx, 1), label: "Dpx", unit: "px" }
+                  : { value: trackingId, label: "TRK", unit: "" },
               ]
-            : [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
+            : hasFusionMetrics
+              ? [
+                  { value: formatMmsiPrefix(item.vessel.mmsi), label: "MMSI", unit: "" },
+                  { value: formatNumber(matchDistancePx, 1), label: "Dpx", unit: "px" },
+                ]
+              : [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
           : [];
 
       let el = poiElementsRef.current.get(trackId);
@@ -190,7 +201,7 @@ function PoiOverlay({
         poiElementsRef.current.delete(key);
       }
     }
-  }, [vessels, arControls, videoTransform, detectionFrame, layerTopOffset]);
+  }, [vessels, arControls, videoTransform, detectionFrame, layerTopOffset, metricsMode]);
 
   // Remove all imperative elements when this component unmounts.
   useEffect(() => {

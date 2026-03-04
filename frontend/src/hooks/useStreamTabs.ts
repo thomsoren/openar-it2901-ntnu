@@ -15,7 +15,11 @@ import {
   useStreamHeartbeats,
 } from "./stream-tabs/effects";
 import { initStreamTabState, streamTabReducer } from "./stream-tabs/reducer";
+import { FUSION_MOCK_TAB_ID } from "./stream-tabs/constants";
 import { useAuth } from "./useAuth";
+
+const WARM_STREAM_CAP = 3;
+const KEEP_WARM_SECONDS = 30;
 
 interface TabSelectedDetail {
   tab: TabData;
@@ -42,6 +46,7 @@ export interface UseStreamTabsReturn {
   handleStreamReady: (streamId: string) => void;
   runningStreams: StreamSummary[];
   joinedStreamIds: string[];
+  warmStreamIds: string[];
   configureTabId: string | null;
   refreshStreams: () => Promise<void>;
   streamError: string | null;
@@ -72,12 +77,33 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   const [streamError, setStreamError] = useState<string | null>(null);
 
   const activeIsSetup = configureTabId === activeTabId;
-  const wsEnabled = !activeIsSetup;
   const isTabsHydrated = isScopeReady && hydratedScope === storageScope;
+  const wsEnabled = isTabsHydrated && !activeIsSetup;
 
   const hasConfigured = hasConfiguredStreams(joinedStreamIds, configureTabId);
   const showAddButton = hasConfigured;
   const showCloseButtons = hasConfigured;
+  const warmStreamIds = useMemo(() => {
+    const ordered = [activeTabId, ...joinedStreamIds];
+    const seen = new Set<string>();
+    const selected: string[] = [];
+    for (const streamId of ordered) {
+      if (
+        !streamId ||
+        seen.has(streamId) ||
+        streamId === configureTabId ||
+        streamId === FUSION_MOCK_TAB_ID
+      ) {
+        continue;
+      }
+      seen.add(streamId);
+      selected.push(streamId);
+      if (selected.length >= WARM_STREAM_CAP) {
+        break;
+      }
+    }
+    return selected;
+  }, [activeTabId, configureTabId, joinedStreamIds]);
 
   const { tabs, activeStream } = useMemo(
     () => buildTabsAndActiveStream(joinedStreamIds, runningStreams, configureTabId, activeTabId),
@@ -100,7 +126,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   }, []);
 
   useEnsureDefaultStream({ dispatch, setStreamError });
-  useStreamHeartbeats(joinedStreamIds, configureTabId);
+  useStreamHeartbeats(warmStreamIds, KEEP_WARM_SECONDS);
   const canPersistScope = isScopeReady && hydratedScope === storageScope;
   usePersistStreamTabs(activeTabId, joinedStreamIds, storageScope, canPersistScope);
   useExternalStreamSelection(externalStreamId, { dispatch, setStreamError });
@@ -147,6 +173,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
     handleStreamReady,
     runningStreams,
     joinedStreamIds,
+    warmStreamIds,
     configureTabId,
     refreshStreams,
     streamError,

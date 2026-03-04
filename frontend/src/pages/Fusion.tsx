@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useARControls } from "../components/ar-control-panel/useARControls";
@@ -25,7 +25,6 @@ function FusionView({ config }: { config: FusionViewConfig }) {
     enabled: detectionsEnabled,
   });
 
-  // Calculate video transform for accurate POI positioning
   const videoTransform = useVideoTransform(
     videoRef,
     containerRef,
@@ -42,7 +41,7 @@ function FusionView({ config }: { config: FusionViewConfig }) {
       try {
         await apiFetchPublic(config.resetUrl, { method: "POST" });
       } catch {
-        // Reset failed — continue anyway
+        // Continue even if timer reset fails.
       } finally {
         if (!cancelled) {
           setDetectionsEnabled(true);
@@ -50,7 +49,7 @@ function FusionView({ config }: { config: FusionViewConfig }) {
       }
     };
 
-    resetFusionTimer();
+    void resetFusionTimer();
 
     return () => {
       cancelled = true;
@@ -100,12 +99,10 @@ export function FusionPirbadetView() {
   );
 }
 
-function Fusion() {
+export default function Fusion() {
   return (
     <ARControlProvider>
       <FusionMockDataView />
     </ARControlProvider>
   );
 }
-
-export default Fusion;

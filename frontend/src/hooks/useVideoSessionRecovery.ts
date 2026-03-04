@@ -3,10 +3,12 @@ import type { VideoPlayerState } from "../components/video-player/VideoPlayer";
 
 interface UseVideoSessionRecoveryOptions {
   streamKey: string;
+  initialSession?: number;
   maxReconnectAttempts?: number;
 }
 
 interface UseVideoSessionRecoveryResult {
+  recoveryStreamKey: string;
   videoSession: number;
   videoState: VideoPlayerState;
   imageLoaded: boolean;
@@ -17,6 +19,7 @@ interface UseVideoSessionRecoveryResult {
 }
 
 interface RecoveryState {
+  recoveryStreamKey: string;
   videoSession: number;
   videoState: VideoPlayerState;
   imageLoaded: boolean;
@@ -26,13 +29,14 @@ interface RecoveryState {
 const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 25_000;
 
 type RecoveryAction =
-  | { type: "RESET_STREAM" }
+  | { type: "RESET_STREAM"; streamKey: string; session: number }
   | { type: "BUMP_SESSION" }
   | { type: "SET_VIDEO_STATE"; payload: VideoPlayerState }
   | { type: "SET_IMAGE_LOADED"; payload: boolean }
   | { type: "SET_CONTROL_ERROR"; payload: string | null };
 
 const initialState: RecoveryState = {
+  recoveryStreamKey: "",
   videoSession: 0,
   videoState: {
     transport: "webrtc",
@@ -48,12 +52,15 @@ const reducer = (state: RecoveryState, action: RecoveryAction): RecoveryState =>
     case "RESET_STREAM":
       return {
         ...state,
+        recoveryStreamKey: action.streamKey,
+        videoSession: action.session,
         videoState: { transport: "webrtc", status: "idle", error: null },
         imageLoaded: false,
         controlError: null,
       };
     case "BUMP_SESSION":
       return {
+        recoveryStreamKey: state.recoveryStreamKey,
         videoSession: state.videoSession + 1,
         videoState: { transport: "webrtc", status: "idle", error: null },
         imageLoaded: false,
@@ -78,10 +85,11 @@ const reducer = (state: RecoveryState, action: RecoveryAction): RecoveryState =>
  */
 export function useVideoSessionRecovery({
   streamKey,
+  initialSession = 0,
   maxReconnectAttempts = 8,
 }: UseVideoSessionRecoveryOptions): UseVideoSessionRecoveryResult {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const { videoSession, videoState, imageLoaded, controlError } = state;
+  const { recoveryStreamKey, videoSession, videoState, imageLoaded, controlError } = state;
   const setControlError = useCallback((value: string | null) => {
     dispatch({ type: "SET_CONTROL_ERROR", payload: value });
   }, []);
@@ -93,6 +101,7 @@ export function useVideoSessionRecovery({
   const firstFrameRetryDoneRef = useRef(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const firstFrameWatchdogRef = useRef<number | null>(null);
+  const previousStreamKeyRef = useRef<string | null>(null);
 
   const clearReconnectTimers = useCallback(() => {
     if (reconnectTimerRef.current !== null) {
@@ -156,10 +165,14 @@ export function useVideoSessionRecovery({
   }, []);
 
   useEffect(() => {
+    if (previousStreamKeyRef.current === streamKey) {
+      return;
+    }
+    previousStreamKeyRef.current = streamKey;
     reconnectCountRef.current = 0;
     firstFrameRetryDoneRef.current = false;
-    dispatch({ type: "RESET_STREAM" });
-  }, [streamKey]);
+    dispatch({ type: "RESET_STREAM", streamKey, session: initialSession });
+  }, [initialSession, streamKey]);
 
   useEffect(() => {
     controlErrorRef.current = controlError;
@@ -247,6 +260,7 @@ export function useVideoSessionRecovery({
   );
 
   return {
+    recoveryStreamKey,
     videoSession,
     videoState,
     imageLoaded,

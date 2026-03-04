@@ -29,6 +29,7 @@ from orchestrator import (
     WorkerOrchestrator,
 )
 from services.stream_service import resolve_default_source
+from cv.idun.config import IDUN_ENABLED
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,11 @@ app.include_router(ais_router)
 app.include_router(streams_router)
 app.include_router(detections_router)
 
+if IDUN_ENABLED:
+    from cv.idun.routes import router as idun_router
+    app.include_router(idun_router)
+    logger.info("IDUN remote inference enabled")
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -72,11 +78,27 @@ async def lifespan(_: FastAPI):
     app.state.redis_client = create_async_redis_client()
 
     protected_stream_ids = {app_settings.default_stream_id} if app_settings.protect_default_stream else set()
+
+    # When IDUN is enabled, use a no-op inference thread (no local GPU needed)
+    # and wire up the IDUN bridge for remote inference.
+    inference_thread = None
+    if IDUN_ENABLED:
+        from cv.idun.bridge import IdunBridge
+        from cv.idun.noop_inference import NoopInferenceThread
+        from cv.idun.routes import init_bridge
+        from cv.publisher import DetectionPublisher
+
+        noop = NoopInferenceThread()
+        inference_thread = noop
+        bridge = IdunBridge(noop, DetectionPublisher())
+        init_bridge(bridge)
+
     state.orchestrator = WorkerOrchestrator(
         max_workers=app_settings.max_workers,
         idle_timeout_seconds=app_settings.stream_idle_timeout_seconds,
         no_viewer_timeout_seconds=app_settings.stream_no_viewer_timeout_seconds,
         protected_stream_ids=protected_stream_ids,
+        inference_thread=inference_thread,
     )
     state.orchestrator.start_monitoring()
 
