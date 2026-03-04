@@ -11,7 +11,7 @@ import {
 } from "../services/media";
 import { listStreams, stopStream } from "../services/streams";
 import { removePersistedStreamIds } from "../hooks/stream-tabs/storage";
-import "./Admin.css";
+import "./MediaLibrary.css";
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
 const VISIBILITY_OPTION_LABELS: Record<MediaVisibility, string> = {
@@ -20,7 +20,7 @@ const VISIBILITY_OPTION_LABELS: Record<MediaVisibility, string> = {
   public: "Public",
 };
 
-export default function Admin() {
+export default function MediaLibrary() {
   const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge, isAdmin } =
     useAuth();
   const storageScope = session?.user?.id ?? "anon";
@@ -36,6 +36,12 @@ export default function Admin() {
   const visibilityOptions: MediaVisibility[] = isAdmin
     ? ["private", "group", "public"]
     : ["private", "group"];
+  const renderVisibilityOptions = () =>
+    visibilityOptions.map((option) => (
+      <option key={option} value={option}>
+        {VISIBILITY_OPTION_LABELS[option]}
+      </option>
+    ));
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortUploadRef = useRef<(() => void) | null>(null);
@@ -224,11 +230,7 @@ export default function Admin() {
               value={visibility}
               onChange={(e) => setVisibility(e.target.value as MediaVisibility)}
             >
-              {visibilityOptions.map((option) => (
-                <option key={option} value={option}>
-                  {VISIBILITY_OPTION_LABELS[option]}
-                </option>
-              ))}
+              {renderVisibilityOptions()}
             </select>
           </label>
 
@@ -288,11 +290,7 @@ export default function Admin() {
                           void handleVisibilityChange(asset, e.target.value as MediaVisibility)
                         }
                       >
-                        {visibilityOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {VISIBILITY_OPTION_LABELS[option]}
-                          </option>
-                        ))}
+                        {renderVisibilityOptions()}
                       </select>
                     </td>
                     <td>{asset.owner_user_id ?? "—"}</td>

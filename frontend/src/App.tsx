@@ -3,10 +3,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import "./App.css";
-import Admin from "./pages/Admin";
+import MediaLibrary from "./pages/MediaLibrary";
 import Ais from "./pages/Ais";
 import Components from "./pages/Components";
-import Datavision from "./pages/Datavision";
+import AROverlay from "./pages/AROverlay";
 import { useClock } from "./hooks/useClock";
 import { useNavigation } from "./hooks/useNavigation";
 import { AppTopBar } from "./components/app/AppTopBar";
@@ -121,12 +121,12 @@ function App() {
         <Routes>
           <Route
             path="/ar"
-            element={<Datavision onAuthGateVisibleChange={handleAuthGateVisibleChange} />}
+            element={<AROverlay onAuthGateVisibleChange={handleAuthGateVisibleChange} />}
           />
           <Route path="/datavision" element={<Navigate to="/ar" replace />} />
           <Route path="/ais" element={<Ais />} />
           <Route path="/components" element={<Components />} />
-          <Route path="/media-library" element={<Admin />} />
+          <Route path="/media-library" element={<MediaLibrary />} />
           <Route path="/" element={<Navigate to="/ar" replace />} />
           <Route path="*" element={<Navigate to="/ar" replace />} />
         </Routes>

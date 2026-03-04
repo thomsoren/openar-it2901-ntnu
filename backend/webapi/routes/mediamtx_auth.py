@@ -48,6 +48,13 @@ class MediaMTXAuthRequest(BaseModel):
     query: str = ""
 
 
+def _strip_bearer(value: str) -> str:
+    token = (value or "").strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    return token
+
+
 def _is_local_or_private_ip(raw_ip: str) -> bool:
     text = (raw_ip or "").strip()
     if not text:
@@ -67,9 +74,7 @@ def _is_local_or_private_ip(raw_ip: str) -> bool:
 
 
 def _extract_token(payload: MediaMTXAuthRequest) -> str:
-    direct = (payload.token or "").strip()
-    if direct.lower().startswith("bearer "):
-        direct = direct[7:].strip()
+    direct = _strip_bearer(payload.token)
     if direct:
         return direct
 
@@ -80,16 +85,12 @@ def _extract_token(payload: MediaMTXAuthRequest) -> str:
             query = query[1:]
         params = parse_qs(query, keep_blank_values=False)
         for key in ("access_token", "token", "jwt", "bearer"):
-            candidate = params.get(key, [""])[0].strip()
-            if candidate.lower().startswith("bearer "):
-                candidate = candidate[7:].strip()
+            candidate = _strip_bearer(params.get(key, [""])[0])
             if candidate:
                 return candidate
 
     # Fallback: some clients can only place token in "password".
-    pw = (payload.password or "").strip()
-    if pw.lower().startswith("bearer "):
-        pw = pw[7:].strip()
+    pw = _strip_bearer(payload.password)
     if pw and payload.action in _READ_ACTIONS:
         return pw
 
@@ -156,30 +157,30 @@ def _authorize_publish(payload: MediaMTXAuthRequest) -> bool:
     return False
 
 
-def _remember_reader_id(reader_id: str) -> None:
-    if not reader_id:
+def _purge_expired_auth_cache(now: float) -> None:
+    for cache in (_AUTHORIZED_READER_IDS, _AUTHORIZED_READ_CONTEXTS):
+        expired = [key for key, expiry in cache.items() if expiry <= now]
+        for key in expired:
+            cache.pop(key, None)
+
+
+def _remember_authorized(cache: dict, key: object) -> None:
+    if not key:
         return
     now = time.monotonic()
-    _AUTHORIZED_READER_IDS[reader_id] = now + _READER_ID_TTL_SECONDS
-    # Opportunistic cleanup.
-    expired = [key for key, expiry in _AUTHORIZED_READER_IDS.items() if expiry <= now]
-    for key in expired:
-        _AUTHORIZED_READER_IDS.pop(key, None)
-
-    expired_ctx = [key for key, expiry in _AUTHORIZED_READ_CONTEXTS.items() if expiry <= now]
-    for key in expired_ctx:
-        _AUTHORIZED_READ_CONTEXTS.pop(key, None)
+    cache[key] = now + _READER_ID_TTL_SECONDS
+    _purge_expired_auth_cache(now)
 
 
-def _is_reader_id_authorized(reader_id: str) -> bool:
-    if not reader_id:
+def _is_authorized(cache: dict, key: object) -> bool:
+    if not key:
         return False
     now = time.monotonic()
-    expiry = _AUTHORIZED_READER_IDS.get(reader_id)
+    expiry = cache.get(key)
     if expiry is None:
         return False
     if expiry <= now:
-        _AUTHORIZED_READER_IDS.pop(reader_id, None)
+        cache.pop(key, None)
         return False
     return True
 
@@ -209,21 +210,20 @@ def _remember_read_context(payload: MediaMTXAuthRequest) -> None:
     key = _context_key(payload)
     if not any(key):
         return
-    _AUTHORIZED_READ_CONTEXTS[key] = time.monotonic() + _READER_ID_TTL_SECONDS
+    _remember_authorized(_AUTHORIZED_READ_CONTEXTS, key)
 
 
 def _is_context_authorized(payload: MediaMTXAuthRequest) -> bool:
     key = _context_key(payload)
     if not any(key):
         return False
-    now = time.monotonic()
-    expiry = _AUTHORIZED_READ_CONTEXTS.get(key)
-    if expiry is None:
-        return False
-    if expiry <= now:
-        _AUTHORIZED_READ_CONTEXTS.pop(key, None)
-        return False
-    return True
+    return _is_authorized(_AUTHORIZED_READ_CONTEXTS, key)
+
+
+def _allow_read(reader_id: str, payload: MediaMTXAuthRequest) -> Response:
+    _remember_authorized(_AUTHORIZED_READER_IDS, reader_id)
+    _remember_read_context(payload)
+    return Response(status_code=204)
 
 
 @router.post("/api/mediamtx/auth", status_code=204, response_class=Response)
@@ -245,14 +245,12 @@ async def mediamtx_auth(request: Request) -> Response:
 
     if action in _READ_ACTIONS:
         reader_id = (payload.id or "").strip()
-        if _is_reader_id_authorized(reader_id):
+        if _is_authorized(_AUTHORIZED_READER_IDS, reader_id):
             return Response(status_code=204)
         if _is_context_authorized(payload):
             return Response(status_code=204)
         if _is_public_read_stream(payload.path):
-            _remember_reader_id(reader_id)
-            _remember_read_context(payload)
-            return Response(status_code=204)
+            return _allow_read(reader_id, payload)
 
         token = _extract_token(payload)
         if not token:
@@ -263,9 +261,7 @@ async def mediamtx_auth(request: Request) -> Response:
                     payload.protocol,
                     payload.path,
                 )
-                _remember_reader_id(reader_id)
-                _remember_read_context(payload)
-                return Response(status_code=204)
+                return _allow_read(reader_id, payload)
             logger.warning(
                 "Denied MediaMTX read auth: missing token (protocol='%s' path='%s' id='%s' ip='%s' query='%s' user='%s')",
                 payload.protocol,
@@ -300,9 +296,7 @@ async def mediamtx_auth(request: Request) -> Response:
                 payload.ip,
             )
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
-        _remember_reader_id(reader_id)
-        _remember_read_context(payload)
-        return Response(status_code=204)
+        return _allow_read(reader_id, payload)
 
     # Only publish/read/playback are expected for stream transport.
     logger.warning(

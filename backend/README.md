@@ -17,7 +17,7 @@ cp .env.example .env   # then fill in required values
 uv run main.py         # runs on :8000
 ```
 
-Requires PostgreSQL running on `:5532` — see `infra/docker-compose.postgres.yml`.
+Requires PostgreSQL running on `:5433` — see `infra/docker-compose.postgres.yml`.
 
 ## Key Commands
 
@@ -32,19 +32,18 @@ uv run pytest        # Run test suite
 Copy `.env.example` to `.env`. Required:
 
 ```bash
-DATABASE_URL=postgresql+psycopg://openar:openar_dev@localhost:5532/openar
+DATABASE_URL=postgresql+psycopg://openar:openar_dev@localhost:5433/openar
 JWT_SECRET_KEY=<strong-random-secret>
 BETTER_AUTH_BASE_URL=http://localhost:3001
 ```
 
-Optional:
+Optional (features degrade gracefully without these):
 
 ```bash
 AIS_CLIENT_ID=...          # Barentswatch AIS API
 AIS_CLIENT_SECRET=...
-S3_ACCESS_KEY=...           # Required in S3-only deployments
+S3_ACCESS_KEY=...           # Hetzner S3 storage
 S3_SECRET_KEY=...
-BETTER_AUTH_BASE_PATH=/api/auth
 ```
 
 ## API Endpoints
@@ -87,31 +86,14 @@ MEDIAMTX_HLS_BASE=http://localhost:8888
 
 ## S3 Storage
 
-Video and detection assets are served from Hetzner S3 (S3-only). The frontend uploads directly via presigned URLs.
-
-Runtime object-key routing and visibility/ownership metadata are stored in the PostgreSQL `media_assets` table.
-
-For the complete endpoint mapping, see `../docs/s3-asset-manifest.md`.
+When S3 keys are configured, video and detection assets are served from Hetzner S3. The frontend uploads directly via presigned URLs.
 
 ```bash
 curl -X POST http://localhost:8000/api/storage/presign \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <JWT>" \
-  -d '{
-    "method":"PUT",
-    "filename":"example.mp4",
-    "group_id":"team-a",
-    "stream_id":"demo-stream",
-    "visibility":"private",
-    "content_type":"video/mp4"
-  }'
+  -d '{"key":"video/example.mp4","method":"PUT","content_type":"video/mp4"}'
 ```
-
-Upload policy defaults to owner-scoped paths:
-
-- `videos/private/{groupId}/{userId}/{streamId}/{filename}` (default)
-- `videos/group/{groupId}/{userId}/{streamId}/{filename}`
-- `videos/public/{groupId}/{userId}/{streamId}/{filename}` (admin publish flow)
 
 ## Troubleshooting
 

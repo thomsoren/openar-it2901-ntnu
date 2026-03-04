@@ -26,7 +26,7 @@ import {
   FUSION_TAB_ID,
 } from "../hooks/stream-tabs/constants";
 import { FusionMockDataView } from "./Fusion";
-import "./Datavision.css";
+import "./AROverlay.css";
 
 const LOADER_STUCK_RECOVERY_MS = 12000;
 const PLAYER_RECOVERY_COOLDOWN_MS = 15000;
@@ -37,7 +37,7 @@ const LOADER_PROGRESS_STYLE = {
   "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
 } as CSSProperties;
 
-interface DatavisionProps {
+interface AROverlayProps {
   externalStreamId?: string | null;
   onAuthGateVisibleChange?: (visible: boolean) => void;
 }
@@ -59,7 +59,7 @@ function WorkspaceLoader({ label }: { label: string }) {
   );
 }
 
-function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: DatavisionProps = {}) {
+function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlayProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fusionStartInFlightRef = useRef(false);
@@ -105,14 +105,13 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   const mediaAuthError = Boolean(auth.session) && auth.authBridgeStatus === "error";
   const mediaAuthReady = !auth.session || auth.authBridgeStatus === "ready";
   const activeIsFusionMock = activeTabId === FUSION_MOCK_TAB_ID;
-  const activeIsSpecialFusionTab = activeIsFusionMock;
   const fusionRunningStream = useMemo(
     () => runningStreams.find((stream) => stream.stream_id === FUSION_TAB_ID) ?? null,
     [runningStreams]
   );
   const effectiveActiveStream = activeTabId === FUSION_TAB_ID ? fusionRunningStream : activeStream;
   const activePlayableStreamId =
-    !activeIsSetup && !activeIsSpecialFusionTab && effectiveActiveStream
+    !activeIsSetup && !activeIsFusionMock && effectiveActiveStream
       ? effectiveActiveStream.stream_id
       : null;
 
@@ -137,7 +136,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     url: detectionWsUrl,
     enabled:
       wsEnabled &&
-      !activeIsSpecialFusionTab &&
+      !activeIsFusionMock &&
       (activeTabId !== FUSION_TAB_ID || Boolean(fusionRunningStream)),
   });
   const overlayVessels = vessels;
@@ -239,7 +238,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     if (
       !isTabsHydrated ||
       activeIsSetup ||
-      activeIsSpecialFusionTab ||
+      activeIsFusionMock ||
       !mediaAuthReady ||
       !effectiveActiveStream ||
       !showVideoLoader
@@ -278,7 +277,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     };
   }, [
     activeIsSetup,
-    activeIsSpecialFusionTab,
+    activeIsFusionMock,
     activeTabId,
     effectiveActiveStream,
     forceReconnect,
@@ -293,7 +292,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     if (
       !isTabsHydrated ||
       activeIsSetup ||
-      activeIsSpecialFusionTab ||
+      activeIsFusionMock ||
       !mediaAuthReady ||
       !effectiveActiveStream ||
       !imageLoaded
@@ -319,7 +318,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
     };
   }, [
     activeIsSetup,
-    activeIsSpecialFusionTab,
+    activeIsFusionMock,
     connect,
     disconnect,
     effectiveActiveStream,
@@ -396,7 +395,7 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
 
             {isTabsHydrated &&
               !activeIsSetup &&
-              !activeIsSpecialFusionTab &&
+              !activeIsFusionMock &&
               !effectiveActiveStream &&
               activeTabId !== FUSION_TAB_ID &&
               "No running streams. Join or create one from the sidebar."}
@@ -406,85 +405,82 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
               activeTabId === FUSION_TAB_ID &&
               !fusionRunningStream && <WorkspaceLoader label="Starting Fusion stream..." />}
 
-            {isTabsHydrated &&
-              !activeIsSetup &&
-              !activeIsSpecialFusionTab &&
-              effectiveActiveStream && (
-                <>
-                  {!mediaAuthReady && (
-                    <WorkspaceLoader
-                      label={mediaAuthLoading ? "Authorizing media..." : "Preparing media..."}
-                    />
-                  )}
+            {isTabsHydrated && !activeIsSetup && !activeIsFusionMock && effectiveActiveStream && (
+              <>
+                {!mediaAuthReady && (
+                  <WorkspaceLoader
+                    label={mediaAuthLoading ? "Authorizing media..." : "Preparing media..."}
+                  />
+                )}
 
-                  {mediaAuthError && (
-                    <div className="stream-error">
-                      <div className="stream-error__message">
-                        {auth.authBridgeError || "Media authentication failed."}
-                      </div>
-                      <button
-                        type="button"
-                        className="stream-error__action"
-                        onClick={auth.retryAuthBridge}
-                      >
-                        Retry auth
-                      </button>
+                {mediaAuthError && (
+                  <div className="stream-error">
+                    <div className="stream-error__message">
+                      {auth.authBridgeError || "Media authentication failed."}
                     </div>
-                  )}
+                    <button
+                      type="button"
+                      className="stream-error__action"
+                      onClick={auth.retryAuthBridge}
+                    >
+                      Retry auth
+                    </button>
+                  </div>
+                )}
 
-                  {mediaAuthReady &&
-                    cachedStreamIds.map((streamId) => {
-                      const stream = streamsById.get(streamId);
-                      if (!stream) {
-                        return null;
-                      }
-                      const playbackUrls = stream.playback_urls;
-                      const isActivePlayer = streamId === activePlayableStreamId;
+                {mediaAuthReady &&
+                  cachedStreamIds.map((streamId) => {
+                    const stream = streamsById.get(streamId);
+                    if (!stream) {
+                      return null;
+                    }
+                    const playbackUrls = stream.playback_urls;
+                    const isActivePlayer = streamId === activePlayableStreamId;
 
-                      return (
-                        <VideoPlayer
-                          key={`cached-player-${streamId}`}
-                          streamId={streamId}
-                          whepUrl={playbackUrls?.whep_url}
-                          hlsUrl={playbackUrls?.hls_url}
-                          sessionToken={getSessionTokenForStream(streamId)}
-                          allowHlsFallback={isActivePlayer}
-                          className="background-video"
-                          style={{
-                            objectFit: arControls.videoFitMode,
-                            backgroundColor: "#e5e9ef",
-                            opacity: isActivePlayer ? 1 : 0,
-                            pointerEvents: "none",
-                            transition: "opacity 120ms linear",
-                          }}
-                          onVideoReady={isActivePlayer ? handleActiveVideoReady : undefined}
-                          onStatusChange={isActivePlayer ? handleVideoStatusChange : undefined}
-                        />
-                      );
-                    })}
-
-                  {mediaAuthReady && showVideoLoader && (
-                    <WorkspaceLoader
-                      label={
-                        !imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."
-                      }
-                    />
-                  )}
-
-                  {mediaAuthReady && arControls.detectionVisible && (
-                    <PoiErrorBoundary>
-                      <PoiOverlay
-                        vessels={overlayVessels}
-                        videoTransform={videoTransform}
-                        detectionFrame={
-                          videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
-                        }
-                        metricsMode={activeTabId === FUSION_TAB_ID ? "fusion" : "default"}
+                    return (
+                      <VideoPlayer
+                        key={`cached-player-${streamId}`}
+                        streamId={streamId}
+                        whepUrl={playbackUrls?.whep_url}
+                        hlsUrl={playbackUrls?.hls_url}
+                        sessionToken={getSessionTokenForStream(streamId)}
+                        allowHlsFallback={isActivePlayer}
+                        className="background-video"
+                        style={{
+                          objectFit: arControls.videoFitMode,
+                          backgroundColor: "#e5e9ef",
+                          opacity: isActivePlayer ? 1 : 0,
+                          pointerEvents: "none",
+                          transition: "opacity 120ms linear",
+                        }}
+                        onVideoReady={isActivePlayer ? handleActiveVideoReady : undefined}
+                        onStatusChange={isActivePlayer ? handleVideoStatusChange : undefined}
                       />
-                    </PoiErrorBoundary>
-                  )}
-                </>
-              )}
+                    );
+                  })}
+
+                {mediaAuthReady && showVideoLoader && (
+                  <WorkspaceLoader
+                    label={
+                      !imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."
+                    }
+                  />
+                )}
+
+                {mediaAuthReady && arControls.detectionVisible && (
+                  <PoiErrorBoundary>
+                    <PoiOverlay
+                      vessels={overlayVessels}
+                      videoTransform={videoTransform}
+                      detectionFrame={
+                        videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
+                      }
+                      metricsMode={activeTabId === FUSION_TAB_ID ? "fusion" : "default"}
+                    />
+                  </PoiErrorBoundary>
+                )}
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -492,10 +488,10 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   );
 }
 
-export default function Datavision(props: DatavisionProps) {
+export default function AROverlay(props: AROverlayProps) {
   return (
     <ARControlProvider>
-      <DatavisionInner {...props} />
+      <AROverlayInner {...props} />
     </ARControlProvider>
   );
 }

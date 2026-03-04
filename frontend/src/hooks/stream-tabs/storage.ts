@@ -2,7 +2,6 @@ import { DEFAULT_STREAM_ID } from "./constants";
 
 const ACTIVE_TAB_STORAGE_KEY = "openar.selectedStreamId";
 const JOINED_STREAMS_STORAGE_KEY = "openar.joinedStreamIds";
-const ANON_SCOPE = "anon";
 
 const scopedKey = (base: string, scope?: string): string => {
   const normalized = scope?.trim();
@@ -15,24 +14,7 @@ export function loadActiveTabId(scope?: string): string {
     const scopedStored = localStorage.getItem(scopedStorageKey);
     if (scopedStored?.trim()) return scopedStored.trim();
 
-    if (scope?.trim()) {
-      const anonStored = localStorage.getItem(scopedKey(ACTIVE_TAB_STORAGE_KEY, ANON_SCOPE));
-      if (anonStored?.trim()) {
-        localStorage.setItem(scopedStorageKey, anonStored);
-        return anonStored.trim();
-      }
-
-      const legacyStored = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-      if (legacyStored?.trim()) {
-        localStorage.setItem(scopedStorageKey, legacyStored);
-        localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
-        return legacyStored.trim();
-      }
-      return DEFAULT_STREAM_ID;
-    }
-
-    const stored = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-    return stored?.trim() || DEFAULT_STREAM_ID;
+    return DEFAULT_STREAM_ID;
   } catch {
     return DEFAULT_STREAM_ID;
   }
@@ -50,28 +32,7 @@ export function loadJoinedStreams(scope?: string): string[] {
   try {
     const scopedStorageKey = scopedKey(JOINED_STREAMS_STORAGE_KEY, scope);
     const scopedRaw = localStorage.getItem(scopedStorageKey);
-    if (scopedRaw) {
-      return parseJoined(scopedRaw);
-    }
-
-    let raw: string | null = null;
-    if (scope?.trim()) {
-      const anonRaw = localStorage.getItem(scopedKey(JOINED_STREAMS_STORAGE_KEY, ANON_SCOPE));
-      if (anonRaw) {
-        localStorage.setItem(scopedStorageKey, anonRaw);
-        return parseJoined(anonRaw);
-      }
-
-      const legacyRaw = localStorage.getItem(JOINED_STREAMS_STORAGE_KEY);
-      if (legacyRaw) {
-        raw = legacyRaw;
-        localStorage.setItem(scopedStorageKey, raw);
-        localStorage.removeItem(JOINED_STREAMS_STORAGE_KEY);
-      }
-    } else {
-      raw = localStorage.getItem(JOINED_STREAMS_STORAGE_KEY);
-    }
-    return parseJoined(raw);
+    return parseJoined(scopedRaw);
   } catch {
     return [DEFAULT_STREAM_ID];
   }

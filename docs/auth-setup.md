@@ -12,7 +12,7 @@ Database credentials used in this sprint:
 - User: `openar`
 - Password: `openar_dev`
 - Database: `openar`
-- Host/port: `localhost:5532`
+- Host/port: `localhost:5433`
 
 ## 2. Configure environment files
 
@@ -20,7 +20,7 @@ Database credentials used in this sprint:
 
 Copy `auth-service/.env.example` and set at minimum:
 
-- `DATABASE_URL=postgresql://openar:openar_dev@localhost:5532/openar`
+- `DATABASE_URL=postgresql://openar:openar_dev@localhost:5433/openar`
 - `BETTER_AUTH_SECRET=<strong-random-secret>`
 - `BETTER_AUTH_URL=http://localhost:3001`
 - `BETTER_AUTH_BASE_PATH=/api/auth`
@@ -30,12 +30,11 @@ Copy `auth-service/.env.example` and set at minimum:
 
 Copy `backend/.env.example` and set at minimum:
 
-- `DATABASE_URL=postgresql+psycopg://openar:openar_dev@localhost:5532/openar`
+- `DATABASE_URL=postgresql+psycopg://openar:openar_dev@localhost:5433/openar`
 - `JWT_SECRET_KEY=<strong-random-secret>`
 - `JWT_ACCESS_TTL_MIN=15`
 - `BETTER_AUTH_BASE_URL=http://localhost:3001`
 - `BETTER_AUTH_BASE_PATH=/api/auth`
-- `CORS_ALLOW_PRIVATE_NETWORK_ORIGINS=false` (optional, keep false in local dev)
 
 ### `frontend/.env`
 

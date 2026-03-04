@@ -160,9 +160,7 @@ export const uploadFileToS3Multipart = async (
 ): Promise<{ key: string }> => {
   const partCount = Math.max(1, Math.ceil(file.size / MULTIPART_CHUNK_SIZE_BYTES));
   const init = await presignMultipartInit(file.name, file.type, visibility, partCount, groupId);
-  const partByNumber = new Map(
-    (init.part_urls || []).map((part) => [part.part_number, part] as const)
-  );
+  const partByNumber = new Map(init.part_urls.map((part) => [part.part_number, part] as const));
 
   if (!init.upload_id || !init.key || partByNumber.size !== partCount) {
     throw new Error("Multipart init returned an invalid payload");
@@ -211,7 +209,7 @@ export const uploadFileToS3Multipart = async (
         loadedByPart.set(currentPartNumber, 0);
         const etag = await uploadPart(
           part.url,
-          part.headers || {},
+          part.headers,
           chunk,
           currentPartNumber,
           activeXhrs,

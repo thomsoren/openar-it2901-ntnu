@@ -117,9 +117,6 @@ To enable optional features, edit the `.env` files:
 
 | Feature | File | Variables |
 |---------|------|-----------|
-| Auth routing | `frontend/.env` | `VITE_BETTER_AUTH_URL`, `VITE_BETTER_AUTH_BASE_PATH` |
-| Auth routing | `backend/.env` | `BETTER_AUTH_BASE_URL`, `BETTER_AUTH_BASE_PATH` |
-| Auth service core | `auth-service/.env` | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `BETTER_AUTH_BASE_PATH` |
 | AIS vessel data | `backend/.env` | `AIS_CLIENT_ID`, `AIS_CLIENT_SECRET` |
 | S3 storage | `backend/.env` | `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_BASE_URL` |
 | Roboflow detector | `backend/.env` | `ROBOFLOW_API_KEY` |
@@ -129,11 +126,14 @@ To enable optional features, edit the `.env` files:
 
 ### Video Setup
 
-Assets are served from S3 (S3-only mode).
+Place a video file for inference at the default path, or configure via environment:
 
-S3 object-key routing is managed in the `media_assets` table (PostgreSQL). Seed system assets via migrations or direct INSERT.
+```bash
+# Default path (relative to backend/)
+data/raw/video/Hurtigruten-Front-Camera-Risoyhamn-Harstad-Dec-28-2011-3min-no-audio.mp4
 
-See `docs/s3-asset-manifest.md` for the full runtime mapping.
+# Or set VIDEO_S3_KEY to stream from S3
+```
 
 ### Model Setup
 
@@ -241,7 +241,7 @@ Python FastAPI backend with real-time detection streaming and AIS integration.
 - Multiprocess inference worker (GPU-accelerated)
 - WebRTC/HLS video streaming via MediaMTX
 - AIS vessel data integration
-- S3-based storage
+- S3-compatible storage with local fallback
 - RESTful API with automatic documentation
 
 **Tech Stack:**
@@ -366,9 +366,8 @@ The project uses:
 
 **S3 Integration:**
 - Presigned URLs for secure access
-- S3 asset health checks at `/health`
+- Local file fallback when S3 unavailable
 - Health checking at `/health`
-- Owner/group upload layout with private-by-default visibility
 
 ### Frontend
 
@@ -412,7 +411,6 @@ The project uses:
 - Check browser console for WebSocket errors
 - Verify video dimensions match overlay dimensions
 - Ensure detections have valid x, y coordinates
-- Follow `docs/detection-triage.md` for a deterministic stream debug sequence
 
 **"Access denied" for OpenBridge components:**
 - Verify GitHub Packages authentication
@@ -449,10 +447,6 @@ The project uses:
 - [Backend Architecture](./docs/backend-architecture.md) - Detailed backend documentation
 - [Frontend Architecture](./docs/architecture.md) - Frontend architecture and components
 - [Backend README](./backend/README.md) - Backend setup and API guide
-- [Auth Setup](./docs/auth-setup.md) - Required auth credentials across backend/frontend/auth-service
-- [Detection Triage](./docs/detection-triage.md) - Fast diagnosis checklist for missing detections
-- [PR Overlap Matrix](./docs/pr-overlap-matrix.md) - Branch overlap governance for current review cycle
-- [S3 Asset Manifest](./docs/s3-asset-manifest.md) - Bucket-first asset mapping for required videos/data
 
 ## License
 
