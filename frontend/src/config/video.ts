@@ -22,13 +22,7 @@ export const VIDEO_CONFIG = {
     `${normalizeBase(baseUrl || MEDIAMTX_HLS_BASE)}/${streamId}/index.m3u8`,
 } as const;
 
-export const FUSION_VIDEO_CONFIG = {
-  WIDTH: 2560,
-  HEIGHT: 1440,
-  SOURCE: `${API_CONFIG.BASE_URL}/api/video/fusion`,
-} as const;
-
-export const FUSION_MOCK_CONFIG = {
+export const MOCK_DATA_CONFIG = {
   WIDTH: 2560,
   HEIGHT: 1440,
   FPS: 25,
@@ -53,9 +47,4 @@ export const DETECTION_CONFIG = {
   WS_URL: (streamId: string) => `${API_CONFIG.WS_BASE_URL}/api/detections/ws/${streamId}`,
   FILE_URL: `${API_CONFIG.BASE_URL}/api/detections/file`,
   POLL_INTERVAL: 1000, // ms (1 FPS - adjust as needed for real-time detection)
-} as const;
-
-// POI overlay configuration
-export const POI_CONFIG = {
-  HEIGHT: 150,
 } as const;

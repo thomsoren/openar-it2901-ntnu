@@ -4,7 +4,7 @@ import { ARControlProvider } from "../components/ar-control-panel/ARControlProvi
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { FUSION_MOCK_CONFIG, FUSION_PIRBADET_CONFIG } from "../config/video";
+import { MOCK_DATA_CONFIG, FUSION_PIRBADET_CONFIG } from "../config/video";
 import { apiFetchPublic } from "../lib/api-client";
 
 interface FusionViewConfig {
@@ -57,13 +57,34 @@ function FusionView({ config }: { config: FusionViewConfig }) {
   }, [config.resetUrl]);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div
+      ref={containerRef}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minHeight: 200,
+      }}
+    >
+      {/* Video as separate layer (like regular streams) — avoids ObcPoiController slot display issues */}
+      <video
+        ref={videoRef}
+        className="background-video"
+        autoPlay
+        loop
+        muted
+        playsInline
+        style={{
+          objectFit: arControls.videoFitMode === "cover" ? "cover" : "contain",
+        }}
+      >
+        <source src={config.videoSource} type="video/mp4" />
+      </video>
       {arControls.detectionVisible && (
         <PoiOverlay
           vessels={vessels}
           videoTransform={videoTransform}
           videoRef={videoRef}
-          videoSource={config.videoSource}
           videoFitMode={arControls.videoFitMode}
         />
       )}
@@ -71,15 +92,15 @@ function FusionView({ config }: { config: FusionViewConfig }) {
   );
 }
 
-export function FusionMockDataView() {
+export function MockDataView() {
   return (
     <FusionView
       config={{
-        width: FUSION_MOCK_CONFIG.WIDTH,
-        height: FUSION_MOCK_CONFIG.HEIGHT,
-        videoSource: FUSION_MOCK_CONFIG.VIDEO_SOURCE,
-        wsUrl: FUSION_MOCK_CONFIG.WS_URL,
-        resetUrl: FUSION_MOCK_CONFIG.RESET_URL,
+        width: MOCK_DATA_CONFIG.WIDTH,
+        height: MOCK_DATA_CONFIG.HEIGHT,
+        videoSource: MOCK_DATA_CONFIG.VIDEO_SOURCE,
+        wsUrl: MOCK_DATA_CONFIG.WS_URL,
+        resetUrl: MOCK_DATA_CONFIG.RESET_URL,
       }}
     />
   );
@@ -102,7 +123,7 @@ export function FusionPirbadetView() {
 export default function Fusion() {
   return (
     <ARControlProvider>
-      <FusionMockDataView />
+      <MockDataView />
     </ARControlProvider>
   );
 }

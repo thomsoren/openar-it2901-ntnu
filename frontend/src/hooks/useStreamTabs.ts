@@ -15,7 +15,7 @@ import {
   useStreamHeartbeats,
 } from "./stream-tabs/effects";
 import { initStreamTabState, streamTabReducer } from "./stream-tabs/reducer";
-import { FUSION_MOCK_TAB_ID } from "./stream-tabs/constants";
+import { MOCK_DATA_TAB_ID } from "./stream-tabs/constants";
 import { useAuth } from "./useAuth";
 
 const WARM_STREAM_CAP = 3;
@@ -92,7 +92,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
         !streamId ||
         seen.has(streamId) ||
         streamId === configureTabId ||
-        streamId === FUSION_MOCK_TAB_ID
+        streamId === MOCK_DATA_TAB_ID
       ) {
         continue;
       }

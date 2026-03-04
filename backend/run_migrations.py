@@ -13,11 +13,12 @@ except ImportError:
 
 import psycopg
 
-# Get DATABASE_URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
+# Get DATABASE_URL from environment (psycopg expects postgresql://, not postgresql+psycopg://)
+_raw = os.getenv("DATABASE_URL")
+if not _raw:
     print("ERROR: DATABASE_URL not set in environment")
     sys.exit(1)
+DATABASE_URL = _raw.replace("postgresql+psycopg://", "postgresql://", 1)
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 

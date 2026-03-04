@@ -154,8 +154,10 @@ class FFmpegDirectPublisher:
         if looping:
             cmd.extend(["-stream_loop", "-1"])
 
-        # Read at native framerate for local files (prevents reading faster than realtime)
-        if not is_remote:
+        # Read at native framerate for file sources (prevents reading faster than realtime).
+        # Local paths and HTTP(S) (S3 presigned URLs) are file-based; RTSP/RTMP are live.
+        is_file_source = not is_remote or is_http
+        if is_file_source:
             cmd.append("-re")
 
         # Low-latency input flags for remote streams

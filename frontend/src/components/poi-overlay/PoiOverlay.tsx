@@ -18,7 +18,7 @@ interface PoiOverlayProps {
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   videoSource?: string;
   videoFitMode?: string;
-  metricsMode?: "default" | "fusion";
+  metricsMode?: "default" | "fusion" | "mock-data";
 }
 
 type PoiMetric = {
@@ -119,6 +119,20 @@ function PoiOverlay({
     const layer = layerElRef.current;
     if (!layer) return;
 
+    // Skip when dimensions are invalid — prevents obc-poi-pointer SVG negative-value errors
+    if (
+      videoTransform.videoWidth <= 0 ||
+      videoTransform.videoHeight <= 0 ||
+      videoTransform.sourceWidth <= 0 ||
+      videoTransform.sourceHeight <= 0
+    ) {
+      for (const el of poiElementsRef.current.values()) {
+        el.parentNode?.removeChild(el);
+      }
+      poiElementsRef.current.clear();
+      return;
+    }
+
     const sourceWidth = videoTransform.sourceWidth;
     const sourceHeight = videoTransform.sourceHeight;
     const detectionWidth =
@@ -154,23 +168,26 @@ function PoiOverlay({
       const hasFusionMetrics =
         Boolean(item.vessel) && matchDistancePx !== null && matchDistancePx !== undefined;
 
-      const trackingId =
-        typeof detection.track_id === "number" ? String(detection.track_id) : "N/A";
       const vesselData =
         arControls.aisCardsVisible && item.vessel
-          ? metricsMode === "fusion"
-            ? [
-                { value: formatMmsiPrefix(item.vessel.mmsi), label: "MMSI", unit: "" },
-                hasFusionMetrics
-                  ? { value: formatNumber(matchDistancePx, 1), label: "Dpx", unit: "px" }
-                  : { value: trackingId, label: "TRK", unit: "" },
-              ]
-            : hasFusionMetrics
+          ? metricsMode === "mock-data"
+            ? [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
+            : metricsMode === "fusion"
               ? [
                   { value: formatMmsiPrefix(item.vessel.mmsi), label: "MMSI", unit: "" },
-                  { value: formatNumber(matchDistancePx, 1), label: "Dpx", unit: "px" },
+                  {
+                    value:
+                      typeof detection.track_id === "number" ? String(detection.track_id) : "N/A",
+                    label: "TRK",
+                    unit: "",
+                  },
                 ]
-              : [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
+              : hasFusionMetrics
+                ? [
+                    { value: formatMmsiPrefix(item.vessel.mmsi), label: "MMSI", unit: "" },
+                    { value: formatNumber(matchDistancePx, 1), label: "Dpx", unit: "px" },
+                  ]
+                : [{ value: item.vessel.speed?.toFixed(1) || "N/A", label: "SPD", unit: "kts" }]
           : [];
 
       let el = poiElementsRef.current.get(trackId);

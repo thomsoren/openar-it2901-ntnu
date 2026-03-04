@@ -67,6 +67,11 @@
   background: #e5e9ef;
 }
 
+/* Ensure content area has height when showing video-only tabs (Fusion Video, Mock data) */
+.stream-card-content--video-tab {
+  min-height: 200px;
+}
+
 .stream-card-content--empty {
   display: flex;
   align-items: center;

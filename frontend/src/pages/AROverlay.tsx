@@ -14,18 +14,14 @@ import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useAuth } from "../hooks/useAuth";
-import { DETECTION_CONFIG, FUSION_PIRBADET_CONFIG } from "../config/video";
+import { DETECTION_CONFIG, FUSION_PIRBADET_CONFIG, MOCK_DATA_CONFIG } from "../config/video";
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import { startStream, stopStream, toStreamError } from "../services/streams";
 import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
-import {
-  DEFAULT_STREAM_ID,
-  FUSION_MOCK_TAB_ID,
-  FUSION_TAB_ID,
-} from "../hooks/stream-tabs/constants";
-import { FusionMockDataView } from "./Fusion";
+import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
+import { apiFetchPublic } from "../lib/api-client";
 import "./AROverlay.css";
 
 const LOADER_STUCK_RECOVERY_MS = 12000;
@@ -61,6 +57,7 @@ function WorkspaceLoader({ label }: { label: string }) {
 
 function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlayProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mockDataVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fusionStartInFlightRef = useRef(false);
   const fusionStartLastAttemptMsRef = useRef(0);
@@ -104,14 +101,14 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   const mediaAuthLoading = Boolean(auth.session) && auth.authBridgeStatus === "loading";
   const mediaAuthError = Boolean(auth.session) && auth.authBridgeStatus === "error";
   const mediaAuthReady = !auth.session || auth.authBridgeStatus === "ready";
-  const activeIsFusionMock = activeTabId === FUSION_MOCK_TAB_ID;
+  const activeIsMockData = activeTabId === MOCK_DATA_TAB_ID;
   const fusionRunningStream = useMemo(
     () => runningStreams.find((stream) => stream.stream_id === FUSION_TAB_ID) ?? null,
     [runningStreams]
   );
   const effectiveActiveStream = activeTabId === FUSION_TAB_ID ? fusionRunningStream : activeStream;
   const activePlayableStreamId =
-    !activeIsSetup && !activeIsFusionMock && effectiveActiveStream
+    !activeIsSetup && !activeIsMockData && effectiveActiveStream
       ? effectiveActiveStream.stream_id
       : null;
 
@@ -136,10 +133,14 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     url: detectionWsUrl,
     enabled:
       wsEnabled &&
-      !activeIsFusionMock &&
+      !activeIsMockData &&
       (activeTabId !== FUSION_TAB_ID || Boolean(fusionRunningStream)),
   });
-  const overlayVessels = vessels;
+  const { vessels: mockDataVessels } = useDetectionsWebSocket({
+    url: MOCK_DATA_CONFIG.WS_URL,
+    enabled: wsEnabled && activeIsMockData,
+  });
+  const overlayVessels = activeIsMockData ? mockDataVessels : vessels;
   const streamsById = useMemo(
     () => new Map(runningStreams.map((stream) => [stream.stream_id, stream] as const)),
     [runningStreams]
@@ -196,6 +197,29 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     undefined,
     imageLoaded
   );
+  const mockDataVideoTransform = useVideoTransform(
+    mockDataVideoRef,
+    containerRef,
+    arControls.videoFitMode,
+    MOCK_DATA_CONFIG.WIDTH,
+    MOCK_DATA_CONFIG.HEIGHT,
+    activeIsMockData
+  );
+
+  useEffect(() => {
+    if (!activeIsMockData) return;
+    let cancelled = false;
+    apiFetchPublic(MOCK_DATA_CONFIG.RESET_URL, { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          /* Reset triggers fusion timer; WebSocket streams data */
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeIsMockData]);
 
   useEffect(() => {
     if (activeTabId !== FUSION_TAB_ID || fusionRunningStream) {
@@ -238,7 +262,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     if (
       !isTabsHydrated ||
       activeIsSetup ||
-      activeIsFusionMock ||
+      activeIsMockData ||
       !mediaAuthReady ||
       !effectiveActiveStream ||
       !showVideoLoader
@@ -277,7 +301,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     };
   }, [
     activeIsSetup,
-    activeIsFusionMock,
+    activeIsMockData,
     activeTabId,
     effectiveActiveStream,
     forceReconnect,
@@ -292,7 +316,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     if (
       !isTabsHydrated ||
       activeIsSetup ||
-      activeIsFusionMock ||
+      activeIsMockData ||
       !mediaAuthReady ||
       !effectiveActiveStream ||
       !imageLoaded
@@ -318,7 +342,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     };
   }, [
     activeIsSetup,
-    activeIsFusionMock,
+    activeIsMockData,
     connect,
     disconnect,
     effectiveActiveStream,
@@ -334,7 +358,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
       if (
         !tabId ||
         tabId === DEFAULT_STREAM_ID ||
-        tabId === FUSION_MOCK_TAB_ID ||
+        tabId === MOCK_DATA_TAB_ID ||
         tabId === FUSION_TAB_ID
       ) {
         return;
@@ -372,7 +396,13 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
             ref={containerRef}
             className={[
               "stream-card-content",
-              activeIsSetup ? "" : !effectiveActiveStream ? "stream-card-content--empty" : "",
+              activeIsSetup
+                ? ""
+                : activeIsMockData
+                  ? "stream-card-content--video-tab"
+                  : !effectiveActiveStream
+                    ? "stream-card-content--empty"
+                    : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -391,11 +421,40 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
               </>
             )}
 
-            {isTabsHydrated && !activeIsSetup && activeIsFusionMock && <FusionMockDataView />}
+            {isTabsHydrated && !activeIsSetup && activeIsMockData && (
+              <>
+                <video
+                  ref={mockDataVideoRef}
+                  className="background-video"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{
+                    objectFit: arControls.videoFitMode,
+                    backgroundColor: "#e5e9ef",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <source src={MOCK_DATA_CONFIG.VIDEO_SOURCE} type="video/mp4" />
+                </video>
+                {arControls.detectionVisible && (
+                  <PoiErrorBoundary>
+                    <PoiOverlay
+                      vessels={mockDataVessels}
+                      videoTransform={mockDataVideoTransform}
+                      videoRef={mockDataVideoRef}
+                      videoFitMode={arControls.videoFitMode}
+                      metricsMode="mock-data"
+                    />
+                  </PoiErrorBoundary>
+                )}
+              </>
+            )}
 
             {isTabsHydrated &&
               !activeIsSetup &&
-              !activeIsFusionMock &&
+              !activeIsMockData &&
               !effectiveActiveStream &&
               activeTabId !== FUSION_TAB_ID &&
               "No running streams. Join or create one from the sidebar."}
@@ -405,7 +464,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
               activeTabId === FUSION_TAB_ID &&
               !fusionRunningStream && <WorkspaceLoader label="Starting Fusion stream..." />}
 
-            {isTabsHydrated && !activeIsSetup && !activeIsFusionMock && effectiveActiveStream && (
+            {isTabsHydrated && !activeIsSetup && !activeIsMockData && effectiveActiveStream && (
               <>
                 {!mediaAuthReady && (
                   <WorkspaceLoader

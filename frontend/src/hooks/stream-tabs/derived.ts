@@ -5,8 +5,8 @@ import {
   DEFAULT_STREAM_TITLE,
   FUSION_TAB_ID,
   FUSION_TAB_TITLE,
-  FUSION_MOCK_TAB_ID,
-  FUSION_MOCK_TAB_TITLE,
+  MOCK_DATA_TAB_ID,
+  MOCK_DATA_TAB_TITLE,
 } from "./constants";
 
 export function nextAvailableStreamId(
@@ -30,7 +30,7 @@ export function hasConfiguredStreams(
   return joinedStreamIds.some(
     (id) =>
       id !== DEFAULT_STREAM_ID &&
-      id !== FUSION_MOCK_TAB_ID &&
+      id !== MOCK_DATA_TAB_ID &&
       id !== FUSION_TAB_ID &&
       id !== configureTabId
   );
@@ -52,8 +52,8 @@ export function buildTabsAndActiveStream(
   for (const id of joinedStreamIds) {
     if (seen.has(id) || id === configureTabId) continue;
     seen.add(id);
-    if (id === FUSION_MOCK_TAB_ID) {
-      tabs.push({ id, title: FUSION_MOCK_TAB_TITLE });
+    if (id === MOCK_DATA_TAB_ID) {
+      tabs.push({ id, title: MOCK_DATA_TAB_TITLE });
       continue;
     }
     if (id === FUSION_TAB_ID) {

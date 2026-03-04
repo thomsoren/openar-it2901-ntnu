@@ -11,7 +11,14 @@ from ultralytics import RTDETR
 
 from common.config import MODELS_DIR
 from common.types import Detection
-from cv.config import CONFIDENCE, IOU_THRESHOLD, AGNOSTIC_NMS, BYTETRACK_YAML, MODEL_INPUT_SIZE
+from cv.config import (
+    CONFIDENCE,
+    DETECTOR_DEVICE,
+    IOU_THRESHOLD,
+    AGNOSTIC_NMS,
+    BYTETRACK_YAML,
+    MODEL_INPUT_SIZE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +42,18 @@ class RTDETRDetector:
         self.model = self._load_model(model_path)
 
     def _select_device(self) -> str:
-        """Select the best available PyTorch device: CUDA > MPS > CPU."""
+        """Select PyTorch device. Uses DETECTOR_DEVICE env if set, else auto: CUDA > MPS > CPU."""
+        if DETECTOR_DEVICE:
+            if DETECTOR_DEVICE == "cuda" and torch.cuda.is_available():
+                logger.info("DETECTOR_DEVICE=cuda: %s", torch.cuda.get_device_name(0))
+                return "cuda"
+            if DETECTOR_DEVICE == "mps" and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                logger.info("DETECTOR_DEVICE=mps: Using Apple MPS (Metal Performance Shaders)")
+                return "mps"
+            if DETECTOR_DEVICE == "cpu":
+                logger.info("DETECTOR_DEVICE=cpu: Using CPU")
+                return "cpu"
+            logger.warning("DETECTOR_DEVICE=%s not available, falling back to auto", DETECTOR_DEVICE)
         if torch.cuda.is_available():
             logger.info("CUDA device: %s", torch.cuda.get_device_name(0))
             return "cuda"

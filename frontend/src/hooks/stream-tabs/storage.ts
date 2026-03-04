@@ -1,4 +1,8 @@
-import { DEFAULT_STREAM_ID } from "./constants";
+import { DEFAULT_STREAM_ID, MOCK_DATA_TAB_ID } from "./constants";
+
+/** Legacy tab IDs — migrate or filter when loading from storage */
+const LEGACY_MOCK_DATA_TAB_ID = "fusion-mock";
+const REMOVED_FUSION_VIDEO_TAB_ID = "fusion-video";
 
 const ACTIVE_TAB_STORAGE_KEY = "openar.selectedStreamId";
 const JOINED_STREAMS_STORAGE_KEY = "openar.joinedStreamIds";
@@ -12,7 +16,11 @@ export function loadActiveTabId(scope?: string): string {
   try {
     const scopedStorageKey = scopedKey(ACTIVE_TAB_STORAGE_KEY, scope);
     const scopedStored = localStorage.getItem(scopedStorageKey);
-    if (scopedStored?.trim()) return scopedStored.trim();
+    const id = scopedStored?.trim();
+    if (id) {
+      if (id === REMOVED_FUSION_VIDEO_TAB_ID) return DEFAULT_STREAM_ID;
+      return id === LEGACY_MOCK_DATA_TAB_ID ? MOCK_DATA_TAB_ID : id;
+    }
 
     return DEFAULT_STREAM_ID;
   } catch {
@@ -25,7 +33,10 @@ export function loadJoinedStreams(scope?: string): string[] {
     if (!raw) return [DEFAULT_STREAM_ID];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return [DEFAULT_STREAM_ID];
-    const validIds = parsed.filter((item): item is string => typeof item === "string" && !!item);
+    const validIds = parsed
+      .filter((item): item is string => typeof item === "string" && !!item)
+      .filter((id) => id !== REMOVED_FUSION_VIDEO_TAB_ID)
+      .map((id) => (id === LEGACY_MOCK_DATA_TAB_ID ? MOCK_DATA_TAB_ID : id));
     return validIds.length > 0 ? validIds : [DEFAULT_STREAM_ID];
   };
 
