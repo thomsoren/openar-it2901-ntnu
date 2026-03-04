@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
 import {
   CircularProgressState,
@@ -15,6 +15,9 @@ import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useAuth } from "../hooks/useAuth";
 import { DETECTION_CONFIG } from "../config/video";
+import { AISDataPanel } from "../components/AISDataPanel/AISDataPanel";
+import { type Vessel } from "../types/detection";
+import { vesselToAISData } from "../utils/vesselToAISData";
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import { stopStream, toStreamError } from "../services/streams";
@@ -72,6 +75,8 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
   useEffect(() => {
     onAuthGateVisibleChange?.(showingAuthGate);
   }, [showingAuthGate, onAuthGateVisibleChange]);
+
+  const [selectedVessel, setSelectedVessel] = useState<Vessel | null>(null);
 
   const wsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
 
@@ -213,6 +218,14 @@ function DatavisionInner({ externalStreamId, onAuthGateVisibleChange }: Datavisi
                     detectionFrame={
                       videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null
                     }
+                    onVesselClick={(dv) => (dv.vessel ? setSelectedVessel(dv.vessel) : undefined)}
+                  />
+                )}
+
+                {selectedVessel && (
+                  <AISDataPanel
+                    vessel={vesselToAISData(selectedVessel)}
+                    onClose={() => setSelectedVessel(null)}
                   />
                 )}
               </>
