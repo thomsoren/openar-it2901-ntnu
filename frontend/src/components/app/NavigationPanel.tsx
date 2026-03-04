@@ -65,6 +65,11 @@ export function NavigationPanel({
           onClick={() => onNavigate("ais")}
         />
         <ObcNavigationItem
+          label="Media Library"
+          checked={currentPage === "media-library"}
+          onClick={() => onNavigate("media-library")}
+        />
+        <ObcNavigationItem
           label="Components"
           checked={currentPage === "components"}
           onClick={() => onNavigate("components")}

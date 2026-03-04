@@ -8,6 +8,7 @@ import Fusion from "./pages/Fusion";
 import Components from "./pages/Components";
 import Datavision from "./pages/Datavision";
 import ControlCustomization from "./pages/ControlCustomization";
+import MediaLibrary from "./pages/MediaLibrary";
 import { useClock } from "./hooks/useClock";
 import { useNavigation } from "./hooks/useNavigation";
 import { useStreamAccessPanel } from "./hooks/useStreamAccessPanel";
@@ -195,6 +196,7 @@ function App() {
             }
           />
           <Route path="/ais" element={<Ais />} />
+          <Route path="/media-library" element={<MediaLibrary />} />
           <Route path="/components" element={<Components />} />
           <Route path="/fusion" element={<Fusion />} />
           <Route path="/control-customization" element={<ControlCustomization />} />

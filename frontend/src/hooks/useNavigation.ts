@@ -1,11 +1,18 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-export type PageId = "datavision" | "ais" | "components" | "fusion" | "control-customization";
+export type PageId =
+  | "datavision"
+  | "ais"
+  | "media-library"
+  | "components"
+  | "fusion"
+  | "control-customization";
 
 const PAGE_PATHS: Record<PageId, string> = {
   datavision: "/datavision",
   ais: "/ais",
+  "media-library": "/media-library",
   components: "/components",
   fusion: "/fusion",
   "control-customization": "/control-customization",
@@ -14,6 +21,7 @@ const PAGE_PATHS: Record<PageId, string> = {
 const pageLabels: Record<PageId, string> = {
   datavision: "Datavision",
   ais: "AIS",
+  "media-library": "Media Library",
   components: "Components",
   fusion: "Fusion",
   "control-customization": "Control Customization",
