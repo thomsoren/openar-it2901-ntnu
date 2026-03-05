@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["auth"])
 
-_BETTER_AUTH_COOKIE_PREFIXES = ("better-auth.",)
+_BETTER_AUTH_COOKIE_PREFIXES = ("better-auth.", "__Secure-better-auth.")
 
 
 def _filter_better_auth_cookies(cookie_header: str) -> str:
