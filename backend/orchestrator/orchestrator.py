@@ -17,6 +17,7 @@ from orchestrator.exceptions import (
     StreamNotFoundError,
 )
 from orchestrator.types import StreamConfig, StreamHandle
+from services.stream_service import resolve_stream_source
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class WorkerOrchestrator:
     def _start_ffmpeg(config: StreamConfig) -> subprocess.Popen | None:
         """Start an FFmpeg direct publisher for the given stream config."""
         pub = FFmpegDirectPublisher(
-            source_url=config.source_url,
+            source_url=resolve_stream_source(config.source_url) or config.source_url,
             stream_id=config.stream_id,
             loop=config.loop,
         )
@@ -73,7 +74,7 @@ class WorkerOrchestrator:
 
     def _spawn_handle(self, config: StreamConfig, viewer_count: int = 0) -> StreamHandle:
         decode_thread = DecodeThread(
-            source_url=config.source_url,
+            source_url=resolve_stream_source(config.source_url) or config.source_url,
             stream_id=config.stream_id,
             loop=config.loop,
         )
@@ -330,7 +331,7 @@ class WorkerOrchestrator:
                 logger.warning("Restarting decode thread for stream '%s' now", stream_id)
                 try:
                     new_decode = DecodeThread(
-                        source_url=handle.config.source_url,
+                        source_url=resolve_stream_source(handle.config.source_url) or handle.config.source_url,
                         stream_id=stream_id,
                         loop=handle.config.loop,
                     )

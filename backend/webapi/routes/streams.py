@@ -223,7 +223,7 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
         bad_request("source_url is required for this stream")
     await _validate_s3_source_limits(request.source_url, source_url)
 
-    config = StreamConfig(stream_id=stream_id, source_url=source_url, loop=request.loop)
+    config = StreamConfig(stream_id=stream_id, source_url=request.source_url or source_url, loop=request.loop)
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
     )

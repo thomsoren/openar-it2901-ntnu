@@ -73,6 +73,8 @@ def coerce_s3_key(raw: str) -> str | None:
     s = raw.strip()
     if s.startswith("s3://"):
         s = s[5:].strip().lstrip("/")
+    elif "://" in s:
+        return None  # http/https/rtsp/etc — not an S3 key
     else:
         s = s.strip().lstrip("/")
     return s if s else None

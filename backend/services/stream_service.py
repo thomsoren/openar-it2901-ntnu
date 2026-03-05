@@ -20,7 +20,7 @@ def resolve_default_source() -> str | None:
     # Fall back to S3 system asset if local file not present
     try:
         key = s3.resolve_system_asset_key("video")
-        return _presign_s3_for_ffmpeg(key)
+        return f"s3://{key}"
     except Exception:
         return None
 
