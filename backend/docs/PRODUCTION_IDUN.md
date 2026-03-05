@@ -4,6 +4,13 @@ When running on a VM without a GPU (e.g. Hetzner), the CV model cannot run local
 
 ## 1. Backend (Hetzner VM)
 
+**FFmpeg is required** for transcoding video to MediaMTX. The `backend/nixpacks.toml` adds `ffmpeg`, `libstdc++6` (for NumPy/OpenCV), and OpenGL libs via `aptPkgs` at build time. No custom entrypoint needed.
+
+If Nixpacks isn't used, add **Coolify Custom Docker Options**:
+```
+--entrypoint "sh -c 'apt-get update && apt-get install -y ffmpeg libstdc++6 && cd /app && exec /opt/venv/bin/python -m main'"
+```
+
 Set in your environment:
 
 ```env

@@ -131,6 +131,8 @@ The hook logs detection processing to the console:
 - `video.ts` - Video, API, and POI configuration
   - `API_CONFIG` - Backend API base URL (configurable via VITE_API_URL env var)
   - `VIDEO_CONFIG` - Video dimensions, API endpoints for video/detections
+  - `POI_CONFIG` - POI marker settings (height, etc.)
+  - `POI_CONFIG` - POI marker settings (height, etc.)
 
 **API Integration:**
 
