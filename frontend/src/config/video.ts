@@ -10,16 +10,18 @@ export const API_CONFIG = {
   WS_BASE_URL,
 } as const;
 
-const MEDIAMTX_WHEP_BASE = import.meta.env.VITE_MEDIAMTX_WHEP_BASE || "http://localhost:8889";
-const MEDIAMTX_HLS_BASE = import.meta.env.VITE_MEDIAMTX_HLS_BASE || "http://localhost:8888";
+const MEDIAMTX_BASE =
+  import.meta.env.VITE_MEDIAMTX_URL ||
+  import.meta.env.VITE_MEDIAMTX_WHEP_BASE ||
+  "http://localhost:8889";
 
 const normalizeBase = (value: string): string => value.replace(/\/$/, "");
 
 export const VIDEO_CONFIG = {
   MEDIAMTX_WHEP_URL: (streamId: string, baseUrl?: string) =>
-    `${normalizeBase(baseUrl || MEDIAMTX_WHEP_BASE)}/${streamId}/whep`,
+    `${normalizeBase(baseUrl || MEDIAMTX_BASE)}/${streamId}/whep`,
   MEDIAMTX_HLS_URL: (streamId: string, baseUrl?: string) =>
-    `${normalizeBase(baseUrl || MEDIAMTX_HLS_BASE)}/${streamId}/index.m3u8`,
+    `${normalizeBase(baseUrl || MEDIAMTX_BASE)}/${streamId}/index.m3u8`,
 } as const;
 
 export const MOCK_DATA_CONFIG = {

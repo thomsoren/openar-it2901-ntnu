@@ -1,6 +1,6 @@
 services:
   mediamtx:
-    image: bluenviron/mediamtx:1.16.1
+    image: bluenviron/mediamtx:1.16.3
     container_name: mediamtx
     extra_hosts:
       - "host.docker.internal:host-gateway"

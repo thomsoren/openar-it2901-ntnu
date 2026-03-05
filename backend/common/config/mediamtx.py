@@ -8,8 +8,14 @@ from settings._env import get_bool, get_int, get_str
 
 MEDIAMTX_ENABLED = get_bool("MEDIAMTX_ENABLED", default=True)
 MEDIAMTX_RTSP_BASE = get_str("MEDIAMTX_RTSP_BASE", "rtsp://localhost:8854").rstrip("/")
-MEDIAMTX_WHEP_BASE = get_str("MEDIAMTX_WHEP_BASE", "http://localhost:8889").rstrip("/")
-MEDIAMTX_HLS_BASE = get_str("MEDIAMTX_HLS_BASE", "http://localhost:8888").rstrip("/")
+# Single base URL for playback. Set for production (e.g. https://mediamtx.example.com).
+# When unset, local defaults: WHEP=8889, HLS=8888 (different ports).
+_mediamtx_url = get_str("MEDIAMTX_URL", "").rstrip("/")
+if _mediamtx_url:
+    MEDIAMTX_WHEP_BASE = MEDIAMTX_HLS_BASE = _mediamtx_url
+else:
+    MEDIAMTX_WHEP_BASE = "http://localhost:8889"
+    MEDIAMTX_HLS_BASE = "http://localhost:8888"
 
 MEDIAMTX_PUBLISH_USER = get_str("MEDIAMTX_PUBLISH_USER", "")
 MEDIAMTX_PUBLISH_PASS = get_str("MEDIAMTX_PUBLISH_PASS", "")

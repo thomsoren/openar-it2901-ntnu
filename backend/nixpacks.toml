@@ -1,6 +1,6 @@
 # nixpacks.toml — system deps for NumPy/OpenCV/FFmpeg
 [phases.setup]
-aptPkgs = ["...", "libgl1", "libglib2.0-0", "libstdc++6", "ffmpeg"]
+aptPkgs = ["libgl1", "libglib2.0-0", "libstdc++6", "ffmpeg"]
 
 [start]
 cmd = "uv run main.py"

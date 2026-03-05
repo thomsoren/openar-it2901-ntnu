@@ -30,6 +30,12 @@ export const auth = betterAuth({
   plugins: [username()],
   advanced: {
     useSecureCookies: env.nodeEnv === "production",
+    ...(env.cookieDomain && {
+      crossSubDomainCookies: {
+        enabled: true,
+        domain: env.cookieDomain,
+      },
+    }),
   },
 });
 
