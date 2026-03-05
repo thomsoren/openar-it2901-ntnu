@@ -37,6 +37,7 @@ IDUN_API_KEY = os.environ.get("IDUN_API_KEY", "")
 HEARTBEAT_INTERVAL_S = 30.0
 RECONNECT_BASE_S = 1.0
 RECONNECT_MAX_S = 30.0
+STATUS_LOG_INTERVAL_S = 30.0
 
 shutdown_event = asyncio.Event()
 
@@ -119,7 +120,10 @@ async def _process_loop(
     """Receive frames and control messages, send back detections."""
     is_paused = True
     inference_count = 0
+    total_detections_sent = 0
     last_inference_time = time.monotonic()
+    last_status_log = time.monotonic()
+    current_stream_id = ""
 
     async for message in ws:
         if shutdown_event.is_set():
@@ -166,6 +170,17 @@ async def _process_loop(
                     frame.shape[0],
                 )
 
+            total_detections_sent += len(detections)
+
+            # Periodic status log
+            now_status = time.monotonic()
+            if now_status - last_status_log >= STATUS_LOG_INTERVAL_S:
+                logger.info(
+                    "Status: stream='%s' frames=%d detections_sent=%d inference_fps=%.1f paused=%s",
+                    current_stream_id, inference_count, total_detections_sent, inf_fps, is_paused,
+                )
+                last_status_log = now_status
+
             # Build response (same format as InferenceThread payload)
             vessels = [
                 {
@@ -200,6 +215,7 @@ async def _process_loop(
             stream_id = msg.get("stream_id", "")
             logger.info("Resumed for stream '%s'", stream_id)
             is_paused = False
+            current_stream_id = stream_id
             inference_count = 0
 
         elif msg_type == "stream_changed":
@@ -212,7 +228,12 @@ async def _process_loop(
                 msg.get("fps", 0.0),
             )
             detector.reset_tracker()
+            current_stream_id = stream_id
             inference_count = 0
+
+        elif msg_type == "ping":
+            await ws.send(json.dumps({"type": "pong"}))
+            logger.info("Ping received, pong sent")
 
         else:
             logger.debug("Unknown message type: %s", msg_type)
