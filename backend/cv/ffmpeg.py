@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import threading
 from urllib.parse import urlparse
 
 from common.config.mediamtx import (
@@ -231,10 +232,21 @@ class FFmpegDirectPublisher:
                 cmd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
             logger.info("[%s] FFmpeg direct publisher started (%s, pid=%s)",
                         self.stream_id, label, self.process.pid)
+            proc = self.process
+            sid = self.stream_id
+            def _log_stderr(p: subprocess.Popen, s: str) -> None:
+                try:
+                    for raw in p.stderr:  # type: ignore[union-attr]
+                        line = raw.decode(errors="replace").rstrip()
+                        if line:
+                            logger.error("[%s] FFmpeg: %s", s, line)
+                except Exception:
+                    pass
+            threading.Thread(target=_log_stderr, args=(proc, sid), daemon=True).start()
             return True
         except FileNotFoundError:
             self.enabled = False
