@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --account=ie-idi
+#SBATCH --account=share-ie-idi
 #SBATCH --job-name=openar-inference
 #SBATCH --partition=GPUQ
-#SBATCH --gres=gpu:1
-#SBATCH --time=08:00:00
-#SBATCH --mem=16G
+#SBATCH --gres=gpu:v100:1
+#SBATCH --time=2-00:00:00
+#SBATCH --mem=32G
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH --output=logs/inference_%j.out
@@ -20,14 +20,14 @@ cd "${WORK_DIR}"
 
 module purge
 module load Python/3.11.5-GCCcore-13.2.0
-module load PyTorch/2.1.2-foss-2023b-CUDA-12.1.1
 
 if [ ! -d "${ENV_DIR}" ]; then
     echo "Creating virtual environment at ${ENV_DIR}"
-    python -m venv --system-site-packages "${ENV_DIR}"
+    python -m venv "${ENV_DIR}"
 fi
 source "${ENV_DIR}/bin/activate"
 
+pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu118
 pip install -q -r requirements.txt
 
 if [ -z "${COOLIFY_WS_URL}" ]; then
