@@ -21,6 +21,7 @@ class AppSettings:
     )
     default_stream_id: str = field(default_factory=lambda: get_str("DEFAULT_STREAM_ID", "default"))
     protect_default_stream: bool = field(default_factory=lambda: get_bool("PROTECT_DEFAULT_STREAM", False))
+    skip_default_stream: bool = field(default_factory=lambda: get_bool("SKIP_DEFAULT_STREAM", False))
     stream_id_pattern: Pattern[str] = field(
         default_factory=lambda: re.compile(r"^[A-Za-z0-9_-]{1,64}$")
     )

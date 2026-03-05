@@ -104,7 +104,9 @@ async def lifespan(_: FastAPI):
     )
     state.orchestrator.start_monitoring()
 
-    source_url = resolve_default_source()
+    source_url = resolve_default_source() if not app_settings.skip_default_stream else None
+    if app_settings.skip_default_stream:
+        logger.info("SKIP_DEFAULT_STREAM=true; not auto-starting default stream")
     if source_url:
         try:
             state.orchestrator.start_stream(

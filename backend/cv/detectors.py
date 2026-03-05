@@ -83,8 +83,11 @@ class RTDETRDetector:
             logger.info("Loading model from: %s", default_path)
             return RTDETR(str(default_path))
 
-        logger.info("Loading default model: %s", self.DEFAULT_MODEL)
-        return RTDETR(self.DEFAULT_MODEL)
+        raise FileNotFoundError(
+            f"Model file '{self.DEFAULT_MODEL}' not found in {MODELS_DIR}. "
+            "For production without a local GPU, set IDUN_ENABLED=true and connect "
+            "an IDUN inference worker via WebSocket."
+        )
 
     def detect(self, frame: np.ndarray, track: bool = False) -> list[Detection]:
         half = self._use_half
