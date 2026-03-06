@@ -14,7 +14,8 @@ import {
   ProgressBarMode,
   ProgressBarType,
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar";
-import { startStream, toStreamError, uploadStreamSource } from "../../services/streams";
+import { startStream, startStreamFromKey, toStreamError } from "../../services/streams";
+import { uploadFileToS3Multipart } from "../../services/media";
 import "./StreamSetup.css";
 
 type StreamSetupProps = {
@@ -28,6 +29,9 @@ type SelectedFile = {
   file: File;
   addedAt: Date;
 };
+
+const MAX_VIDEO_DURATION_SECONDS = 5 * 60;
+const MAX_VIDEO_SIZE_BYTES = 300 * 1024 * 1024;
 
 const formatDate = (date: Date) => {
   const day = String(date.getDate()).padStart(2, "0");
@@ -54,11 +58,36 @@ const formatTime = (date: Date) => {
   return date.toLocaleTimeString("en-GB", { hour12: false });
 };
 
+const readVideoDurationSeconds = (file: File): Promise<number | null> =>
+  new Promise((resolve) => {
+    const probeUrl = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.src = probeUrl;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(probeUrl);
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    video.onloadedmetadata = () => {
+      const duration = Number(video.duration);
+      cleanup();
+      resolve(Number.isFinite(duration) && duration > 0 ? duration : null);
+    };
+    video.onerror = () => {
+      cleanup();
+      resolve(null);
+    };
+  });
+
 export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const abortUploadRef = useRef<(() => void) | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [status, setStatus] = useState<SetupStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
@@ -69,14 +98,14 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
 
   useEffect(() => {
     return () => {
-      xhrRef.current?.abort();
+      abortUploadRef.current?.();
       if (previewUrlRef.current) {
         URL.revokeObjectURL(previewUrlRef.current);
       }
     };
   }, []);
 
-  const busy = status === "uploading" || status === "starting";
+  const busy = isValidating || status === "uploading" || status === "starting";
   const hasFiles = files.length > 0;
   const activeFile = files[activeIndex] ?? null;
 
@@ -103,7 +132,11 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setStatus("starting");
     setMessage(null);
     try {
-      await startStream(tabId, { sourceUrl: source, loop: true });
+      if (source) {
+        await startStream(tabId, { sourceUrl: source, loop: true });
+      } else {
+        await startStream(tabId, { loop: true });
+      }
       onStreamReady(tabId);
     } catch (err) {
       setStatus("error");
@@ -117,20 +150,23 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setMessage(null);
 
     try {
-      await uploadStreamSource(
-        tabId,
+      const { key } = await uploadFileToS3Multipart(
         file,
+        "private",
         (percentage) => setUploadProgress(percentage),
-        (request) => {
-          xhrRef.current = request;
+        (abortFn) => {
+          abortUploadRef.current = abortFn;
         }
       );
 
-      xhrRef.current = null;
+      abortUploadRef.current = null;
       setUploadProgress(100);
+      setStatus("starting");
+      setMessage("Upload complete. Starting stream from S3…");
+      await startStreamFromKey(tabId, key, true);
       onStreamReady(tabId);
     } catch (err) {
-      xhrRef.current = null;
+      abortUploadRef.current = null;
       setStatus("error");
       setMessage(toStreamError(err, "Upload failed"));
     }
@@ -148,6 +184,37 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setPreviewFromFile(file);
     setStatus("idle");
     setMessage(null);
+  };
+
+  const validateAndAddFile = async (file: File) => {
+    setIsValidating(true);
+    setStatus("idle");
+    setMessage("Validating file (max 5 minutes)…");
+    try {
+      if (file.size > MAX_VIDEO_SIZE_BYTES) {
+        setStatus("error");
+        setMessage(
+          `File too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max 300 MB for demo uploads.`
+        );
+        return;
+      }
+      const duration = await readVideoDurationSeconds(file);
+      if (!duration) {
+        setStatus("error");
+        setMessage("Could not read video duration. Please choose a valid video file.");
+        return;
+      }
+      if (duration > MAX_VIDEO_DURATION_SECONDS) {
+        setStatus("error");
+        setMessage(
+          `Video is ${(duration / 60).toFixed(1)} minutes. Max allowed is 5 minutes for demo uploads.`
+        );
+        return;
+      }
+      addFile(file);
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const removeFile = (index: number) => {
@@ -175,7 +242,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
 
   const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
-    if (file) addFile(file);
+    if (file) void validateAndAddFile(file);
     if (event.target) event.target.value = "";
   };
 
@@ -184,11 +251,11 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
     setIsDragActive(false);
     if (busy) return;
     const file = event.dataTransfer.files?.[0] ?? null;
-    if (file) addFile(file);
+    if (file) void validateAndAddFile(file);
   };
 
   const handleUseDefault = () => {
-    void startStreamWithSource();
+    void startStreamWithSource(undefined);
   };
 
   const dragProps = {
@@ -252,7 +319,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
           <div className="stream-setup__header">
             <div className="stream-setup__title">Upload video file</div>
             <div className="stream-setup__subtitle">
-              Select, preview and upload video file to S3 using a pre-signed URL
+              Select and preview a short demo clip (max 5 min). Video is uploaded directly to S3.
             </div>
           </div>
 
@@ -345,9 +412,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
               </div>
             )}
 
-            {status === "starting" && (
-              <div className="stream-setup__status">Starting stream...</div>
-            )}
+            {status === "starting" && <div className="stream-setup__status">Starting stream…</div>}
 
             <div className="stream-setup__modal-footer">
               <ObcButton
@@ -399,7 +464,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
           <ObiUpIec slot="trailing-icon" />
         </ObcRichButton>
 
-        {status === "starting" && <div className="stream-setup__status">Starting stream...</div>}
+        {status === "starting" && <div className="stream-setup__status">Starting stream…</div>}
 
         {message && (
           <div className="stream-setup__message" data-status={status}>

@@ -157,3 +157,11 @@ class TestHeartbeat:
     def test_invalid_id_returns_400(self, stream_app_client):
         resp = stream_app_client.post("/api/streams/bad..id/heartbeat")
         assert resp.status_code == 400
+
+    def test_accepts_keep_warm_query(self, stream_app_client):
+        stream_app_client.post(
+            "/api/streams/hb-warm/start",
+            json={"source_url": "rtsp://example.com/live"},
+        )
+        resp = stream_app_client.post("/api/streams/hb-warm/heartbeat?keep_warm_s=30")
+        assert resp.status_code == 204

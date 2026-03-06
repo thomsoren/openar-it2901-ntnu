@@ -3,11 +3,16 @@ import react from "@vitejs/plugin-react";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // Set target to es2022 to avoid Vite's default downleveling which breaks maplibre-gl's use of class fields.
+  // Set target to es2022 to avoid downleveling issues in maplibre-gl.
   optimizeDeps: {
     esbuildOptions: {
       target: "es2022",
     },
+    // Avoid brittle prebundle cache issues with large web component packages.
+    exclude: [
+      "@ocean-industries-concept-lab/openbridge-webcomponents",
+      "@ocean-industries-concept-lab/openbridge-webcomponents-react",
+    ],
   },
   build: {
     target: "es2022",

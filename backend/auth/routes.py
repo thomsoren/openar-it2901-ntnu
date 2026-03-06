@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["auth"])
 
-_BETTER_AUTH_COOKIE_PREFIXES = ("better-auth.",)
+_BETTER_AUTH_COOKIE_PREFIXES = ("better-auth.", "__Secure-better-auth.")
 
 
 def _filter_better_auth_cookies(cookie_header: str) -> str:
@@ -47,6 +47,7 @@ class TokenExchangeResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    is_admin: bool = False
 
 
 class MeResponse(BaseModel):
@@ -165,6 +166,7 @@ async def exchange_token(
     return TokenExchangeResponse(
         access_token=access_token,
         expires_in=settings.jwt_access_ttl_min * 60,
+        is_admin=user.is_admin,
     )
 
 

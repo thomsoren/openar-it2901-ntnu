@@ -35,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authBridgeError, setAuthBridgeError] = useState("");
   const [authBootstrapNonce, setAuthBootstrapNonce] = useState(0);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
@@ -65,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!session?.user?.id) {
       clearApiAccessToken();
+      setIsAdmin(false);
       setAuthBridgeStatus("idle");
       setAuthBridgeError("");
       return;
@@ -84,9 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const exchangePayload = (await exchangeResponse.json()) as {
         access_token: string;
         expires_in: number;
+        is_admin?: boolean;
       };
 
       setApiAccessToken(exchangePayload.access_token);
+      setIsAdmin(exchangePayload.is_admin ?? false);
       return exchangePayload.expires_in;
     };
 
@@ -184,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authBridgeStatus,
       authBridgeError,
       isSigningOut,
+      isAdmin,
       userMenuState,
       userLabel,
       userInitials,
@@ -198,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authBridgeStatus,
       authBridgeError,
       isSigningOut,
+      isAdmin,
       userMenuState,
       userLabel,
       userInitials,

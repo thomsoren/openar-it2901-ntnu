@@ -2,6 +2,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import { VIDEO_CONFIG } from "../../config/video";
 import { useWhepConnection } from "../../hooks/useWhepConnection";
+import { getApiAccessToken } from "../../lib/api-client";
 
 type VideoTransport = "webrtc" | "hls";
 type VideoConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
@@ -25,10 +26,21 @@ export interface VideoPlayerProps {
   autoPlay?: boolean;
   playsInline?: boolean;
   sessionToken?: number;
+  allowHlsFallback?: boolean;
 }
 
 const withCacheBust = (url: string, sessionToken: number): string =>
   `${url}${url.includes("?") ? "&" : "?"}v=${sessionToken}`;
+
+const withAccessToken = (url: string): string => {
+  const token = getApiAccessToken();
+  if (!token) {
+    return url;
+  }
+  const urlObj = new URL(url, window.location.href);
+  urlObj.searchParams.set("access_token", token);
+  return urlObj.toString();
+};
 
 function VideoPlayer({
   streamId,
@@ -43,12 +55,12 @@ function VideoPlayer({
   autoPlay = true,
   playsInline = true,
   sessionToken = 0,
+  allowHlsFallback = true,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [transport, setTransport] = useState<VideoTransport>("webrtc");
   const [hlsState, setHlsState] = useState<VideoConnectionStatus>("idle");
   const [hlsError, setHlsError] = useState<string | null>(null);
-  const whepRetryCount = useRef(0);
 
   const resolvedWhepUrl = useMemo(() => {
     if (whepUrl) {
@@ -68,7 +80,7 @@ function VideoPlayer({
     setTransport("webrtc");
     setHlsState("idle");
     setHlsError(null);
-  }, [streamId, sessionToken, resolvedWhepUrl, resolvedHlsUrl]);
+  }, [resolvedHlsUrl, resolvedWhepUrl, sessionToken, streamId]);
 
   useEffect(() => {
     if (videoRef.current && onVideoReady) {
@@ -90,7 +102,7 @@ function VideoPlayer({
     if (whepStatus !== "error") {
       return;
     }
-    if (resolvedHlsUrl) {
+    if (allowHlsFallback && resolvedHlsUrl) {
       setTransport("hls");
       return;
     }
@@ -99,33 +111,15 @@ function VideoPlayer({
       status: "error",
       error: whepError || "WebRTC failed and no HLS fallback URL is available",
     });
-  }, [onStatusChange, resolvedHlsUrl, transport, whepError, whepStatus]);
-
-  // Always prefer WebRTC: if we are on HLS fallback, periodically retry WHEP.
-  // Stop retrying after 30 attempts to avoid infinite teardown/rebuild of HLS.
-  useEffect(() => {
-    if (transport !== "hls") {
-      whepRetryCount.current = 0;
-      return;
-    }
-    if (!resolvedWhepUrl) {
-      return;
-    }
-    if (whepRetryCount.current >= 30) {
-      return;
-    }
-
-    const retryTimer = window.setTimeout(() => {
-      whepRetryCount.current += 1;
-      setTransport("webrtc");
-      setHlsState("idle");
-      setHlsError(null);
-    }, 5000);
-
-    return () => {
-      window.clearTimeout(retryTimer);
-    };
-  }, [resolvedWhepUrl, sessionToken, transport]);
+  }, [
+    allowHlsFallback,
+    onStatusChange,
+    resolvedHlsUrl,
+    streamId,
+    transport,
+    whepError,
+    whepStatus,
+  ]);
 
   useEffect(() => {
     if (transport !== "hls") {
@@ -145,7 +139,7 @@ function VideoPlayer({
     }
 
     let hls: Hls | null = null;
-    const sourceUrl = withCacheBust(resolvedHlsUrl, sessionToken);
+    const sourceUrl = withCacheBust(withAccessToken(resolvedHlsUrl), sessionToken);
 
     setHlsState("connecting");
     setHlsError(null);
@@ -169,6 +163,12 @@ function VideoPlayer({
       hls = new Hls({
         lowLatencyMode: true,
         backBufferLength: 30,
+        xhrSetup: (xhr) => {
+          const token = getApiAccessToken();
+          if (token) {
+            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+          }
+        },
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) {

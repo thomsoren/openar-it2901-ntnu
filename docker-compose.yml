@@ -33,8 +33,10 @@ services:
       start_period: 10s
 
   mediamtx:
-    image: bluenviron/mediamtx:1.16.1
+    image: bluenviron/mediamtx:1.16.3
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8854:8854"       # RTSP ingest
       - "8888:8888"       # HLS egress

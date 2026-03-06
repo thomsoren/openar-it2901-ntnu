@@ -15,6 +15,11 @@ import {
   useStreamHeartbeats,
 } from "./stream-tabs/effects";
 import { initStreamTabState, streamTabReducer } from "./stream-tabs/reducer";
+import { MOCK_DATA_TAB_ID } from "./stream-tabs/constants";
+import { useAuth } from "./useAuth";
+
+const WARM_STREAM_CAP = 3;
+const KEEP_WARM_SECONDS = 30;
 
 interface TabSelectedDetail {
   tab: TabData;
@@ -29,6 +34,7 @@ export interface UseStreamTabsOptions {
 export interface UseStreamTabsReturn {
   tabs: TabData[];
   activeTabId: string;
+  isTabsHydrated: boolean;
   showAddButton: boolean;
   showCloseButtons: boolean;
   activeIsSetup: boolean;
@@ -40,6 +46,7 @@ export interface UseStreamTabsReturn {
   handleStreamReady: (streamId: string) => void;
   runningStreams: StreamSummary[];
   joinedStreamIds: string[];
+  warmStreamIds: string[];
   configureTabId: string | null;
   refreshStreams: () => Promise<void>;
   streamError: string | null;
@@ -55,19 +62,48 @@ export interface UseStreamTabsReturn {
  */
 export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabsReturn {
   const { externalStreamId } = options;
+  const { session, isSessionPending } = useAuth();
+  const storageScope = isSessionPending ? undefined : (session?.user?.id ?? "anon");
+  const isScopeReady = !isSessionPending && !!storageScope;
 
-  const [state, dispatch] = useReducer(streamTabReducer, undefined, initStreamTabState);
-  const { activeTabId, joinedStreamIds, runningStreams, configureTabId } = state;
+  const [state, dispatch] = useReducer(
+    streamTabReducer,
+    storageScope ?? "anon",
+    initStreamTabState
+  );
+  const { activeTabId, joinedStreamIds, runningStreams, configureTabId, hydratedScope } = state;
   const sharedRunningStreams = useRunningStreamsSnapshot();
 
   const [streamError, setStreamError] = useState<string | null>(null);
 
   const activeIsSetup = configureTabId === activeTabId;
-  const wsEnabled = !activeIsSetup;
+  const isTabsHydrated = isScopeReady && hydratedScope === storageScope;
+  const wsEnabled = isTabsHydrated && !activeIsSetup;
 
   const hasConfigured = hasConfiguredStreams(joinedStreamIds, configureTabId);
   const showAddButton = hasConfigured;
   const showCloseButtons = hasConfigured;
+  const warmStreamIds = useMemo(() => {
+    const ordered = [activeTabId, ...joinedStreamIds];
+    const seen = new Set<string>();
+    const selected: string[] = [];
+    for (const streamId of ordered) {
+      if (
+        !streamId ||
+        seen.has(streamId) ||
+        streamId === configureTabId ||
+        streamId === MOCK_DATA_TAB_ID
+      ) {
+        continue;
+      }
+      seen.add(streamId);
+      selected.push(streamId);
+      if (selected.length >= WARM_STREAM_CAP) {
+        break;
+      }
+    }
+    return selected;
+  }, [activeTabId, configureTabId, joinedStreamIds]);
 
   const { tabs, activeStream } = useMemo(
     () => buildTabsAndActiveStream(joinedStreamIds, runningStreams, configureTabId, activeTabId),
@@ -90,9 +126,15 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   }, []);
 
   useEnsureDefaultStream({ dispatch, setStreamError });
-  useStreamHeartbeats(joinedStreamIds, configureTabId);
-  usePersistStreamTabs(activeTabId, joinedStreamIds);
+  useStreamHeartbeats(warmStreamIds, KEEP_WARM_SECONDS);
+  const canPersistScope = isScopeReady && hydratedScope === storageScope;
+  usePersistStreamTabs(activeTabId, joinedStreamIds, storageScope, canPersistScope);
   useExternalStreamSelection(externalStreamId, { dispatch, setStreamError });
+
+  useEffect(() => {
+    if (!isScopeReady) return;
+    dispatch({ type: "RESET_FROM_STORAGE", state: initStreamTabState(storageScope) });
+  }, [storageScope, isScopeReady]);
 
   const handleTabSelected = useCallback((event: CustomEvent<TabSelectedDetail>) => {
     const tabId = event.detail?.id;
@@ -119,6 +161,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
   return {
     tabs,
     activeTabId,
+    isTabsHydrated,
     showAddButton,
     showCloseButtons,
     activeIsSetup,
@@ -130,6 +173,7 @@ export function useStreamTabs(options: UseStreamTabsOptions = {}): UseStreamTabs
     handleStreamReady,
     runningStreams,
     joinedStreamIds,
+    warmStreamIds,
     configureTabId,
     refreshStreams,
     streamError,

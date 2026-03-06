@@ -1,5 +1,9 @@
 """CV detector and tracker configuration."""
+import os
 from pathlib import Path
+
+# Detector device: "cuda", "mps" (Mac Metal), "cpu", or "" for auto (CUDA > MPS > CPU)
+DETECTOR_DEVICE = (os.getenv("DETECTOR_DEVICE") or "").strip().lower() or None
 
 # Detector settings
 CONFIDENCE = 0.15  # Lower to catch marginal detections, ByteTrack filters false positives

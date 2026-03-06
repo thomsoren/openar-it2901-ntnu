@@ -17,8 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 def _is_remote_stream_url(source_url: str) -> bool:
+    """True if URL uses a network scheme (rtsp, http, etc.), False for local file paths."""
     scheme = urlparse(source_url).scheme.lower()
-    return scheme in {"rtsp", "http", "https", "rtmp", "udp", "tcp"}
+    return scheme in {"rtsp", "rtsps", "http", "https", "rtmp", "udp", "tcp"}
+
+
+def _is_live_stream_url(source_url: str) -> bool:
+    scheme = urlparse(source_url).scheme.lower()
+    return scheme in {"rtsp", "rtsps", "rtmp", "udp", "tcp"}
+
+
+def _is_http_source_url(source_url: str) -> bool:
+    scheme = urlparse(source_url).scheme.lower()
+    return scheme in {"http", "https"}
 
 
 def _jittered_backoff(current: float, maximum: float) -> float:
@@ -52,7 +63,8 @@ class DecodeThread:
 
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
-        self._is_remote = _is_remote_stream_url(source_url)
+        self._is_live_source = _is_live_stream_url(source_url)
+        self._is_http_source = _is_http_source_url(source_url)
 
     def start(self) -> bool:
         """Open the video source and start the reader thread.
@@ -113,7 +125,7 @@ class DecodeThread:
 
     def _reader_loop(self, cap: cv2.VideoCapture) -> None:
         source_fps = self._fps
-        allow_catchup_skips = not self._is_remote
+        allow_catchup_skips = not self._is_live_source
         max_catchup_skip = cv_runtime_settings.stream_max_catchup_skip
         max_reconnect_attempts = cv_runtime_settings.stream_max_reconnect_attempts
 
@@ -128,7 +140,7 @@ class DecodeThread:
         try:
             while not self._stopped.is_set():
                 if not cap.isOpened():
-                    if self._is_remote:
+                    if self._is_live_source or self._is_http_source:
                         reconnect_attempts += 1
                         if reconnect_attempts > max_reconnect_attempts:
                             logger.error(
@@ -143,7 +155,7 @@ class DecodeThread:
                         )
                         time.sleep(reconnect_backoff)
                         reconnect_backoff = _jittered_backoff(reconnect_backoff, MAX_RECONNECT_BACKOFF_SEC)
-                        cap = cv2.VideoCapture(self.source_url)
+                        cap = cv2.VideoCapture(self.source_url, cv2.CAP_FFMPEG)
                         continue
                     break
 
@@ -160,7 +172,7 @@ class DecodeThread:
 
                 ret, frame = cap.read()
                 if not ret:
-                    if self._is_remote:
+                    if self._is_live_source:
                         cap.release()
                         reconnect_attempts += 1
                         if reconnect_attempts > max_reconnect_attempts:
@@ -176,13 +188,40 @@ class DecodeThread:
                         )
                         time.sleep(reconnect_backoff)
                         reconnect_backoff = _jittered_backoff(reconnect_backoff, MAX_RECONNECT_BACKOFF_SEC)
-                        cap = cv2.VideoCapture(self.source_url)
+                        cap = cv2.VideoCapture(self.source_url, cv2.CAP_FFMPEG)
                         if cap.isOpened():
                             reconnect_backoff = INITIAL_RECONNECT_BACKOFF_SEC
                             reconnect_attempts = 0
                             start_mono = time.monotonic()
                             next_read_time = time.monotonic()
                             continue
+                        continue
+                    if self._is_http_source and self.loop:
+                        # HTTP(S) sources here are S3/object-storage files.
+                        # Reopen immediately on EOF to avoid reconnect-gap flicker.
+                        cap.release()
+                        cap = cv2.VideoCapture(self.source_url, cv2.CAP_FFMPEG)
+                        if cap.isOpened():
+                            frame_idx = -1
+                            start_mono = time.monotonic()
+                            next_read_time = time.monotonic()
+                            last_ts_ms = 0.0
+                            reconnect_backoff = INITIAL_RECONNECT_BACKOFF_SEC
+                            reconnect_attempts = 0
+                            continue
+                        reconnect_attempts += 1
+                        if reconnect_attempts > max_reconnect_attempts:
+                            logger.error(
+                                "[%s] HTTP source reopen failed after %d attempts",
+                                self.stream_id, max_reconnect_attempts,
+                            )
+                            break
+                        logger.warning(
+                            "[%s] HTTP source reopen failed; retrying in %.1fs (attempt %d/%d)",
+                            self.stream_id, reconnect_backoff, reconnect_attempts, max_reconnect_attempts,
+                        )
+                        time.sleep(reconnect_backoff)
+                        reconnect_backoff = _jittered_backoff(reconnect_backoff, MAX_RECONNECT_BACKOFF_SEC)
                         continue
                     if self.loop:
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -213,7 +252,7 @@ class DecodeThread:
                     self._timestamp_ms = ts
 
                 # FPS pacing for local file playback
-                if not self._is_remote:
+                if not self._is_live_source:
                     next_read_time += read_interval
                     sleep = next_read_time - time.monotonic()
                     if sleep > 0:

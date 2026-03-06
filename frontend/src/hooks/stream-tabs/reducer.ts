@@ -1,6 +1,6 @@
 import type { StreamSummary } from "../../types/stream";
 import { nextAvailableStreamId } from "./derived";
-import { DEFAULT_STREAM_ID } from "./constants";
+import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "./constants";
 import { loadActiveTabId, loadJoinedStreams } from "./storage";
 import { areStreamsEquivalent } from "./running-streams-store";
 
@@ -10,6 +10,7 @@ export interface StreamTabState {
   runningStreams: StreamSummary[];
   configureTabId: string | null;
   hasLoadedStreamList: boolean;
+  hydratedScope: string | null;
 }
 
 export type StreamTabAction =
@@ -18,7 +19,8 @@ export type StreamTabAction =
   | { type: "SELECT_TAB"; tabId: string }
   | { type: "CONFIGURE_COMPLETE"; streamId: string }
   | { type: "SET_RUNNING_STREAMS"; streams: StreamSummary[] }
-  | { type: "JOIN_EXTERNAL_STREAM"; streamId: string };
+  | { type: "JOIN_EXTERNAL_STREAM"; streamId: string }
+  | { type: "RESET_FROM_STORAGE"; state: StreamTabState };
 
 export function streamTabReducer(state: StreamTabState, action: StreamTabAction): StreamTabState {
   switch (action.type) {
@@ -35,7 +37,8 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
 
     case "CLOSE_TAB": {
       const { tabId } = action;
-      if (tabId === DEFAULT_STREAM_ID) return state;
+      if (tabId === DEFAULT_STREAM_ID || tabId === MOCK_DATA_TAB_ID || tabId === FUSION_TAB_ID)
+        return state;
 
       const isConfigureTab = state.configureTabId === tabId;
       const nextJoined = state.joinedStreamIds.filter((id) => id !== tabId);
@@ -50,7 +53,11 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
       }
 
       const hasConfigured = nextJoined.some(
-        (id) => id !== DEFAULT_STREAM_ID && id !== nextConfigureTab
+        (id) =>
+          id !== DEFAULT_STREAM_ID &&
+          id !== MOCK_DATA_TAB_ID &&
+          id !== FUSION_TAB_ID &&
+          id !== nextConfigureTab
       );
       if (!hasConfigured && !nextConfigureTab) {
         const newId = nextAvailableStreamId(nextRunning, nextJoined);
@@ -100,6 +107,8 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
       const nextJoined = state.joinedStreamIds.filter(
         (id) =>
           id === DEFAULT_STREAM_ID ||
+          id === MOCK_DATA_TAB_ID ||
+          id === FUSION_TAB_ID ||
           id === state.configureTabId ||
           id === state.activeTabId ||
           available.has(id)
@@ -121,7 +130,11 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
       }
 
       const hasConfigured = nextJoinedIds.some(
-        (id) => id !== DEFAULT_STREAM_ID && id !== nextConfigureTab
+        (id) =>
+          id !== DEFAULT_STREAM_ID &&
+          id !== MOCK_DATA_TAB_ID &&
+          id !== FUSION_TAB_ID &&
+          id !== nextConfigureTab
       );
       if (!hasConfigured && !nextConfigureTab) {
         const newId = nextAvailableStreamId(streams, nextJoinedIds);
@@ -151,28 +164,47 @@ export function streamTabReducer(state: StreamTabState, action: StreamTabAction)
       };
     }
 
+    case "RESET_FROM_STORAGE":
+      return action.state;
+
     default:
       return state;
   }
 }
 
-export function initStreamTabState(): StreamTabState {
-  const joined = loadJoinedStreams();
+export function initStreamTabState(storageScope?: string): StreamTabState {
+  const joined = loadJoinedStreams(storageScope);
+  const persistedActiveTabId = loadActiveTabId(storageScope);
+  if (persistedActiveTabId && !joined.includes(persistedActiveTabId)) {
+    joined.push(persistedActiveTabId);
+  }
   if (!joined.includes(DEFAULT_STREAM_ID)) {
     joined.unshift(DEFAULT_STREAM_ID);
   }
+  if (!joined.includes(MOCK_DATA_TAB_ID)) {
+    joined.push(MOCK_DATA_TAB_ID);
+  }
+  if (!joined.includes(FUSION_TAB_ID)) {
+    joined.push(FUSION_TAB_ID);
+  }
 
-  const hasConfigured = joined.some((id) => id !== DEFAULT_STREAM_ID);
+  const hasConfigured = joined.some(
+    (id) => id !== DEFAULT_STREAM_ID && id !== MOCK_DATA_TAB_ID && id !== FUSION_TAB_ID
+  );
   const configureTabId = hasConfigured ? null : "stream";
   if (configureTabId && !joined.includes(configureTabId)) {
     joined.push(configureTabId);
   }
+  const activeTabId = joined.includes(persistedActiveTabId)
+    ? persistedActiveTabId
+    : DEFAULT_STREAM_ID;
 
   return {
-    activeTabId: hasConfigured ? loadActiveTabId() : DEFAULT_STREAM_ID,
+    activeTabId,
     joinedStreamIds: joined,
     runningStreams: [],
     configureTabId,
     hasLoadedStreamList: false,
+    hydratedScope: storageScope ?? null,
   };
 }

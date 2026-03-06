@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import threading
 from urllib.parse import urlparse
 
 from common.config.mediamtx import (
@@ -117,8 +118,16 @@ class FFmpegDirectPublisher:
     def _probe(self) -> None:
         """Detect source codec to decide copy vs transcode."""
         is_remote = _is_remote(self.source_url)
-        looping = self.loop and not is_remote
+        is_http = self.source_url.lower().startswith(("http://", "https://"))
 
+        # Skip ffprobe for HTTP(S) sources — it requires a network download and
+        # blocks the caller for several seconds. Just transcode directly.
+        if is_http:
+            self._can_copy = False
+            logger.info("[%s] HTTP(S) source — skipping probe, will transcode", self.stream_id)
+            return
+
+        looping = self.loop and not is_remote
         codec = _probe_video_codec(self.source_url)
         if codec and codec.lower() in ("h264",) and not looping:
             # Copy mode only for non-looping sources. Looping with -c:v copy
@@ -136,15 +145,20 @@ class FFmpegDirectPublisher:
 
     def _build_command(self, use_copy: bool, transcode_codec: str | None = None) -> list[str]:
         is_remote = _is_remote(self.source_url)
-        looping = self.loop and not is_remote
+        is_http = self.source_url.lower().startswith(("http://", "https://"))
+        # HTTP(S) sources are file-based (S3 presigned URLs) and support looping.
+        # RTSP/RTMP are live streams and must not use -stream_loop.
+        looping = self.loop and (not is_remote or is_http)
         cmd = [FFMPEG_BIN, "-loglevel", "error"]
 
-        # Looping for local files
+        # Looping for local files and HTTP(S) file sources
         if looping:
             cmd.extend(["-stream_loop", "-1"])
 
-        # Read at native framerate for files (prevents reading faster than realtime)
-        if not is_remote:
+        # Read at native framerate for file sources (prevents reading faster than realtime).
+        # Local paths and HTTP(S) (S3 presigned URLs) are file-based; RTSP/RTMP are live.
+        is_file_source = not is_remote or is_http
+        if is_file_source:
             cmd.append("-re")
 
         # Low-latency input flags for remote streams
@@ -218,10 +232,21 @@ class FFmpegDirectPublisher:
                 cmd,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
             logger.info("[%s] FFmpeg direct publisher started (%s, pid=%s)",
                         self.stream_id, label, self.process.pid)
+            proc = self.process
+            sid = self.stream_id
+            def _log_stderr(p: subprocess.Popen, s: str) -> None:
+                try:
+                    for raw in p.stderr:  # type: ignore[union-attr]
+                        line = raw.decode(errors="replace").rstrip()
+                        if line:
+                            logger.error("[%s] FFmpeg: %s", s, line)
+                except Exception:
+                    pass
+            threading.Thread(target=_log_stderr, args=(proc, sid), daemon=True).start()
             return True
         except FileNotFoundError:
             self.enabled = False

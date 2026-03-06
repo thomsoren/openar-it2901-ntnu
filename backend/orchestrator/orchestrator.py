@@ -17,6 +17,7 @@ from orchestrator.exceptions import (
     StreamNotFoundError,
 )
 from orchestrator.types import StreamConfig, StreamHandle
+from services.stream_service import resolve_stream_source
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class WorkerOrchestrator:
     def _start_ffmpeg(config: StreamConfig) -> subprocess.Popen | None:
         """Start an FFmpeg direct publisher for the given stream config."""
         pub = FFmpegDirectPublisher(
-            source_url=config.source_url,
+            source_url=resolve_stream_source(config.source_url) or config.source_url,
             stream_id=config.stream_id,
             loop=config.loop,
         )
@@ -73,7 +74,7 @@ class WorkerOrchestrator:
 
     def _spawn_handle(self, config: StreamConfig, viewer_count: int = 0) -> StreamHandle:
         decode_thread = DecodeThread(
-            source_url=config.source_url,
+            source_url=resolve_stream_source(config.source_url) or config.source_url,
             stream_id=config.stream_id,
             loop=config.loop,
         )
@@ -124,11 +125,20 @@ class WorkerOrchestrator:
                 raise StreamNotFoundError(f"Stream '{stream_id}' not found")
             return handle
 
-    def touch_stream(self, stream_id: str) -> None:
+    def touch_stream(self, stream_id: str, keep_warm_s: float | None = None) -> None:
         with self._lock:
             handle = self._workers.get(stream_id)
             if handle:
-                handle.last_heartbeat = time.monotonic()
+                now = time.monotonic()
+                handle.last_heartbeat = now
+                if keep_warm_s is not None and keep_warm_s > 0:
+                    handle.warm_until = max(handle.warm_until, now + keep_warm_s)
+                    logger.debug(
+                        "Warm lease extended for stream '%s' by %.1fs (warm_until=%.3f)",
+                        stream_id,
+                        keep_warm_s,
+                        handle.warm_until,
+                    )
 
     def acquire_stream_viewer(self, stream_id: str) -> StreamHandle:
         with self._lock:
@@ -213,6 +223,11 @@ class WorkerOrchestrator:
                 if handle.viewer_count > 0:
                     handle.no_viewer_since = 0.0
                     continue
+                if handle.warm_until > now:
+                    # Keep no_viewer_since fresh while a warm lease is active so
+                    # streams still get the full no-viewer grace period once lease ends.
+                    handle.no_viewer_since = now
+                    continue
                 if handle.no_viewer_since == 0.0:
                     handle.no_viewer_since = now
                     continue
@@ -264,14 +279,25 @@ class WorkerOrchestrator:
                     pass
 
             for sid in no_viewer_ids:
+                no_viewer_for = 0.0
+                warm_remaining = 0.0
                 with self._lock:
                     handle = self._workers.get(sid)
                     if not handle or handle.viewer_count != 0:
                         continue
+                    no_viewer_for = (
+                        now - handle.no_viewer_since if handle.no_viewer_since > 0 else 0.0
+                    )
+                    warm_remaining = max(0.0, handle.warm_until - now)
                 logger.info(
-                    "Stopping stream '%s' (no active viewers for %.0fs)",
+                    (
+                        "Stopping stream '%s' (no active viewers for %.0fs, "
+                        "elapsed_no_viewer=%.1fs, warm_remaining=%.1fs)"
+                    ),
                     sid,
                     self._no_viewer_timeout_seconds,
+                    no_viewer_for,
+                    warm_remaining,
                 )
                 try:
                     # Keep stream config so a later viewer can auto-restart.
@@ -305,7 +331,7 @@ class WorkerOrchestrator:
                 logger.warning("Restarting decode thread for stream '%s' now", stream_id)
                 try:
                     new_decode = DecodeThread(
-                        source_url=handle.config.source_url,
+                        source_url=resolve_stream_source(handle.config.source_url) or handle.config.source_url,
                         stream_id=stream_id,
                         loop=handle.config.loop,
                     )

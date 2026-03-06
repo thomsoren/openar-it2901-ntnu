@@ -46,6 +46,6 @@ backend/cv/output/
 
 # Model weights
 *.pt
-backend/data/SeaShips/
-backend/data/CombinedShips/
-backend/data/ais_logs/
+backend/cv/training/runs*
+backend/data*
+backend/cv/training/logs*

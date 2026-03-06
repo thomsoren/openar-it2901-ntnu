@@ -1,30 +1,37 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { API_CONFIG, FUSION_VIDEO_CONFIG } from "../config/video";
+import { MOCK_DATA_CONFIG, FUSION_PIRBADET_CONFIG } from "../config/video";
 import { apiFetchPublic } from "../lib/api-client";
 
-function FusionInner() {
+interface FusionViewConfig {
+  width: number;
+  height: number;
+  videoSource: string;
+  wsUrl: string;
+  resetUrl: string;
+}
+
+function FusionView({ config }: { config: FusionViewConfig }) {
   const [detectionsEnabled, setDetectionsEnabled] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { state: arControls } = useARControls();
-  // Use WebSocket for real-time fusion detections
-  const { vessels, isLoading, error, isConnected, fps } = useDetectionsWebSocket({
-    url: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws`,
+  const { vessels } = useDetectionsWebSocket({
+    url: config.wsUrl,
     enabled: detectionsEnabled,
   });
 
-  // Calculate video transform for accurate POI positioning
   const videoTransform = useVideoTransform(
     videoRef,
     containerRef,
     arControls.videoFitMode,
-    FUSION_VIDEO_CONFIG.WIDTH,
-    FUSION_VIDEO_CONFIG.HEIGHT
+    config.width,
+    config.height,
+    arControls.detectionVisible
   );
 
   useEffect(() => {
@@ -32,9 +39,9 @@ function FusionInner() {
 
     const resetFusionTimer = async () => {
       try {
-        await apiFetchPublic(`${API_CONFIG.BASE_URL}/api/fusion/reset`, { method: "POST" });
+        await apiFetchPublic(config.resetUrl, { method: "POST" });
       } catch {
-        // Reset failed — continue anyway
+        // Continue even if timer reset fails.
       } finally {
         if (!cancelled) {
           setDetectionsEnabled(true);
@@ -42,47 +49,81 @@ function FusionInner() {
       }
     };
 
-    resetFusionTimer();
+    void resetFusionTimer();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [config.resetUrl]);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div
+      ref={containerRef}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minHeight: 200,
+      }}
+    >
+      {/* Video as separate layer (like regular streams) — avoids ObcPoiController slot display issues */}
       <video
         ref={videoRef}
+        className="background-video"
         autoPlay
         loop
         muted
         playsInline
-        className="background-video"
-        style={{ objectFit: arControls.videoFitMode }}
+        style={{
+          objectFit: arControls.videoFitMode === "cover" ? "cover" : "contain",
+        }}
       >
-        <source src={FUSION_VIDEO_CONFIG.SOURCE} type="video/mp4" />
+        <source src={config.videoSource} type="video/mp4" />
       </video>
-
-      {isLoading && <div className="status-overlay">Loading FVessel demo...</div>}
-      {error && <div className="status-overlay status-error">Error: {error}</div>}
-      {!isLoading && !error && (
-        <div className="status-overlay status-info">
-          {isConnected ? "Connected" : "Disconnected"} | FVessel | Fusion | {fps.toFixed(1)} FPS |
-          Vessels: {vessels.length}
-        </div>
-      )}
-
       {arControls.detectionVisible && (
-        <PoiOverlay vessels={vessels} videoTransform={videoTransform} />
+        <PoiOverlay
+          vessels={vessels}
+          videoTransform={videoTransform}
+          videoRef={videoRef}
+          videoFitMode={arControls.videoFitMode}
+        />
       )}
     </div>
+  );
+}
+
+export function MockDataView() {
+  return (
+    <FusionView
+      config={{
+        width: MOCK_DATA_CONFIG.WIDTH,
+        height: MOCK_DATA_CONFIG.HEIGHT,
+        videoSource: MOCK_DATA_CONFIG.VIDEO_SOURCE,
+        wsUrl: MOCK_DATA_CONFIG.WS_URL,
+        resetUrl: MOCK_DATA_CONFIG.RESET_URL,
+      }}
+    />
+  );
+}
+
+export function FusionPirbadetView() {
+  return (
+    <FusionView
+      config={{
+        width: FUSION_PIRBADET_CONFIG.WIDTH,
+        height: FUSION_PIRBADET_CONFIG.HEIGHT,
+        videoSource: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
+        wsUrl: FUSION_PIRBADET_CONFIG.WS_URL,
+        resetUrl: FUSION_PIRBADET_CONFIG.RESET_URL,
+      }}
+    />
   );
 }
 
 export default function Fusion() {
   return (
     <ARControlProvider>
-      <FusionInner />
+      <MockDataView />
     </ARControlProvider>
   );
 }

@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 
+from cv.ais_matcher import create_matcher_from_env
 from cv.decode_thread import DecodeThread
 from cv.detectors import RTDETRDetector
 from cv.publisher import DetectionPublisher
@@ -37,6 +38,12 @@ class InferenceThread:
 
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
+
+        self._ais_matcher = create_matcher_from_env()
+        if self._ais_matcher.enabled:
+            logger.info("AIS sensor fusion enabled")
+        else:
+            logger.info("AIS sensor fusion disabled (no configuration)")
 
     def set_active_stream(self, stream_id: str | None) -> None:
         with self._lock:
@@ -135,6 +142,11 @@ class InferenceThread:
                 active_id, frame_idx, frame.shape[1], frame.shape[0],
             )
         self._last_processed_idx[active_id] = frame_idx
+        vessels = self._ais_matcher.match_detections(
+            detections=detections,
+            frame_index=frame_idx,
+            fps=decode_thread.fps,
+        )
 
         payload = {
             "type": "detections",
@@ -143,10 +155,7 @@ class InferenceThread:
             "frame_sent_at_ms": time.time() * 1000.0,
             "fps": decode_thread.fps,
             "inference_fps": round(inf_fps, 1),
-            "vessels": [
-                {"detection": d.model_dump(), "vessel": None}
-                for d in detections
-            ],
+            "vessels": vessels,
         }
         self._publisher.publish(active_id, payload)
 

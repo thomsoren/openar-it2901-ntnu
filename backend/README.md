@@ -80,8 +80,8 @@ Configure in `.env`:
 ```bash
 MEDIAMTX_ENABLED=true
 MEDIAMTX_RTSP_BASE=rtsp://localhost:8854
-MEDIAMTX_WHEP_BASE=http://localhost:8889
-MEDIAMTX_HLS_BASE=http://localhost:8888
+# Production only: MEDIAMTX_URL=https://mediamtx.example.com
+# Local dev: leave unset (defaults: 8889 WHEP, 8888 HLS)
 ```
 
 ## S3 Storage

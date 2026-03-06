@@ -109,6 +109,13 @@ class TestHeartbeat:
         orch = orchestrator_factory()
         orch.touch_stream("unknown")  # Should not raise
 
+    def test_touch_sets_warm_until_when_requested(self, orchestrator_factory):
+        orch = orchestrator_factory()
+        handle = orch.start_stream(_cfg("s1"))
+        before = time.monotonic()
+        orch.touch_stream("s1", keep_warm_s=0.5)
+        assert handle.warm_until >= before + 0.5
+
 
 # ---------- Viewer Acquire / Release ----------
 

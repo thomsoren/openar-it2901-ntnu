@@ -1,6 +1,6 @@
-# nixpacks.toml
+# nixpacks.toml — system deps for NumPy/OpenCV/FFmpeg
 [phases.setup]
-aptPkgs = ["libgl1", "libglib2.0-0"]
+aptPkgs = ["libgl1", "libglib2.0-0", "libstdc++6", "ffmpeg"]
 
 [start]
-cmd = "uv run uvicorn main:app --host 0.0.0.0 --port 8443 --workers 4"
+cmd = "uv run main.py"

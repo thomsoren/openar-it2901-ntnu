@@ -45,6 +45,8 @@ export const env = {
     "http://127.0.0.1:5273",
     "http://127.0.0.1:5173",
   ]),
+  /** Root domain for cross-subdomain cookies (e.g. demo.bridgable.ai). When set, cookies are shared across app/api/auth subdomains. */
+  cookieDomain: getOptional("BETTER_AUTH_COOKIE_DOMAIN", ""),
   databaseUrl: getRequired("DATABASE_URL"),
 };
 

@@ -1,18 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import "./App.css";
-import Ais from "./pages/Ais";
-import Fusion from "./pages/Fusion";
-import Components from "./pages/Components";
-import Datavision from "./pages/Datavision";
-import ControlCustomization from "./pages/ControlCustomization";
 import MediaLibrary from "./pages/MediaLibrary";
+import Ais from "./pages/Ais";
+import Components from "./pages/Components";
+import AROverlay from "./pages/AROverlay";
+import ControlCustomization from "./pages/ControlCustomization";
 import { useClock } from "./hooks/useClock";
 import { useNavigation } from "./hooks/useNavigation";
-import { useStreamAccessPanel } from "./hooks/useStreamAccessPanel";
-import { toStreamError } from "./services/streams";
 import { AppTopBar } from "./components/app/AppTopBar";
 import { NavigationPanel } from "./components/app/NavigationPanel";
 import { UserPanel } from "./components/app/UserPanel";
@@ -40,15 +37,12 @@ function App() {
   const userPanelRef = useRef<HTMLDivElement>(null);
   const brillianceRef = useRef<HTMLDivElement>(null);
 
-  const handleAuthGateVisibleChange = useCallback(
-    (visible: boolean) => {
-      setIsOnAuthGate(visible);
-      if (visible) {
-        setShowUserPanel(false);
-      }
-    },
-    [setShowUserPanel]
-  );
+  const handleAuthGateVisibleChange = (visible: boolean) => {
+    setIsOnAuthGate(visible);
+    if (visible) {
+      setShowUserPanel(false);
+    }
+  };
 
   // Close user panel and brilliance menu when clicking outside
   useEffect(() => {
@@ -69,46 +63,6 @@ function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [setShowBrillianceMenu, setShowUserPanel, showBrillianceMenu, showUserPanel]);
-
-  // When user selects a stream from the nav menu, pass it to Datavision via prop
-  const [externalStreamId, setExternalStreamId] = useState<string | null>(null);
-
-  const selectStream = useCallback(
-    (streamId: string) => {
-      setExternalStreamId(streamId);
-      handleNavigationItemClick("datavision");
-    },
-    [handleNavigationItemClick]
-  );
-
-  const streamAccess = useStreamAccessPanel({ onStreamSelected: selectStream });
-  const {
-    streamPanelTab,
-    setStreamPanelTab,
-    streamSearch,
-    setStreamSearch,
-    filteredStreams,
-    streamIdInput,
-    setStreamIdInput,
-    sourceUrlInput,
-    setSourceUrlInput,
-    streamActionBusy,
-    streamActionError,
-    setStreamActionError,
-    loadStreams,
-    joinStream,
-    createStream,
-  } = streamAccess;
-
-  // Refresh stream list when nav menu opens
-  useEffect(() => {
-    if (!showNavigationMenu) {
-      return;
-    }
-    loadStreams().catch((err) => {
-      setStreamActionError(toStreamError(err, "Failed to load streams"));
-    });
-  }, [loadStreams, setStreamActionError, showNavigationMenu]);
 
   const handleNavigationMenuToggle = () => {
     setShowNavigationMenu((previous) => !previous);
@@ -151,27 +105,7 @@ function App() {
       )}
 
       {showNavigationMenu && (
-        <NavigationPanel
-          currentPage={currentPage}
-          onNavigate={handleNavigationItemClick}
-          streamPanelTab={streamPanelTab}
-          onStreamPanelTabChange={setStreamPanelTab}
-          streamSearch={streamSearch}
-          onStreamSearchChange={setStreamSearch}
-          filteredStreams={filteredStreams}
-          streamIdInput={streamIdInput}
-          onStreamIdInputChange={setStreamIdInput}
-          sourceUrlInput={sourceUrlInput}
-          onSourceUrlInputChange={setSourceUrlInput}
-          streamActionBusy={streamActionBusy}
-          streamActionError={streamActionError}
-          onJoinStream={(streamId) => {
-            void joinStream(streamId);
-          }}
-          onCreateStream={() => {
-            void createStream();
-          }}
-        />
+        <NavigationPanel currentPage={currentPage} onNavigate={handleNavigationItemClick} />
       )}
 
       <main
@@ -187,21 +121,15 @@ function App() {
 
         <Routes>
           <Route
-            path="/datavision"
-            element={
-              <Datavision
-                externalStreamId={externalStreamId}
-                onAuthGateVisibleChange={handleAuthGateVisibleChange}
-              />
-            }
+            path="/ar"
+            element={<AROverlay onAuthGateVisibleChange={handleAuthGateVisibleChange} />}
           />
           <Route path="/ais" element={<Ais />} />
           <Route path="/media-library" element={<MediaLibrary />} />
           <Route path="/components" element={<Components />} />
-          <Route path="/fusion" element={<Fusion />} />
           <Route path="/control-customization" element={<ControlCustomization />} />
-          <Route path="/" element={<Navigate to="/datavision" replace />} />
-          <Route path="*" element={<Navigate to="/datavision" replace />} />
+          <Route path="/" element={<Navigate to="/ar" replace />} />
+          <Route path="*" element={<Navigate to="/ar" replace />} />
         </Routes>
       </main>
     </>

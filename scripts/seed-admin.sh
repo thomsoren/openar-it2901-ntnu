@@ -1,6 +1,6 @@
 #!/bin/sh
 # Creates a default admin user for local development.
-# Requires: auth-service running on :3001, PostgreSQL running on :5433
+# Requires: auth-service running on :3001, PostgreSQL running on :5532
 #
 # Default credentials:  test / 12341234
 

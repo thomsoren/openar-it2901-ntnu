@@ -10,22 +10,36 @@ export const API_CONFIG = {
   WS_BASE_URL,
 } as const;
 
-const MEDIAMTX_WHEP_BASE = import.meta.env.VITE_MEDIAMTX_WHEP_BASE || "http://localhost:8889";
-const MEDIAMTX_HLS_BASE = import.meta.env.VITE_MEDIAMTX_HLS_BASE || "http://localhost:8888";
+const MEDIAMTX_BASE =
+  import.meta.env.VITE_MEDIAMTX_URL ||
+  import.meta.env.VITE_MEDIAMTX_WHEP_BASE ||
+  "http://localhost:8889";
 
 const normalizeBase = (value: string): string => value.replace(/\/$/, "");
 
 export const VIDEO_CONFIG = {
   MEDIAMTX_WHEP_URL: (streamId: string, baseUrl?: string) =>
-    `${normalizeBase(baseUrl || MEDIAMTX_WHEP_BASE)}/${streamId}/whep`,
+    `${normalizeBase(baseUrl || MEDIAMTX_BASE)}/${streamId}/whep`,
   MEDIAMTX_HLS_URL: (streamId: string, baseUrl?: string) =>
-    `${normalizeBase(baseUrl || MEDIAMTX_HLS_BASE)}/${streamId}/index.m3u8`,
+    `${normalizeBase(baseUrl || MEDIAMTX_BASE)}/${streamId}/index.m3u8`,
 } as const;
 
-export const FUSION_VIDEO_CONFIG = {
+export const MOCK_DATA_CONFIG = {
   WIDTH: 2560,
   HEIGHT: 1440,
-  SOURCE: `${API_CONFIG.BASE_URL}/api/video/fusion`,
+  FPS: 25,
+  VIDEO_SOURCE: `${API_CONFIG.BASE_URL}/api/video/fusion`,
+  WS_URL: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws?profile=mock`,
+  RESET_URL: `${API_CONFIG.BASE_URL}/api/fusion/reset?profile=mock`,
+} as const;
+
+export const FUSION_PIRBADET_CONFIG = {
+  WIDTH: 1920,
+  HEIGHT: 1080,
+  FPS: 30,
+  VIDEO_SOURCE: `${API_CONFIG.BASE_URL}/api/video/fusion?profile=pirbadet`,
+  WS_URL: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws?profile=pirbadet`,
+  RESET_URL: `${API_CONFIG.BASE_URL}/api/fusion/reset?profile=pirbadet`,
 } as const;
 
 // Detection API configuration
@@ -35,9 +49,4 @@ export const DETECTION_CONFIG = {
   WS_URL: (streamId: string) => `${API_CONFIG.WS_BASE_URL}/api/detections/ws/${streamId}`,
   FILE_URL: `${API_CONFIG.BASE_URL}/api/detections/file`,
   POLL_INTERVAL: 1000, // ms (1 FPS - adjust as needed for real-time detection)
-} as const;
-
-// POI overlay configuration
-export const POI_CONFIG = {
-  HEIGHT: 150,
 } as const;

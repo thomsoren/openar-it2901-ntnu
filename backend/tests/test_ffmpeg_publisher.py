@@ -101,15 +101,27 @@ class TestBuildCommand:
         assert "-re" in cmd  # local file → realtime pacing
         assert "-stream_loop" not in cmd  # not looping
 
-    def test_copy_mode_remote(self, monkeypatch):
+    def test_copy_mode_remote_rtsp(self, monkeypatch):
         monkeypatch.setattr("cv.ffmpeg.FFMPEG_BIN", "ffmpeg")
         monkeypatch.setattr("cv.ffmpeg.FFMPEG_SCALE_WIDTH", 0)
         monkeypatch.setattr("cv.ffmpeg.FFMPEG_SCALE_HEIGHT", 0)
         pub = self._make_publisher(source_url="rtsp://cam/live", loop=False)
         cmd = pub._build_command(use_copy=True)
         assert "copy" in cmd
-        assert "-re" not in cmd  # remote → no realtime throttle
+        assert "-re" not in cmd  # RTSP live stream → no realtime throttle
         assert "-fflags" in cmd  # nobuffer for remote
+
+    def test_http_s3_presigned_gets_realtime(self, monkeypatch):
+        """HTTP(S) sources (S3 presigned URLs) are file-based → use -re for normal playback."""
+        monkeypatch.setattr("cv.ffmpeg.FFMPEG_BIN", "ffmpeg")
+        monkeypatch.setattr("cv.ffmpeg.FFMPEG_SCALE_WIDTH", 0)
+        monkeypatch.setattr("cv.ffmpeg.FFMPEG_SCALE_HEIGHT", 0)
+        pub = self._make_publisher(
+            source_url="https://bucket.s3.amazonaws.com/video.mp4?X-Amz-Signature=...",
+            loop=True,
+        )
+        cmd = pub._build_command(use_copy=False, transcode_codec="libx264")
+        assert "-re" in cmd  # HTTP file source → realtime pacing
 
     def test_transcode_local_looping(self, monkeypatch):
         monkeypatch.setattr("cv.ffmpeg.FFMPEG_BIN", "ffmpeg")

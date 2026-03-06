@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcDropdownButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/dropdown-button/dropdown-button";
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
@@ -15,8 +15,21 @@ import { ObiDelete } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObiEditGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-edit-google";
 import { ObiLink } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-link";
 import { ObiWidgetAddGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-widget-add-google";
-import { API_CONFIG } from "../config/video";
+import { useAuth } from "../hooks/useAuth";
+import {
+  type MediaAsset,
+  type MediaVisibility,
+  deleteMediaAsset,
+  listMediaAssets,
+  presignDownload,
+  updateVisibility,
+  uploadFileToS3Multipart,
+} from "../services/media";
+import { listStreams, stopStream } from "../services/streams";
+import { removePersistedStreamIds } from "../hooks/stream-tabs/storage";
 import "./MediaLibrary.css";
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface MediaRow {
   id: string;
@@ -26,6 +39,7 @@ interface MediaRow {
   visibilityValue: string;
   previewUrl: string | null;
   previewDescription: string;
+  asset: MediaAsset;
 }
 
 interface MediaLibraryModalProps {
@@ -61,57 +75,26 @@ const VISIBILITY_OPTIONS = [
   { value: "public", label: "Public" },
 ];
 
-const INITIAL_MEDIA_ROWS: MediaRow[] = [
-  {
-    id: "row-1",
-    fileName: "Pirbadet-edited.mp4",
-    uploaded: "03/03/2026",
-    type: "Stream",
-    visibilityValue: "private",
-    previewUrl: `${API_CONFIG.BASE_URL}/api/video/stream`,
-    previewDescription: "Pirbadet demo video stored in the S3 bucket.",
-  },
-  {
-    id: "row-2",
-    fileName: "Pirbadet.ndjson",
-    uploaded: "03/03/2026",
-    type: "AIS",
-    visibilityValue: "private",
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function assetToRow(asset: MediaAsset): MediaRow {
+  const fileName = asset.s3_key.split("/").pop() || asset.s3_key;
+  const isVideo = asset.media_type === "video";
+  return {
+    id: asset.id,
+    fileName,
+    type: asset.media_type,
+    uploaded: new Date(asset.created_at).toLocaleDateString(),
+    visibilityValue: asset.visibility,
     previewUrl: null,
-    previewDescription: "AIS logs do not have a direct video preview.",
-  },
-];
-
-const DEFAULT_ROW_ID = INITIAL_MEDIA_ROWS[0]?.id ?? "";
-
-const handleOpenMedia = (rowId: string) => {
-  void rowId; // TODO: Hook up open action to media preview/details API flow.
-};
-
-const handleDeleteMedia = (rowId: string) => {
-  void rowId; // TODO: Hook up delete action to media delete API flow.
-};
-
-const handleVisibilityChange = (rowId: string, visibilityValue: string) => {
-  void rowId;
-  void visibilityValue; // TODO: Hook up visibility change to media visibility API flow.
-};
-
-function updateRowVisibility(rows: MediaRow[], rowId: string, visibilityValue: string): MediaRow[] {
-  return rows.map((row) => (row.id === rowId ? { ...row, visibilityValue } : row));
+    previewDescription: isVideo
+      ? "Select to preview this video."
+      : `${asset.media_type} files do not have a direct video preview.`,
+    asset,
+  };
 }
 
-function updateRowFileName(rows: MediaRow[], rowId: string, fileName: string): MediaRow[] {
-  return rows.map((row) => (row.id === rowId ? { ...row, fileName } : row));
-}
-
-function removeRow(rows: MediaRow[], rowId: string): MediaRow[] {
-  return rows.filter((row) => row.id !== rowId);
-}
-
-function getNextSelectedRowId(rows: MediaRow[]): string {
-  return rows[0]?.id ?? "";
-}
+// ── Sub-components ───────────────────────────────────────────────────────────
 
 function MediaLibraryModal({
   title,
@@ -155,14 +138,24 @@ function MediaLibraryModal({
   );
 }
 
-function MediaLibraryActions() {
+function MediaLibraryActions({
+  onBrowse,
+  onDrop,
+  isDragActive,
+  setIsDragActive,
+}: {
+  onBrowse: () => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  isDragActive: boolean;
+  setIsDragActive: (active: boolean) => void;
+}) {
   return (
     <div className="media-library-page__actions">
       <div className="media-library-page__action-slot">
         <ObcRichButton
           className="media-library-rich-button"
           label="Connect live stream"
-          description="start a new live stream using your own media"
+          description="Start a new live stream using your own media"
           direction={RichButtonDirection.Horizontal}
           hasTrailingIcon
           fullHeight
@@ -176,21 +169,30 @@ function MediaLibraryActions() {
         <ObcRichButton
           className="media-library-rich-button"
           label="Browse files"
-          description="Supported formats are .mp4, .mov and sd"
+          description="Supported formats: .mp4, .mov"
           direction={RichButtonDirection.Horizontal}
           hasTrailingIcon
           fullHeight
           fullWidth
+          onClick={onBrowse}
         >
           <ObiWidgetAddGoogle slot="trailing-icon" />
         </ObcRichButton>
       </div>
 
       <div className="media-library-page__action-slot">
-        <div className="media-library-dropzone">
+        <div
+          className={`media-library-dropzone${isDragActive ? " media-library-dropzone--active" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragActive(true);
+          }}
+          onDragLeave={() => setIsDragActive(false)}
+          onDrop={onDrop}
+        >
           <div className="media-library-dropzone__content">
             <div className="media-library-dropzone__title">Drag and drop</div>
-            <div className="media-library-dropzone__description">Link, file etc. sdsd</div>
+            <div className="media-library-dropzone__description">Drop a video file here</div>
           </div>
           <div className="media-library-dropzone__icon">
             <ObiFileDownloadGoogle />
@@ -230,6 +232,17 @@ function MediaLibraryTable({
         </div>
 
         <div className="media-library-table-body">
+          {rows.length === 0 && (
+            <div
+              style={{
+                padding: "24px",
+                textAlign: "center",
+                color: "var(--media-library-text-secondary)",
+              }}
+            >
+              No media assets found.
+            </div>
+          )}
           {rows.map((row) => {
             const isSelected = row.id === selectedRowId;
 
@@ -328,8 +341,8 @@ function MediaLibraryPreview({ row, previewError, onPreviewError }: MediaLibrary
           ) : (
             <div className="media-library-preview__empty">
               {previewError
-                ? "Preview unavailable. Check that the backend can read the Pirbadet object from S3."
-                : "No video preview for this media item."}
+                ? "Preview unavailable. The video may not be accessible."
+                : "Select a video asset to preview."}
             </div>
           )}
         </div>
@@ -338,29 +351,171 @@ function MediaLibraryPreview({ row, previewError, onPreviewError }: MediaLibrary
   );
 }
 
+// ── Main component ───────────────────────────────────────────────────────────
+
 export default function MediaLibrary() {
-  const [selectedRowId, setSelectedRowId] = useState(DEFAULT_ROW_ID);
-  const [mediaRows, setMediaRows] = useState(INITIAL_MEDIA_ROWS);
+  const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge } =
+    useAuth();
+  const storageScope = session?.user?.id ?? "anon";
+
+  const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState("");
   const [activeModal, setActiveModal] = useState<MediaLibraryModalMode>(null);
   const [editedFileName, setEditedFileName] = useState("");
   const [previewError, setPreviewError] = useState(false);
-  const selectedRow = mediaRows.find((row) => row.id === selectedRowId) ?? mediaRows[0] ?? null;
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const abortUploadRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortUploadRef.current?.();
+    };
+  }, []);
+
+  const mediaRows = assets.map(assetToRow);
+  const selectedRow = mediaRows.find((r) => r.id === selectedRowId) ?? mediaRows[0] ?? null;
+
+  const loadAssets = useCallback(async () => {
+    try {
+      const data = await listMediaAssets();
+      setAssets(data);
+      setLoadError(null);
+      if (data.length > 0 && !selectedRowId) {
+        setSelectedRowId(data[0].id);
+      }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load assets");
+    }
+  }, [selectedRowId]);
+
+  useEffect(() => {
+    if (!session || authBridgeStatus !== "ready") return;
+    const timeoutId = window.setTimeout(() => {
+      void loadAssets();
+    }, 0);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [session, authBridgeStatus, loadAssets]);
+
+  // ── Loading / auth states ──────────────────────────────────────────────────
+
+  if (isSessionPending || authBridgeStatus === "loading") {
+    return (
+      <section className="media-library-page">
+        <div className="media-library-page__header">
+          <h1 className="media-library-page__title">Media Library</h1>
+          <p className="media-library-page__subtitle">Loading…</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!session) {
+    return (
+      <section className="media-library-page">
+        <div className="media-library-page__header">
+          <h1 className="media-library-page__title">Media Library</h1>
+          <p className="media-library-page__subtitle">Sign in to view your media library.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (authBridgeStatus === "error") {
+    return (
+      <section className="media-library-page">
+        <div className="media-library-page__header">
+          <h1 className="media-library-page__title">Media Library</h1>
+          <p className="media-library-page__subtitle">
+            {authBridgeError || "Authentication bridge failed."}
+          </p>
+          <ObcButton variant={ButtonVariant.normal} onClick={retryAuthBridge}>
+            Retry
+          </ObcButton>
+        </div>
+      </section>
+    );
+  }
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const selectRow = (rowId: string) => {
     setSelectedRowId(rowId);
     setPreviewError(false);
   };
 
-  const handleRowVisibilityUpdate = (rowId: string, visibilityValue: string) => {
-    handleVisibilityChange(rowId, visibilityValue);
-    setMediaRows((currentRows) => updateRowVisibility(currentRows, rowId, visibilityValue));
+  const handleOpenRow = async (rowId: string) => {
+    const row = mediaRows.find((r) => r.id === rowId);
+    if (!row) return;
+    try {
+      const { url } = await presignDownload(row.asset.s3_key);
+      window.open(url, "_blank");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to generate view URL");
+    }
+  };
+
+  const handleVisibilityChange = async (rowId: string, visibilityValue: string) => {
+    const row = mediaRows.find((r) => r.id === rowId);
+    if (!row) return;
+    try {
+      const updated = await updateVisibility(row.asset.id, visibilityValue as MediaVisibility);
+      setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update visibility");
+    }
+  };
+
+  const streamSourceUsesAssetKey = (sourceUrl: string, assetKey: string): boolean => {
+    const normalizedKey = assetKey.replace(/^\/+/, "");
+    if (!normalizedKey) return false;
+    if (sourceUrl.startsWith(`s3://${normalizedKey}`)) return true;
+    try {
+      const parsed = new URL(sourceUrl);
+      const path = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
+      return path.endsWith(normalizedKey) || path.includes(`/${normalizedKey}`);
+    } catch {
+      return sourceUrl.includes(normalizedKey);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedRow) return;
+    try {
+      const streams = await listStreams().catch(() => []);
+      await deleteMediaAsset(selectedRow.asset.id);
+      const affectedStreamIds = streams
+        .filter((stream) => streamSourceUsesAssetKey(stream.source_url, selectedRow.asset.s3_key))
+        .map((stream) => stream.stream_id);
+      if (affectedStreamIds.length > 0) {
+        await Promise.all(
+          affectedStreamIds.map(async (streamId) => {
+            try {
+              await stopStream(streamId);
+            } catch {
+              // Ignore stop failures during cleanup.
+            }
+          })
+        );
+        removePersistedStreamIds(affectedStreamIds, storageScope);
+      }
+      setAssets((prev) => prev.filter((a) => a.id !== selectedRow.asset.id));
+      const remaining = assets.filter((a) => a.id !== selectedRow.asset.id);
+      setSelectedRowId(remaining[0]?.id ?? "");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Delete failed");
+    }
+    setActiveModal(null);
   };
 
   const handleEditModalOpen = () => {
-    if (!selectedRow) {
-      return;
-    }
-
+    if (!selectedRow) return;
     setEditedFileName(selectedRow.fileName);
     setActiveModal("edit");
   };
@@ -375,45 +530,88 @@ export default function MediaLibrary() {
   };
 
   const handleEditSave = () => {
-    if (!selectedRow) {
-      return;
-    }
-
-    const nextFileName = editedFileName.trim() || selectedRow.fileName;
-    setMediaRows((currentRows) => updateRowFileName(currentRows, selectedRow.id, nextFileName));
+    // TODO: Wire up rename API when available.
     setActiveModal(null);
   };
 
-  const handleDeleteConfirm = () => {
-    if (!selectedRow) {
-      return;
-    }
+  const handleFileSelect = (file: File) => {
+    if (!file.type.startsWith("video/")) return;
+    setUploadStatus("uploading");
+    setUploadProgress(0);
 
-    handleDeleteMedia(selectedRow.id);
-    const nextRows = removeRow(mediaRows, selectedRow.id);
-    setMediaRows(nextRows);
-    selectRow(getNextSelectedRowId(nextRows));
-    setActiveModal(null);
+    void uploadFileToS3Multipart(
+      file,
+      "private",
+      (pct) => setUploadProgress(pct),
+      (abortFn) => {
+        abortUploadRef.current = abortFn;
+      }
+    )
+      .then(() => {
+        abortUploadRef.current = null;
+        setUploadStatus("done");
+        void loadAssets();
+      })
+      .catch(() => {
+        abortUploadRef.current = null;
+        setUploadStatus("error");
+      });
   };
+
+  const handleBrowse = () => fileInputRef.current?.click();
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileSelect(file);
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFileSelect(file);
+    if (e.target) e.target.value = "";
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <section className="media-library-page">
       <div className="media-library-page__header">
         <h1 className="media-library-page__title">Media Library</h1>
-        <p className="media-library-page__subtitle">Manage your own media assets</p>
+        <p className="media-library-page__subtitle">
+          Manage your media assets
+          {uploadStatus === "uploading" && ` — Uploading… ${uploadProgress}%`}
+          {uploadStatus === "done" && " — Upload complete!"}
+          {uploadStatus === "error" && " — Upload failed."}
+          {loadError && ` — ${loadError}`}
+        </p>
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        style={{ display: "none" }}
+        onChange={handleFileInputChange}
+      />
 
       <div className="media-library-page__workspace">
         <div className="media-library-page__content">
           <div className="media-library-page__left-column">
-            <MediaLibraryActions />
+            <MediaLibraryActions
+              onBrowse={handleBrowse}
+              onDrop={handleDrop}
+              isDragActive={isDragActive}
+              setIsDragActive={setIsDragActive}
+            />
 
             <MediaLibraryTable
               rows={mediaRows}
-              selectedRowId={selectedRowId}
+              selectedRowId={selectedRow?.id ?? ""}
               onSelectRow={selectRow}
-              onVisibilityChange={handleRowVisibilityUpdate}
-              onOpenRow={handleOpenMedia}
+              onVisibilityChange={(rowId, val) => void handleVisibilityChange(rowId, val)}
+              onOpenRow={(rowId) => void handleOpenRow(rowId)}
               onDeleteRow={handleDeleteModalOpen}
             />
 
@@ -480,7 +678,7 @@ export default function MediaLibrary() {
               <ObcButton variant={ButtonVariant.normal} onClick={handleModalClose}>
                 Cancel
               </ObcButton>
-              <ObcButton variant={ButtonVariant.raised} onClick={handleDeleteConfirm}>
+              <ObcButton variant={ButtonVariant.raised} onClick={() => void handleDeleteConfirm()}>
                 Delete
               </ObcButton>
             </>

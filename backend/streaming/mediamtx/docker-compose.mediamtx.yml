@@ -1,7 +1,9 @@
 services:
   mediamtx:
-    image: bluenviron/mediamtx:1.16.1
+    image: bluenviron/mediamtx:1.16.3
     container_name: mediamtx
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8854:8854"       # RTSP ingest
       - "8888:8888"       # HLS egress
@@ -13,7 +15,7 @@ services:
       - ./mediamtx.yml:/mediamtx.yml:ro
     command: ["/mediamtx.yml"]
 
-  # Optional: use with mediamtx.auth.docker.yml (set volume manually)
+  # Optional legacy mock auth service (not required when using backend /api/mediamtx/auth)
   auth-mock:
     image: python:3.12-alpine
     container_name: mediamtx-auth-mock
