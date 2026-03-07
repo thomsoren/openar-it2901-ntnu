@@ -1,16 +1,19 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
-import { ObcDropdownButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/dropdown-button/dropdown-button";
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
 import { ObcRichButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/rich-button/rich-button";
+import { ObcTable } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/table/table.js";
 import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { DropdownButtonType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/dropdown-button/dropdown-button";
 import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
 import { RichButtonDirection } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/rich-button/rich-button";
+import { ObcTableCellType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
+import type { ObcTableRow } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
+import { html } from "lit";
+import "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-arrow-top-right";
 import { ObiFileDownloadGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-file-download-google";
 import { ObiCloseGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-close-google";
-import { ObiArrowTopRight } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-arrow-top-right";
 import { ObiDelete } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-delete";
 import { ObiEditGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-edit-google";
 import { ObiLink } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-link";
@@ -52,15 +55,6 @@ interface MediaLibraryModalProps {
   actions: ReactNode;
 }
 
-interface MediaLibraryTableProps {
-  rows: MediaRow[];
-  selectedRowId: string;
-  onSelectRow: (rowId: string) => void;
-  onVisibilityChange: (rowId: string, visibilityValue: string) => void;
-  onOpenRow: (rowId: string) => void;
-  onDeleteRow: (rowId: string) => void;
-}
-
 interface MediaLibraryPreviewProps {
   row: MediaRow | null;
   previewError: boolean;
@@ -77,7 +71,7 @@ const VISIBILITY_OPTIONS = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function assetToRow(asset: MediaAsset): MediaRow {
+function assetToRow(asset: MediaAsset, previewUrl?: string): MediaRow {
   const fileName = asset.s3_key.split("/").pop() || asset.s3_key;
   const isVideo = asset.media_type === "video";
   return {
@@ -86,7 +80,7 @@ function assetToRow(asset: MediaAsset): MediaRow {
     type: asset.media_type,
     uploaded: new Date(asset.created_at).toLocaleDateString(),
     visibilityValue: asset.visibility,
-    previewUrl: null,
+    previewUrl: previewUrl ?? null,
     previewDescription: isVideo
       ? "Select to preview this video."
       : `${asset.media_type} files do not have a direct video preview.`,
@@ -160,6 +154,7 @@ function MediaLibraryActions({
           hasTrailingIcon
           fullHeight
           fullWidth
+          disabled
         >
           <ObiLink slot="trailing-icon" />
         </ObcRichButton>
@@ -203,150 +198,27 @@ function MediaLibraryActions({
   );
 }
 
-function MediaLibraryTable({
-  rows,
-  selectedRowId,
-  onSelectRow,
-  onVisibilityChange,
-  onOpenRow,
-  onDeleteRow,
-}: MediaLibraryTableProps) {
-  return (
-    <div className="media-library-page__table-panel">
-      <div className="media-library-table-shell">
-        <div className="media-library-table-header">
-          <div className="media-library-table-cell media-library-table-cell--file media-library-table-header__cell media-library-table-header__cell--divider">
-            File name
-          </div>
-          <div className="media-library-table-cell media-library-table-cell--type media-library-table-header__cell media-library-table-header__cell--divider">
-            Type
-          </div>
-          <div className="media-library-table-cell media-library-table-cell--uploaded media-library-table-header__cell media-library-table-header__cell--divider">
-            Uploaded
-          </div>
-          <div className="media-library-table-cell media-library-table-cell--visibility media-library-table-header__cell">
-            Visibility
-          </div>
-          <div className="media-library-table-cell media-library-table-cell--open" />
-          <div className="media-library-table-cell media-library-table-cell--delete" />
-        </div>
-
-        <div className="media-library-table-body">
-          {rows.length === 0 && (
-            <div
-              style={{
-                padding: "24px",
-                textAlign: "center",
-                color: "var(--media-library-text-secondary)",
-              }}
-            >
-              No media assets found.
-            </div>
-          )}
-          {rows.map((row) => {
-            const isSelected = row.id === selectedRowId;
-
-            return (
-              <div
-                key={row.id}
-                className={`media-library-table-row${isSelected ? " media-library-table-row--selected" : ""}`}
-              >
-                <button
-                  type="button"
-                  className="media-library-table-row__selection"
-                  aria-pressed={isSelected}
-                  onClick={() => onSelectRow(row.id)}
-                >
-                  <div className="media-library-table-cell media-library-table-cell--file">
-                    {row.fileName}
-                  </div>
-                  <div className="media-library-table-cell media-library-table-cell--type">
-                    {row.type}
-                  </div>
-                  <div className="media-library-table-cell media-library-table-cell--uploaded">
-                    {row.uploaded}
-                  </div>
-                </button>
-
-                <div className="media-library-table-cell media-library-table-cell--visibility">
-                  <ObcDropdownButton
-                    className="media-library-table__visibility"
-                    options={VISIBILITY_OPTIONS}
-                    value={row.visibilityValue}
-                    type={DropdownButtonType.label}
-                    onChange={(event) => {
-                      onVisibilityChange(row.id, event.detail.value);
-                    }}
-                  />
-                </div>
-
-                <div className="media-library-table-cell media-library-table-cell--open">
-                  <ObcButton
-                    className="media-library-table__open-button"
-                    variant={ButtonVariant.flat}
-                    showLeadingIcon
-                    onClick={() => onOpenRow(row.id)}
-                  >
-                    <span slot="leading-icon">
-                      <ObiArrowTopRight />
-                    </span>
-                    Open
-                  </ObcButton>
-                </div>
-
-                <div className="media-library-table-cell media-library-table-cell--delete">
-                  <ObcIconButton
-                    className="media-library-table__delete-button"
-                    variant={IconButtonVariant.flat}
-                    aria-label="Delete media item"
-                    onClick={() => onDeleteRow(row.id)}
-                  >
-                    <span>
-                      <ObiDelete />
-                    </span>
-                  </ObcIconButton>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function MediaLibraryPreview({ row, previewError, onPreviewError }: MediaLibraryPreviewProps) {
   return (
     <aside className="media-library-page__preview-panel" aria-label="Selected media preview">
-      <section className="media-library-preview">
-        <div className="media-library-preview__header">
-          <div className="media-library-preview__title-wrap">
-            <h2 className="media-library-preview__title">{row?.fileName ?? "Preview"}</h2>
-            <p className="media-library-preview__subtitle">
-              {row?.previewDescription ?? "No preview available."}
-            </p>
+      <div className="media-library-preview__frame">
+        {row?.previewUrl && !previewError ? (
+          <video
+            key={row.previewUrl}
+            className="media-library-preview__video"
+            src={row.previewUrl}
+            controls
+            preload="metadata"
+            onError={onPreviewError}
+          />
+        ) : (
+          <div className="media-library-preview__empty">
+            {previewError
+              ? "Preview unavailable. The video may not be accessible."
+              : "Select a video asset to preview."}
           </div>
-        </div>
-
-        <div className="media-library-preview__frame">
-          {row?.previewUrl && !previewError ? (
-            <video
-              key={row.previewUrl}
-              className="media-library-preview__video"
-              src={row.previewUrl}
-              controls
-              preload="metadata"
-              onError={onPreviewError}
-            />
-          ) : (
-            <div className="media-library-preview__empty">
-              {previewError
-                ? "Preview unavailable. The video may not be accessible."
-                : "Select a video asset to preview."}
-            </div>
-          )}
-        </div>
-      </section>
+        )}
+      </div>
     </aside>
   );
 }
@@ -367,6 +239,7 @@ export default function MediaLibrary() {
   const [isDragActive, setIsDragActive] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortUploadRef = useRef<(() => void) | null>(null);
@@ -377,7 +250,7 @@ export default function MediaLibrary() {
     };
   }, []);
 
-  const mediaRows = assets.map(assetToRow);
+  const mediaRows = assets.map((a) => assetToRow(a, previewUrls[a.id]));
   const selectedRow = mediaRows.find((r) => r.id === selectedRowId) ?? mediaRows[0] ?? null;
 
   const loadAssets = useCallback(async () => {
@@ -385,13 +258,13 @@ export default function MediaLibrary() {
       const data = await listMediaAssets();
       setAssets(data);
       setLoadError(null);
-      if (data.length > 0 && !selectedRowId) {
-        setSelectedRowId(data[0].id);
+      if (data.length > 0) {
+        setSelectedRowId((current) => current || data[0].id);
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load assets");
     }
-  }, [selectedRowId]);
+  }, []);
 
   useEffect(() => {
     if (!session || authBridgeStatus !== "ready") return;
@@ -409,7 +282,7 @@ export default function MediaLibrary() {
     return (
       <section className="media-library-page">
         <div className="media-library-page__header">
-          <h1 className="media-library-page__title">Media Library</h1>
+          <h1 className="media-library-page__title">Media library</h1>
           <p className="media-library-page__subtitle">Loading…</p>
         </div>
       </section>
@@ -420,7 +293,7 @@ export default function MediaLibrary() {
     return (
       <section className="media-library-page">
         <div className="media-library-page__header">
-          <h1 className="media-library-page__title">Media Library</h1>
+          <h1 className="media-library-page__title">Media library</h1>
           <p className="media-library-page__subtitle">Sign in to view your media library.</p>
         </div>
       </section>
@@ -431,7 +304,7 @@ export default function MediaLibrary() {
     return (
       <section className="media-library-page">
         <div className="media-library-page__header">
-          <h1 className="media-library-page__title">Media Library</h1>
+          <h1 className="media-library-page__title">Media library</h1>
           <p className="media-library-page__subtitle">
             {authBridgeError || "Authentication bridge failed."}
           </p>
@@ -448,6 +321,15 @@ export default function MediaLibrary() {
   const selectRow = (rowId: string) => {
     setSelectedRowId(rowId);
     setPreviewError(false);
+
+    if (!previewUrls[rowId]) {
+      const row = mediaRows.find((r) => r.id === rowId);
+      if (row && row.type === "video") {
+        void presignDownload(row.asset.s3_key).then(({ url }) => {
+          setPreviewUrls((prev) => ({ ...prev, [rowId]: url }));
+        });
+      }
+    }
   };
 
   const handleOpenRow = async (rowId: string) => {
@@ -508,21 +390,21 @@ export default function MediaLibrary() {
       setAssets((prev) => prev.filter((a) => a.id !== selectedRow.asset.id));
       const remaining = assets.filter((a) => a.id !== selectedRow.asset.id);
       setSelectedRowId(remaining[0]?.id ?? "");
+      setActiveModal(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Delete failed");
     }
-    setActiveModal(null);
+  };
+
+  const handleDeleteModalOpen = (rowId: string) => {
+    selectRow(rowId);
+    setActiveModal("delete");
   };
 
   const handleEditModalOpen = () => {
     if (!selectedRow) return;
     setEditedFileName(selectedRow.fileName);
     setActiveModal("edit");
-  };
-
-  const handleDeleteModalOpen = (rowId: string) => {
-    selectRow(rowId);
-    setActiveModal("delete");
   };
 
   const handleModalClose = () => {
@@ -552,9 +434,10 @@ export default function MediaLibrary() {
         setUploadStatus("done");
         void loadAssets();
       })
-      .catch(() => {
+      .catch((err) => {
         abortUploadRef.current = null;
         setUploadStatus("error");
+        setLoadError(err instanceof Error ? err.message : "Upload failed");
       });
   };
 
@@ -573,21 +456,66 @@ export default function MediaLibrary() {
     if (e.target) e.target.value = "";
   };
 
+  // ── Table config ──────────────────────────────────────────────────────────
+
+  const columns = [
+    { label: "File name", key: "fileName", dividerRight: true },
+    { label: "Type", key: "type", dividerRight: true },
+    { label: "Uploaded", key: "uploaded", dividerRight: true },
+    {
+      label: "Visibility",
+      key: "visibility",
+      renderCell: (_value: unknown, _row: unknown, rowId: string) => {
+        const mediaRow = mediaRows.find((r) => r.id === rowId);
+        return html`<obc-dropdown-button
+          .options=${VISIBILITY_OPTIONS}
+          .value=${mediaRow?.visibilityValue ?? "private"}
+          .type=${DropdownButtonType.label}
+          @click=${(e: Event) => e.stopPropagation()}
+          @change=${(e: CustomEvent<{ value: string }>) => {
+            e.stopPropagation();
+            void handleVisibilityChange(rowId, e.detail.value);
+          }}
+        ></obc-dropdown-button>`;
+      },
+    },
+    { label: "", key: "open" },
+    {
+      label: "",
+      key: "delete",
+      renderCell: (_value: unknown, _row: unknown, rowId: string) => {
+        return html`<obc-icon-button
+          variant=${IconButtonVariant.flat}
+          aria-label="Delete media item"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            handleDeleteModalOpen(rowId);
+          }}
+          ><obi-delete></obi-delete
+        ></obc-icon-button>`;
+      },
+    },
+  ];
+
+  const tableData: ObcTableRow[] = mediaRows.map((row) => ({
+    id: row.id,
+    selected: row.id === (selectedRow?.id ?? ""),
+    fileName: { type: ObcTableCellType.Regular, text: row.fileName, noWrap: true },
+    type: { type: ObcTableCellType.Regular, text: row.type },
+    uploaded: { type: ObcTableCellType.Regular, text: row.uploaded },
+    visibility: { type: ObcTableCellType.Regular, text: row.visibilityValue },
+    open: {
+      type: ObcTableCellType.Button,
+      text: "Open",
+      icon: html`<obi-arrow-top-right></obi-arrow-top-right>`,
+    },
+    delete: { type: ObcTableCellType.Regular },
+  }));
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <section className="media-library-page">
-      <div className="media-library-page__header">
-        <h1 className="media-library-page__title">Media Library</h1>
-        <p className="media-library-page__subtitle">
-          Manage your media assets
-          {uploadStatus === "uploading" && ` — Uploading… ${uploadProgress}%`}
-          {uploadStatus === "done" && " — Upload complete!"}
-          {uploadStatus === "error" && " — Upload failed."}
-          {loadError && ` — ${loadError}`}
-        </p>
-      </div>
-
       <input
         ref={fileInputRef}
         type="file"
@@ -596,29 +524,46 @@ export default function MediaLibrary() {
         onChange={handleFileInputChange}
       />
 
-      <div className="media-library-page__workspace">
-        <div className="media-library-page__content">
-          <div className="media-library-page__left-column">
-            <MediaLibraryActions
-              onBrowse={handleBrowse}
-              onDrop={handleDrop}
-              isDragActive={isDragActive}
-              setIsDragActive={setIsDragActive}
-            />
+      <div className="media-library-page__header">
+        <h1 className="media-library-page__title">Media library</h1>
+        <p className="media-library-page__subtitle">
+          Manage your own uploads and who can see what.
+          {uploadStatus === "uploading" && ` — Uploading… ${uploadProgress}%`}
+          {uploadStatus === "done" && " — Upload complete!"}
+          {uploadStatus === "error" && " — Upload failed."}
+          {loadError && ` — ${loadError}`}
+        </p>
+      </div>
 
-            <MediaLibraryTable
-              rows={mediaRows}
-              selectedRowId={selectedRow?.id ?? ""}
-              onSelectRow={selectRow}
-              onVisibilityChange={(rowId, val) => void handleVisibilityChange(rowId, val)}
-              onOpenRow={(rowId) => void handleOpenRow(rowId)}
-              onDeleteRow={handleDeleteModalOpen}
-            />
+      <MediaLibraryActions
+        onBrowse={handleBrowse}
+        onDrop={handleDrop}
+        isDragActive={isDragActive}
+        setIsDragActive={setIsDragActive}
+      />
 
+      <div className="media-library-page__content">
+        <div className="media-library-page__left-column">
+          <div className="media-library-page__table-panel">
+            {mediaRows.length === 0 ? (
+              <div className="media-library-table-body__empty">No media assets found.</div>
+            ) : (
+              <ObcTable
+                data={tableData}
+                columns={columns}
+                onRowClick={(e: CustomEvent<{ row: ObcTableRow }>) => selectRow(e.detail.row.id)}
+                onCellButtonClick={(e: CustomEvent<{ rowId: string; columnKey: string }>) => {
+                  if (e.detail.columnKey === "open") void handleOpenRow(e.detail.rowId);
+                }}
+              />
+            )}
+          </div>
+
+          <div className="media-library-page__action-container">
             <ObcButton
-              className="media-library-page__edit-button"
               variant={ButtonVariant.normal}
               showLeadingIcon
+              disabled={!selectedRow}
               onClick={handleEditModalOpen}
             >
               <span slot="leading-icon">
@@ -627,13 +572,13 @@ export default function MediaLibrary() {
               Edit file name
             </ObcButton>
           </div>
-
-          <MediaLibraryPreview
-            row={selectedRow}
-            previewError={previewError}
-            onPreviewError={() => setPreviewError(true)}
-          />
         </div>
+
+        <MediaLibraryPreview
+          row={selectedRow}
+          previewError={previewError}
+          onPreviewError={() => setPreviewError(true)}
+        />
       </div>
 
       {activeModal === "edit" ? (
@@ -668,7 +613,7 @@ export default function MediaLibrary() {
 
       {activeModal === "delete" && selectedRow ? (
         <MediaLibraryModal
-          title="Delete media item"
+          title="Delete"
           labelledBy="media-library-delete-title"
           icon={<ObiDelete />}
           closeLabel="Close delete confirmation dialog"
@@ -684,9 +629,8 @@ export default function MediaLibrary() {
             </>
           }
         >
-          <p className="media-library-page__modal-message">
-            Are you sure you want to delete <strong>{selectedRow.fileName}</strong>?
-          </p>
+          <p className="media-library-page__modal-heading">Are you sure?</p>
+          <p className="media-library-page__modal-message">{selectedRow.fileName}</p>
         </MediaLibraryModal>
       ) : null}
     </section>

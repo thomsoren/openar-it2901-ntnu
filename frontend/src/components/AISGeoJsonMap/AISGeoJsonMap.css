@@ -38,6 +38,10 @@
   z-index: 2;
 }
 
+.geojson-map-controls obc-button {
+  width: 110px;
+}
+
 .geojson-map-range-icon,
 .geojson-map-origin-icon,
 .geojson-map-heading-icon,

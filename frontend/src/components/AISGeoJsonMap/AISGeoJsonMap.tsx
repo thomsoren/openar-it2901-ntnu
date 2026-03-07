@@ -644,7 +644,8 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
       <div className="geojson-map-controls">
         <ObcButton
-          variant={followMode ? ButtonVariant.flat : ButtonVariant.normal}
+          variant={followMode ? ButtonVariant.raised : ButtonVariant.normal}
+          fullWidth
           onClick={() => {
             if (!followMode) centerMap();
             setFollowMode((prev) => !prev);
@@ -653,13 +654,15 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           {followMode ? "Following" : "Follow"}
         </ObcButton>
         <ObcButton
-          variant={editMode ? ButtonVariant.flat : ButtonVariant.normal}
+          variant={editMode ? ButtonVariant.raised : ButtonVariant.normal}
+          fullWidth
           onClick={() => setEditMode((prev) => !prev)}
         >
           {editMode ? "Editing" : "Edit"}
         </ObcButton>
         <ObcButton
-          variant={shapeMode === "rect" ? ButtonVariant.flat : ButtonVariant.normal}
+          variant={shapeMode === "rect" ? ButtonVariant.raised : ButtonVariant.normal}
+          fullWidth
           onClick={() => onChange?.({ shapeMode: shapeMode === "wedge" ? "rect" : "wedge" })}
         >
           {shapeMode === "rect" ? "Rect" : "Wedge"}
