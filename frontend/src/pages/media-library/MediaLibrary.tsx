@@ -33,7 +33,7 @@ import type { MediaLibraryModalMode } from "./types";
 import "./MediaLibrary.css";
 
 export default function MediaLibrary() {
-  const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge } =
+  const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge, isAdmin } =
     useAuth();
   const storageScope = session?.user?.id ?? "anon";
 
@@ -64,6 +64,9 @@ export default function MediaLibrary() {
     return () => window.clearTimeout(id);
   }, [actionError]);
 
+  const visibilityOptions = isAdmin
+    ? VISIBILITY_OPTIONS
+    : VISIBILITY_OPTIONS.filter((o) => o.value !== "public");
   const mediaRows = assets.map((a) => assetToRow(a, previewUrls[a.id]));
   const selectedRow = mediaRows.find((r) => r.id === selectedRowId) ?? mediaRows[0] ?? null;
 
@@ -240,8 +243,16 @@ export default function MediaLibrary() {
     }
   };
 
+  const MAX_FILE_SIZE_BYTES = 300 * 1024 * 1024; // 300 MB
+
   const handleFileSelect = (file: File) => {
     if (!file.type.startsWith("video/")) return;
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setActionError(
+        `File is ${(file.size / 1024 / 1024).toFixed(0)} MB. Maximum allowed is 300 MB.`
+      );
+      return;
+    }
     setUploadStatus("uploading");
     setUploadProgress(0);
 
@@ -261,7 +272,7 @@ export default function MediaLibrary() {
       .catch((err) => {
         abortUploadRef.current = null;
         setUploadStatus("error");
-        setLoadError(err instanceof Error ? err.message : "Upload failed");
+        setActionError(err instanceof Error ? err.message : "Upload failed");
       });
   };
 
@@ -292,7 +303,7 @@ export default function MediaLibrary() {
       renderCell: (_value: unknown, _row: unknown, rowId: string) => {
         const mediaRow = mediaRows.find((r) => r.id === rowId);
         return html`<obc-dropdown-button
-          .options=${VISIBILITY_OPTIONS}
+          .options=${visibilityOptions}
           .value=${mediaRow?.visibilityValue ?? "private"}
           .type=${DropdownButtonType.label}
           @click=${(e: Event) => e.stopPropagation()}
@@ -424,15 +435,21 @@ export default function MediaLibrary() {
             </>
           }
         >
-          <ObcTextInputField
-            label=""
-            placeholder="File name"
-            value={editedFileName}
-            onInput={(event) => {
-              const target = event.target as HTMLInputElement;
-              setEditedFileName(target.value);
+          <div
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleEditSave();
             }}
-          />
+          >
+            <ObcTextInputField
+              label=""
+              placeholder="File name"
+              value={editedFileName}
+              onInput={(event) => {
+                const target = event.target as HTMLInputElement;
+                setEditedFileName(target.value);
+              }}
+            />
+          </div>
         </MediaLibraryModal>
       ) : null}
 
