@@ -387,6 +387,8 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
             activeTabId={activeTabId}
             showAddButton={isTabsHydrated && showAddButton}
             showCloseButtons={isTabsHydrated && showCloseButtons}
+            runningStreams={runningStreams}
+            configureTabId={configureTabId}
             onTabSelected={handleTabSelected}
             onTabClosed={onTabClosed}
             onAddTab={handleAddTab}

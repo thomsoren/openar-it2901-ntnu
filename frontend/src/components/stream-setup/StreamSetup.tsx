@@ -199,12 +199,7 @@ export default function StreamSetup({ tabId, onStreamReady }: StreamSetupProps) 
         return;
       }
       const duration = await readVideoDurationSeconds(file);
-      if (!duration) {
-        setStatus("error");
-        setMessage("Could not read video duration. Please choose a valid video file.");
-        return;
-      }
-      if (duration > MAX_VIDEO_DURATION_SECONDS) {
+      if (duration !== null && duration > MAX_VIDEO_DURATION_SECONDS) {
         setStatus("error");
         setMessage(
           `Video is ${(duration / 60).toFixed(1)} minutes. Max allowed is 5 minutes for demo uploads.`

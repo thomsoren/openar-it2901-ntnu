@@ -75,6 +75,8 @@ def coerce_s3_key(raw: str) -> str | None:
         s = s[5:].strip().lstrip("/")
     elif "://" in s:
         return None  # http/https/rtsp/etc — not an S3 key
+    elif len(s) >= 2 and s[0].isalpha() and s[1] == ":":
+        return None  # Windows absolute path (e.g. C:\...) — not an S3 key
     else:
         s = s.strip().lstrip("/")
     return s if s else None

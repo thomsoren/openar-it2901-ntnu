@@ -6,12 +6,14 @@ from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from auth.deps import get_current_user
 from db.database import get_db
 from db.models import AppUser, MediaAsset
 from webapi import state
+from webapi.errors import conflict
 from storage.s3 import S3_BUCKET, _client, _normalize_key, s3_enabled
 
 router = APIRouter(prefix="/api/admin/media", tags=["admin"])
@@ -45,6 +47,10 @@ class MediaAssetResponse(BaseModel):
 
 class VisibilityPayload(BaseModel):
     visibility: str
+
+
+class RenamePayload(BaseModel):
+    asset_name: str
 
 
 def _stream_source_uses_key(source_url: str, s3_key: str) -> bool:
@@ -153,5 +159,36 @@ def update_visibility(
     asset.visibility = payload.visibility
     db.add(asset)
     db.commit()
+    db.refresh(asset)
+    return MediaAssetResponse.from_orm(asset)
+
+
+@router.patch("/{asset_id}/name", response_model=MediaAssetResponse)
+def rename_asset(
+    asset_id: str,
+    payload: RenamePayload,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    name = payload.asset_name.strip()
+    if not name or len(name) > 120:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="asset_name must be 1–120 characters",
+        )
+
+    asset = db.get(MediaAsset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if not current_user.is_admin and asset.owner_user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    asset.asset_name = name
+    db.add(asset)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        conflict(f"An asset named '{name}' already exists", cause=exc)
     db.refresh(asset)
     return MediaAssetResponse.from_orm(asset)
