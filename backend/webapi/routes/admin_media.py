@@ -47,6 +47,10 @@ class VisibilityPayload(BaseModel):
     visibility: str
 
 
+class RenamePayload(BaseModel):
+    asset_name: str
+
+
 def _stream_source_uses_key(source_url: str, s3_key: str) -> bool:
     normalized_key = s3_key.strip().lstrip("/")
     if not normalized_key:
@@ -151,6 +155,33 @@ def update_visibility(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     asset.visibility = payload.visibility
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return MediaAssetResponse.from_orm(asset)
+
+
+@router.patch("/{asset_id}/name", response_model=MediaAssetResponse)
+def rename_asset(
+    asset_id: str,
+    payload: RenamePayload,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    name = payload.asset_name.strip()
+    if not name or len(name) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="asset_name must be 1–255 characters",
+        )
+
+    asset = db.get(MediaAsset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if not current_user.is_admin and asset.owner_user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    asset.asset_name = name
     db.add(asset)
     db.commit()
     db.refresh(asset)

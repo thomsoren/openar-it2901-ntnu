@@ -1,229 +1,36 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
-import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
-import { ObcRichButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/rich-button/rich-button";
 import { ObcTable } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/table/table.js";
 import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { DropdownButtonType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/dropdown-button/dropdown-button";
 import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
-import { RichButtonDirection } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/rich-button/rich-button";
 import { ObcTableCellType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
 import type { ObcTableRow } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
 import { html } from "lit";
 import "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-arrow-top-right";
-import { ObiFileDownloadGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-file-download-google";
-import { ObiCloseGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-close-google";
 import { ObiDelete } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-delete";
 import { ObiEditGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-edit-google";
-import { ObiLink } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-link";
-import { ObiWidgetAddGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-widget-add-google";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "../../hooks/useAuth";
 import {
   type MediaAsset,
   type MediaVisibility,
   deleteMediaAsset,
   listMediaAssets,
   presignDownload,
+  renameMediaAsset,
   updateVisibility,
   uploadFileToS3Multipart,
-} from "../services/media";
-import { listStreams, stopStream } from "../services/streams";
-import { removePersistedStreamIds } from "../hooks/stream-tabs/storage";
+} from "../../services/media";
+import { listStreams, stopStream } from "../../services/streams";
+import { removePersistedStreamIds } from "../../hooks/stream-tabs/storage";
+import { MediaLibraryModal } from "./MediaLibraryModal";
+import { MediaLibraryActions } from "./MediaLibraryActions";
+import { MediaLibraryPreview } from "./MediaLibraryPreview";
+import { assetToRow } from "./helpers";
+import { VISIBILITY_OPTIONS } from "./types";
+import type { MediaLibraryModalMode } from "./types";
 import "./MediaLibrary.css";
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface MediaRow {
-  id: string;
-  fileName: string;
-  type: string;
-  uploaded: string;
-  visibilityValue: string;
-  previewUrl: string | null;
-  previewDescription: string;
-  asset: MediaAsset;
-}
-
-interface MediaLibraryModalProps {
-  title: string;
-  labelledBy: string;
-  icon: ReactNode;
-  closeLabel: string;
-  onClose: () => void;
-  children: ReactNode;
-  actions: ReactNode;
-}
-
-interface MediaLibraryPreviewProps {
-  row: MediaRow | null;
-  previewError: boolean;
-  onPreviewError: () => void;
-}
-
-type MediaLibraryModalMode = "edit" | "delete" | null;
-
-const VISIBILITY_OPTIONS = [
-  { value: "private", label: "Private" },
-  { value: "group", label: "Group" },
-  { value: "public", label: "Public" },
-];
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function assetToRow(asset: MediaAsset, previewUrl?: string): MediaRow {
-  const fileName = asset.s3_key.split("/").pop() || asset.s3_key;
-  const isVideo = asset.media_type === "video";
-  return {
-    id: asset.id,
-    fileName,
-    type: asset.media_type,
-    uploaded: new Date(asset.created_at).toLocaleDateString(),
-    visibilityValue: asset.visibility,
-    previewUrl: previewUrl ?? null,
-    previewDescription: isVideo
-      ? "Select to preview this video."
-      : `${asset.media_type} files do not have a direct video preview.`,
-    asset,
-  };
-}
-
-// ── Sub-components ───────────────────────────────────────────────────────────
-
-function MediaLibraryModal({
-  title,
-  labelledBy,
-  icon,
-  closeLabel,
-  onClose,
-  children,
-  actions,
-}: MediaLibraryModalProps) {
-  return (
-    <div className="media-library-page__modal-layer" role="presentation">
-      <div className="media-library-page__modal-backdrop" />
-      <div
-        className="media-library-page__modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={labelledBy}
-      >
-        <div className="media-library-page__modal-header">
-          <div className="media-library-page__modal-title-wrap">
-            {icon}
-            <h2 id={labelledBy} className="media-library-page__modal-title">
-              {title}
-            </h2>
-          </div>
-          <ObcIconButton
-            className="media-library-page__modal-close"
-            variant={IconButtonVariant.flat}
-            aria-label={closeLabel}
-            onClick={onClose}
-          >
-            <ObiCloseGoogle />
-          </ObcIconButton>
-        </div>
-        <div className="media-library-page__modal-divider" />
-        <div className="media-library-page__modal-content">{children}</div>
-        <div className="media-library-page__modal-footer">{actions}</div>
-      </div>
-    </div>
-  );
-}
-
-function MediaLibraryActions({
-  onBrowse,
-  onDrop,
-  isDragActive,
-  setIsDragActive,
-}: {
-  onBrowse: () => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
-  isDragActive: boolean;
-  setIsDragActive: (active: boolean) => void;
-}) {
-  return (
-    <div className="media-library-page__actions">
-      <div className="media-library-page__action-slot">
-        <ObcRichButton
-          className="media-library-rich-button"
-          label="Connect live stream"
-          description="Start a new live stream using your own media"
-          direction={RichButtonDirection.Horizontal}
-          hasTrailingIcon
-          fullHeight
-          fullWidth
-          disabled
-        >
-          <ObiLink slot="trailing-icon" />
-        </ObcRichButton>
-      </div>
-
-      <div className="media-library-page__action-slot">
-        <ObcRichButton
-          className="media-library-rich-button"
-          label="Browse files"
-          description="Supported formats: .mp4, .mov"
-          direction={RichButtonDirection.Horizontal}
-          hasTrailingIcon
-          fullHeight
-          fullWidth
-          onClick={onBrowse}
-        >
-          <ObiWidgetAddGoogle slot="trailing-icon" />
-        </ObcRichButton>
-      </div>
-
-      <div className="media-library-page__action-slot">
-        <div
-          className={`media-library-dropzone${isDragActive ? " media-library-dropzone--active" : ""}`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragActive(true);
-          }}
-          onDragLeave={() => setIsDragActive(false)}
-          onDrop={onDrop}
-        >
-          <div className="media-library-dropzone__content">
-            <div className="media-library-dropzone__title">Drag and drop</div>
-            <div className="media-library-dropzone__description">Drop a video file here</div>
-          </div>
-          <div className="media-library-dropzone__icon">
-            <ObiFileDownloadGoogle />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MediaLibraryPreview({ row, previewError, onPreviewError }: MediaLibraryPreviewProps) {
-  return (
-    <aside className="media-library-page__preview-panel" aria-label="Selected media preview">
-      <div className="media-library-preview__frame">
-        {row?.previewUrl && !previewError ? (
-          <video
-            key={row.previewUrl}
-            className="media-library-preview__video"
-            src={row.previewUrl}
-            controls
-            preload="metadata"
-            onError={onPreviewError}
-          />
-        ) : (
-          <div className="media-library-preview__empty">
-            {previewError
-              ? "Preview unavailable. The video may not be accessible."
-              : "Select a video asset to preview."}
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-// ── Main component ───────────────────────────────────────────────────────────
 
 export default function MediaLibrary() {
   const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge } =
@@ -411,9 +218,15 @@ export default function MediaLibrary() {
     setActiveModal(null);
   };
 
-  const handleEditSave = () => {
-    // TODO: Wire up rename API when available.
-    setActiveModal(null);
+  const handleEditSave = async () => {
+    if (!selectedRow || !editedFileName.trim()) return;
+    try {
+      const updated = await renameMediaAsset(selectedRow.asset.id, editedFileName.trim());
+      setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setActiveModal(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Rename failed");
+    }
   };
 
   const handleFileSelect = (file: File) => {
@@ -593,7 +406,7 @@ export default function MediaLibrary() {
               <ObcButton variant={ButtonVariant.normal} onClick={handleModalClose}>
                 Cancel
               </ObcButton>
-              <ObcButton variant={ButtonVariant.raised} onClick={handleEditSave}>
+              <ObcButton variant={ButtonVariant.raised} onClick={() => void handleEditSave()}>
                 Save
               </ObcButton>
             </>
