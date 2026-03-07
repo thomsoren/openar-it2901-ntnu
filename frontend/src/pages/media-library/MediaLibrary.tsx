@@ -39,6 +39,7 @@ export default function MediaLibrary() {
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState("");
   const [activeModal, setActiveModal] = useState<MediaLibraryModalMode>(null);
   const [editedFileName, setEditedFileName] = useState("");
@@ -56,6 +57,12 @@ export default function MediaLibrary() {
       abortUploadRef.current?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!actionError) return;
+    const id = window.setTimeout(() => setActionError(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [actionError]);
 
   const mediaRows = assets.map((a) => assetToRow(a, previewUrls[a.id]));
   const selectedRow = mediaRows.find((r) => r.id === selectedRowId) ?? mediaRows[0] ?? null;
@@ -132,9 +139,13 @@ export default function MediaLibrary() {
     if (!previewUrls[rowId]) {
       const row = mediaRows.find((r) => r.id === rowId);
       if (row && row.type === "video") {
-        void presignDownload(row.asset.s3_key).then(({ url }) => {
-          setPreviewUrls((prev) => ({ ...prev, [rowId]: url }));
-        });
+        void presignDownload(row.asset.s3_key)
+          .then(({ url }) => {
+            setPreviewUrls((prev) => ({ ...prev, [rowId]: url }));
+          })
+          .catch((err) => {
+            setActionError(err instanceof Error ? err.message : "Failed to load preview");
+          });
       }
     }
   };
@@ -146,7 +157,7 @@ export default function MediaLibrary() {
       const { url } = await presignDownload(row.asset.s3_key);
       window.open(url, "_blank");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to generate view URL");
+      setActionError(err instanceof Error ? err.message : "Failed to generate view URL");
     }
   };
 
@@ -157,7 +168,7 @@ export default function MediaLibrary() {
       const updated = await updateVisibility(row.asset.id, visibilityValue as MediaVisibility);
       setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update visibility");
+      setActionError(err instanceof Error ? err.message : "Failed to update visibility");
     }
   };
 
@@ -199,7 +210,7 @@ export default function MediaLibrary() {
       setSelectedRowId(remaining[0]?.id ?? "");
       setActiveModal(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Delete failed");
+      setActionError(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
@@ -225,7 +236,7 @@ export default function MediaLibrary() {
       setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
       setActiveModal(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Rename failed");
+      setActionError(err instanceof Error ? err.message : "Rename failed");
     }
   };
 
@@ -345,6 +356,7 @@ export default function MediaLibrary() {
           {uploadStatus === "done" && " — Upload complete!"}
           {uploadStatus === "error" && " — Upload failed."}
           {loadError && ` — ${loadError}`}
+          {actionError && ` — ${actionError}`}
         </p>
       </div>
 

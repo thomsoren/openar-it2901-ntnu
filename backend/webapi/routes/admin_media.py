@@ -6,12 +6,14 @@ from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from auth.deps import get_current_user
 from db.database import get_db
 from db.models import AppUser, MediaAsset
 from webapi import state
+from webapi.errors import conflict
 from storage.s3 import S3_BUCKET, _client, _normalize_key, s3_enabled
 
 router = APIRouter(prefix="/api/admin/media", tags=["admin"])
@@ -169,10 +171,10 @@ def rename_asset(
     db: Annotated[Session, Depends(get_db)],
 ):
     name = payload.asset_name.strip()
-    if not name or len(name) > 255:
+    if not name or len(name) > 120:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="asset_name must be 1–255 characters",
+            detail="asset_name must be 1–120 characters",
         )
 
     asset = db.get(MediaAsset, asset_id)
@@ -183,6 +185,10 @@ def rename_asset(
 
     asset.asset_name = name
     db.add(asset)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        conflict(f"An asset named '{name}' already exists", cause=exc)
     db.refresh(asset)
     return MediaAssetResponse.from_orm(asset)

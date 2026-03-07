@@ -74,6 +74,11 @@
   background: rgba(0, 0, 0, 0.04);
 }
 
+.media-library-dropzone--active {
+  border-color: var(--element-active-color, #1f1f1f);
+  background: rgba(0, 0, 0, 0.08);
+}
+
 .media-library-dropzone__content {
   display: flex;
   flex-direction: column;
@@ -158,7 +163,7 @@
   justify-content: center;
   overflow: hidden;
   border-radius: 8px;
-  background: #d4d4d4;
+  background: var(--element-neutral-color, #535353);
 }
 
 .media-library-preview__video {
@@ -166,7 +171,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: #000;
+  background: var(--container-backdrop-color, #000);
 }
 
 .media-library-preview__empty {
@@ -250,7 +255,7 @@
   font-weight: 600;
   letter-spacing: 0.15px;
   line-height: 24px;
-  color: #000;
+  color: var(--element-active-color, #1f1f1f);
 }
 
 .media-library-page__modal-message {

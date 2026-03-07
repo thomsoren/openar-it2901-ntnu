@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
 import "./App.css";
-import MediaLibrary from "./pages/media-library";
+import MediaLibrary from "./pages/media-library/MediaLibrary";
 import Ais from "./pages/Ais";
 import Components from "./pages/Components";
 import AROverlay from "./pages/AROverlay";
