@@ -1,13 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import { ObcTabRow } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
+import { ObiCameraOff } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera-off";
+import { ObiCameraOn } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera-on";
+import { ObiMediaLive } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-media-live";
+import { ObiUpIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-up-iec";
+import type { StreamSummary } from "../../types/stream";
+import { MOCK_DATA_TAB_ID } from "../../hooks/stream-tabs/constants";
 import { ARControlPanel } from "../ar-control-panel/ARControlPanel";
+
+function isLiveSourceUrl(sourceUrl: string): boolean {
+  try {
+    const scheme = new URL(sourceUrl).protocol.replace(":", "").toLowerCase();
+    return ["rtsp", "rtsps", "rtmp", "udp", "tcp"].includes(scheme);
+  } catch {
+    return false;
+  }
+}
+
+function tabIcon(tabId: string, runningStreams: StreamSummary[], configureTabId: string | null) {
+  if (tabId === configureTabId) return <ObiUpIec />;
+  if (tabId === MOCK_DATA_TAB_ID) return <ObiCameraOn />;
+  const stream = runningStreams.find((s) => s.stream_id === tabId);
+  if (!stream) return <ObiCameraOff />;
+  if (isLiveSourceUrl(stream.source_url)) return <ObiMediaLive />;
+  return <ObiCameraOn />;
+}
 
 interface StreamWorkspaceHeaderProps {
   tabs: TabData[];
   activeTabId: string;
   showAddButton: boolean;
   showCloseButtons: boolean;
+  runningStreams: StreamSummary[];
+  configureTabId: string | null;
   onTabSelected: (event: CustomEvent<{ tab: TabData; id: string; index: number }>) => void;
   onTabClosed: (event: CustomEvent<{ id?: string }>) => void;
   onAddTab: () => void;
@@ -18,6 +44,8 @@ export function StreamWorkspaceHeader({
   activeTabId,
   showAddButton,
   showCloseButtons,
+  runningStreams,
+  configureTabId,
   onTabSelected,
   onTabClosed,
   onAddTab,
@@ -82,7 +110,13 @@ export function StreamWorkspaceHeader({
           onTabSelected={onTabSelected}
           onTabClosed={onTabClosed}
           onAddNewTab={onAddTab}
-        />
+        >
+          {tabs.map((tab) => (
+            <span key={tab.id} slot={`tab-${tab.id}-icon`}>
+              {tabIcon(tab.id, runningStreams, configureTabId)}
+            </span>
+          ))}
+        </ObcTabRow>
       </div>
       <div ref={controlsRef} className="stream-tabs-controls">
         <ARControlPanel />

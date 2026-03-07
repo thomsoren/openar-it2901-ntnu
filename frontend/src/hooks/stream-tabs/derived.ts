@@ -46,26 +46,26 @@ export function buildTabsAndActiveStream(
   const tabs: TabData[] = [];
   const seen = new Set<string>();
 
-  tabs.push({ id: DEFAULT_STREAM_ID, title: DEFAULT_STREAM_TITLE });
+  tabs.push({ id: DEFAULT_STREAM_ID, title: DEFAULT_STREAM_TITLE, hasLeadingIcon: true });
   seen.add(DEFAULT_STREAM_ID);
 
   for (const id of joinedStreamIds) {
     if (seen.has(id) || id === configureTabId) continue;
     seen.add(id);
     if (id === MOCK_DATA_TAB_ID) {
-      tabs.push({ id, title: MOCK_DATA_TAB_TITLE });
+      tabs.push({ id, title: MOCK_DATA_TAB_TITLE, hasLeadingIcon: true });
       continue;
     }
     if (id === FUSION_TAB_ID) {
-      tabs.push({ id, title: FUSION_TAB_TITLE });
+      tabs.push({ id, title: FUSION_TAB_TITLE, hasLeadingIcon: true });
       continue;
     }
     const stream = byId.get(id);
-    tabs.push({ id, title: stream ? id : `${id} (starting...)` });
+    tabs.push({ id, title: stream ? id : `${id} (starting...)`, hasLeadingIcon: true });
   }
 
   if (configureTabId) {
-    tabs.push({ id: configureTabId, title: "Configure" });
+    tabs.push({ id: configureTabId, title: "Configure", hasLeadingIcon: true });
   }
 
   const activeStream = runningStreams.find((s) => s.stream_id === activeTabId) ?? null;
