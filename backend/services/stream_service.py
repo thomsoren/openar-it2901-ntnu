@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from common.config import BASE_DIR, MEDIAMTX_ENABLED, VIDEO_PATH, build_playback_urls
-from cv.utils import is_remote_url as is_remote_stream
+from cv.utils import is_remote_url
 from storage import s3
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def resolve_stream_source(source_url: str | None) -> str | None:
     if s3_key:
         return _presign_s3_for_ffmpeg(s3_key)
 
-    if is_remote_stream(raw):
+    if is_remote_url(raw):
         return raw
 
     candidate = Path(raw)

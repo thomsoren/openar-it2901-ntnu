@@ -94,6 +94,7 @@ class IdunBridge:
     async def _sender_loop(self, websocket: WebSocket) -> None:
         """Send frames to IDUN at the target FPS."""
         interval = 1.0 / IDUN_TARGET_SEND_FPS
+        loop = asyncio.get_running_loop()
         prev_stream_id: str | None = None
         prev_frame_idx = -1
         is_paused = True
@@ -157,7 +158,6 @@ class IdunBridge:
             prev_frame_idx = frame_idx
 
             # JPEG encode (CPU-bound — run in thread pool to avoid blocking the event loop)
-            loop = asyncio.get_running_loop()
             ok, jpeg_buf = await loop.run_in_executor(
                 None, cv2.imencode, ".jpg", frame, JPEG_ENCODE_PARAMS,
             )

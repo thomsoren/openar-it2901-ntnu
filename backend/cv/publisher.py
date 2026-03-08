@@ -61,12 +61,7 @@ class FusionPublisher(DetectionPublisher):
             if meta is not None:
                 payload = {**payload, "vessels": vessels, "fusion": meta}
 
-        try:
-            self._redis.publish(detections_channel(stream_id), json.dumps(payload))
-            return True
-        except RedisError as exc:
-            logger.warning("Redis publish failed for stream '%s': %s", stream_id, exc)
-            return False
+        return super().publish(stream_id, payload)
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────

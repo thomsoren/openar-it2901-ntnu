@@ -9,8 +9,8 @@ Algorithm: greedy nearest-neighbour in pixel space.
     1. For each AIS record, compute pixel distance to every detection.
     2. Sort (ais, detection) pairs by distance ascending.
     3. Greedily assign the closest pair; mark both as used.
-    4. Unmatched detections → DetectedVessel(vessel=None).
-    5. AIS records with no detection match → DetectedVessel(detection=None)
+    4. Unmatched detections → dict with vessel=None.
+    5. AIS records with no detection match → dict with detection=None
        only when include_unmatched_ais=True.
 
 A match is only accepted when the pixel distance is ≤ MAX_MATCH_DISTANCE_PX.
