@@ -5,7 +5,6 @@ import json
 import logging
 import subprocess
 import threading
-from urllib.parse import urlparse
 
 from common.config.mediamtx import (
     FFMPEG_BIN,
@@ -20,13 +19,9 @@ from common.config.mediamtx import (
     MEDIAMTX_ENABLED,
     build_rtsp_publish_url,
 )
+from cv.utils import is_http_url, is_remote_url
 
 logger = logging.getLogger(__name__)
-
-
-def _is_remote(source_url: str) -> bool:
-    scheme = urlparse(source_url).scheme.lower()
-    return scheme in {"rtsp", "rtsps", "http", "https", "rtmp", "udp", "tcp"}
 
 
 def _probe_video_codec(source_url: str) -> str | None:
@@ -114,8 +109,8 @@ class FFmpegDirectPublisher:
         self.process: subprocess.Popen | None = None
         self._can_copy = False
         self._codec_candidates = _codec_order()
-        self._is_remote = _is_remote(source_url)
-        self._is_http = source_url.lower().startswith(("http://", "https://"))
+        self._is_remote = is_remote_url(source_url)
+        self._is_http = is_http_url(source_url)
 
     def _probe(self) -> None:
         """Detect source codec to decide copy vs transcode."""

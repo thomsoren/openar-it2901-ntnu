@@ -88,11 +88,11 @@ async def lifespan(_: FastAPI):
         from cv.idun.bridge import IdunBridge
         from cv.idun.noop_inference import NoopInferenceThread
         from cv.idun.routes import init_bridge
-        from cv.publisher import DetectionPublisher
+        from cv.publisher import get_fusion_publisher
 
         noop = NoopInferenceThread()
         inference_thread = noop
-        bridge = IdunBridge(noop, DetectionPublisher())
+        bridge = IdunBridge(noop, get_fusion_publisher())
         init_bridge(bridge)
 
     state.orchestrator = WorkerOrchestrator(
