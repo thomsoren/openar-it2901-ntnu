@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { DetectedVessel, Detection } from "../types/detection";
+import {
+  createMotionDirectionState,
+  updateMotionDirection,
+  type MotionDirectionState,
+} from "./directionModel";
 
 interface InterpolatedDetectionOptions {
   maxExtrapolationMs?: number;
   trackDropMs?: number;
   staleHoldMs?: number;
   anonMatchDistancePx?: number;
+  motionDirectionScaleX?: number;
+  motionDirectionScaleY?: number;
 }
 
 interface Kalman1D {
-  x: number; // position
-  v: number; // velocity (px/s)
+  x: number;
+  v: number;
   p00: number;
   p01: number;
   p10: number;
@@ -30,6 +37,7 @@ interface TrackState {
   lastMeasurementAtMs: number;
   lastRenderAtMs: number;
   lastRendered: { x: number; y: number; width: number; height: number } | null;
+  motionDirection: MotionDirectionState;
 }
 
 const DEFAULT_OPTIONS = {
@@ -37,13 +45,15 @@ const DEFAULT_OPTIONS = {
   trackDropMs: 3000,
   staleHoldMs: 1500,
   anonMatchDistancePx: 240,
+  motionDirectionScaleX: 1,
+  motionDirectionScaleY: 1,
 } satisfies Required<InterpolatedDetectionOptions>;
 
-const PROCESS_NOISE_POS = 80; // px² per prediction step
-const PROCESS_NOISE_VEL = 250; // (px/s)² per prediction step
-const MEASUREMENT_NOISE_XY = 36; // px² — position measurement variance
-const MEASUREMENT_NOISE_WH = 64; // px² — dimension measurement variance
-const EMA_TAU_MS = 140; // ms — exponential moving average time constant for render smoothing
+const PROCESS_NOISE_POS = 80;
+const PROCESS_NOISE_VEL = 250;
+const MEASUREMENT_NOISE_XY = 36;
+const MEASUREMENT_NOISE_WH = 64;
+const EMA_TAU_MS = 140;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -68,7 +78,6 @@ function predictKalman(filter: Kalman1D, dtSeconds: number): void {
   const p10 = filter.p10;
   const p11 = filter.p11;
 
-  // Constant-velocity model with diagonal process noise.
   filter.p00 = p00 + dt * (p01 + p10) + dt * dt * p11 + PROCESS_NOISE_POS;
   filter.p01 = p01 + dt * p11;
   filter.p10 = p10 + dt * p11;
@@ -128,6 +137,7 @@ const buildTrack = (
     width: item.detection.width,
     height: item.detection.height,
   },
+  motionDirection: createMotionDirectionState(),
 });
 
 export function useInterpolatedDetections(
@@ -150,7 +160,6 @@ export function useInterpolatedDetections(
       if (key.startsWith("anon:")) {
         unmatchedAnon.add(key);
       }
-      // 3x trackDropMs: keep hidden tracks for re-identification if the same ID reappears
       if (sampleTimeMs - track.lastMeasurementAtMs > config.trackDropMs * 3) {
         tracks.delete(key);
       }
@@ -257,6 +266,29 @@ export function useInterpolatedDetections(
 
         track.lastRendered = smoothed;
         track.lastRenderAtMs = nowMs;
+        track.motionDirection = updateMotionDirection(track.motionDirection, {
+          vx: track.kx.v,
+          vy: track.ky.v,
+          nowMs,
+          dtMs: dtRenderMs,
+          scaleX: config.motionDirectionScaleX,
+          scaleY: config.motionDirectionScaleY,
+        });
+
+        const motionDirectionDeg = track.motionDirection.smoothedDirectionDeg;
+        const aisHeadingDeg = track.vessel?.heading;
+        const hasMotion = motionDirectionDeg !== undefined;
+        const hasAis = aisHeadingDeg !== undefined && !Number.isNaN(aisHeadingDeg);
+        const displayDirectionDeg = hasMotion
+          ? motionDirectionDeg
+          : hasAis
+            ? aisHeadingDeg
+            : undefined;
+        const displayDirectionSource: "motion" | "ais" | undefined = hasMotion
+          ? "motion"
+          : hasAis
+            ? "ais"
+            : undefined;
 
         next.push({
           detection: {
@@ -269,6 +301,9 @@ export function useInterpolatedDetections(
             track_id: track.trackIdForOutput,
           },
           vessel: track.vessel,
+          motionDirectionDeg,
+          displayDirectionDeg,
+          displayDirectionSource,
         });
       }
 
@@ -278,7 +313,13 @@ export function useInterpolatedDetections(
 
     rafId = window.requestAnimationFrame(render);
     return () => window.cancelAnimationFrame(rafId);
-  }, [config.maxExtrapolationMs, config.staleHoldMs, config.trackDropMs]);
+  }, [
+    config.maxExtrapolationMs,
+    config.motionDirectionScaleX,
+    config.motionDirectionScaleY,
+    config.staleHoldMs,
+    config.trackDropMs,
+  ]);
 
   return rendered;
 }

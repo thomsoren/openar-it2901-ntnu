@@ -205,7 +205,7 @@ function PoiOverlay({
       el.boxHeight = scaledHeight;
       el.value = PoiDataValue.Unchecked;
       el.data = vesselData;
-      el.relativeDirection = item.vessel?.heading ?? 0;
+      el.relativeDirection = item.displayDirectionDeg ?? 0;
     });
 
     // Remove elements whose vessels are no longer present.
