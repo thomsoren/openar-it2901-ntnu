@@ -14,11 +14,12 @@ interface InterpolatedDetectionOptions {
   anonMatchDistancePx?: number;
   motionDirectionScaleX?: number;
   motionDirectionScaleY?: number;
+  cameraHeadingDeg?: number;
 }
 
 interface Kalman1D {
-  x: number;
-  v: number;
+  x: number; // position
+  v: number; // velocity (px/s)
   p00: number;
   p01: number;
   p10: number;
@@ -48,13 +49,14 @@ const DEFAULT_OPTIONS = {
   anonMatchDistancePx: 240,
   motionDirectionScaleX: 1,
   motionDirectionScaleY: 1,
-} satisfies Required<InterpolatedDetectionOptions>;
+  cameraHeadingDeg: undefined as number | undefined,
+};
 
-const PROCESS_NOISE_POS = 80;
-const PROCESS_NOISE_VEL = 250;
-const MEASUREMENT_NOISE_XY = 36;
-const MEASUREMENT_NOISE_WH = 64;
-const EMA_TAU_MS = 140;
+const PROCESS_NOISE_POS = 80; // px² per prediction step
+const PROCESS_NOISE_VEL = 250; // (px/s)² per prediction step
+const MEASUREMENT_NOISE_XY = 36; // px² — position measurement variance
+const MEASUREMENT_NOISE_WH = 64; // px² — dimension measurement variance
+const EMA_TAU_MS = 140; // ms — exponential moving average time constant for render smoothing
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
@@ -79,6 +81,7 @@ function predictKalman(filter: Kalman1D, dtSeconds: number): void {
   const p10 = filter.p10;
   const p11 = filter.p11;
 
+  // Constant-velocity model with diagonal process noise.
   filter.p00 = p00 + dt * (p01 + p10) + dt * dt * p11 + PROCESS_NOISE_POS;
   filter.p01 = p01 + dt * p11;
   filter.p10 = p10 + dt * p11;
@@ -151,8 +154,15 @@ export function useInterpolatedDetections(
   const [rendered, setRendered] = useState<DetectedVessel[]>([]);
 
   useEffect(() => {
-    const sampleTimeMs = getSampleTimeMs();
     const tracks = tracksRef.current;
+
+    if (vessels.length === 0) {
+      tracks.clear();
+      anonTrackCounterRef.current = -1;
+      return;
+    }
+
+    const sampleTimeMs = getSampleTimeMs();
     const seenKeys = new Set<string>();
     const unmatchedAnon = new Set<string>();
     const maxAnonDistanceSq = config.anonMatchDistancePx * config.anonMatchDistancePx;
@@ -161,6 +171,7 @@ export function useInterpolatedDetections(
       if (key.startsWith("anon:")) {
         unmatchedAnon.add(key);
       }
+      // 3x trackDropMs: keep hidden tracks for re-identification if the same ID reappears
       if (sampleTimeMs - track.lastMeasurementAtMs > config.trackDropMs * 3) {
         tracks.delete(key);
       }
@@ -276,10 +287,10 @@ export function useInterpolatedDetections(
           scaleY: config.motionDirectionScaleY,
         });
 
-        const motionDirectionDeg = track.motionDirection.smoothedDirectionDeg;
-        const { displayDirectionDeg, displayDirectionSource } = resolveDisplayDirection(
-          motionDirectionDeg,
-          track.vessel?.heading
+        const { displayDirectionDeg } = resolveDisplayDirection(
+          track.motionDirection.smoothedDirectionDeg,
+          track.vessel?.heading,
+          config.cameraHeadingDeg
         );
 
         next.push({
@@ -293,9 +304,7 @@ export function useInterpolatedDetections(
             track_id: track.trackIdForOutput,
           },
           vessel: track.vessel,
-          motionDirectionDeg,
           displayDirectionDeg,
-          displayDirectionSource,
         });
       }
 
@@ -306,6 +315,7 @@ export function useInterpolatedDetections(
     rafId = window.requestAnimationFrame(render);
     return () => window.cancelAnimationFrame(rafId);
   }, [
+    config.cameraHeadingDeg,
     config.maxExtrapolationMs,
     config.motionDirectionScaleX,
     config.motionDirectionScaleY,

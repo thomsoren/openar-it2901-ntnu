@@ -5,6 +5,7 @@ import {
   computeMotionDirectionDeg,
   createMotionDirectionState,
   normalizeAngleDeg,
+  normalizeDirectionScales,
   resolveDisplayDirection,
   shortestAngleDeltaDeg,
   updateMotionDirection,
@@ -29,6 +30,32 @@ describe("normalizeAngleDeg", () => {
 
   it("preserves fractional degrees", () => {
     expect(normalizeAngleDeg(360.5)).toBeCloseTo(0.5);
+  });
+});
+
+describe("normalizeDirectionScales", () => {
+  it("returns 1:1 for equal scales", () => {
+    const result = normalizeDirectionScales(3, 3);
+    expect(result.scaleX).toBeCloseTo(1);
+    expect(result.scaleY).toBeCloseTo(1);
+  });
+
+  it("preserves the ratio when scales differ", () => {
+    const result = normalizeDirectionScales(2, 1);
+    expect(result.scaleX).toBeCloseTo(2);
+    expect(result.scaleY).toBeCloseTo(1);
+  });
+
+  it("normalizes to the smaller axis as baseline", () => {
+    const result = normalizeDirectionScales(4, 2);
+    expect(result.scaleX).toBeCloseTo(2);
+    expect(result.scaleY).toBeCloseTo(1);
+  });
+
+  it("handles negative scales by preserving sign", () => {
+    const result = normalizeDirectionScales(-2, 1);
+    expect(result.scaleX).toBeCloseTo(-2);
+    expect(result.scaleY).toBeCloseTo(1);
   });
 });
 
@@ -334,5 +361,35 @@ describe("resolveDisplayDirection", () => {
 
     expect(result.displayDirectionDeg).toBe(45);
     expect(result.displayDirectionSource).toBe("motion");
+  });
+
+  it("converts AIS heading to screen-space using camera heading", () => {
+    // AIS heading 90° (east), camera facing east (90°) → screen 0° (up)
+    const result = resolveDisplayDirection(undefined, 90, 90);
+
+    expect(result.displayDirectionDeg).toBeCloseTo(0);
+    expect(result.displayDirectionSource).toBe("ais");
+  });
+
+  it("does not apply camera heading conversion to motion direction", () => {
+    const result = resolveDisplayDirection(45, 180, 90);
+
+    expect(result.displayDirectionDeg).toBe(45);
+    expect(result.displayDirectionSource).toBe("motion");
+  });
+
+  it("passes AIS heading through unchanged when camera heading is undefined", () => {
+    const result = resolveDisplayDirection(undefined, 180, undefined);
+
+    expect(result.displayDirectionDeg).toBe(180);
+    expect(result.displayDirectionSource).toBe("ais");
+  });
+
+  it("wraps negative result into 0-360 range", () => {
+    // AIS heading 10°, camera heading 90° → 10 - 90 = -80 → 280°
+    const result = resolveDisplayDirection(undefined, 10, 90);
+
+    expect(result.displayDirectionDeg).toBeCloseTo(280);
+    expect(result.displayDirectionSource).toBe("ais");
   });
 });

@@ -212,6 +212,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
       activeDetectionFrame?.height && activeDetectionFrame.height > 0
         ? activeVideoTransform.sourceHeight / activeDetectionFrame.height
         : 1,
+    cameraHeadingDeg: activeDetectionFrame?.cameraHeadingDeg,
   });
 
   useEffect(() => {

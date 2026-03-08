@@ -39,7 +39,7 @@ export function shortestAngleDeltaDeg(fromDeg: number, toDeg: number): number {
   return delta;
 }
 
-function normalizeDirectionScales(
+export function normalizeDirectionScales(
   scaleX: number,
   scaleY: number
 ): { scaleX: number; scaleY: number } {
@@ -76,13 +76,18 @@ export interface DisplayDirection {
 
 export function resolveDisplayDirection(
   motionDirectionDeg: number | undefined,
-  aisHeadingDeg: number | undefined
+  aisHeadingDeg: number | undefined,
+  cameraHeadingDeg?: number
 ): DisplayDirection {
   if (motionDirectionDeg !== undefined) {
     return { displayDirectionDeg: motionDirectionDeg, displayDirectionSource: "motion" };
   }
   if (aisHeadingDeg !== undefined && !Number.isNaN(aisHeadingDeg)) {
-    return { displayDirectionDeg: aisHeadingDeg, displayDirectionSource: "ais" };
+    const screenDeg =
+      cameraHeadingDeg !== undefined
+        ? normalizeAngleDeg(aisHeadingDeg - cameraHeadingDeg)
+        : aisHeadingDeg;
+    return { displayDirectionDeg: screenDeg, displayDirectionSource: "ais" };
   }
   return { displayDirectionDeg: undefined, displayDirectionSource: undefined };
 }
