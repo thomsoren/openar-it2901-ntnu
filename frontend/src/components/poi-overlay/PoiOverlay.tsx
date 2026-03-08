@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect, useCallback, useEffect } from "react";
+import React, { useRef, useState, useLayoutEffect, useCallback, useEffect, useMemo } from "react";
 import { ObcPoiController } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-controller/poi-controller";
 import { ObcPoiLayerStack } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer-stack/poi-layer-stack";
 import { ObcPoiLayer } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer/poi-layer";
@@ -6,6 +6,7 @@ import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcompon
 import { DetectedVessel } from "../../types/detection";
 import { VideoTransform } from "../../hooks/useVideoTransform";
 import { useARControls } from "../ar-control-panel/useARControls";
+import { useDebugBoxes, DebugBoxItem } from "../../hooks/useDebugBoxes";
 import "./PoiOverlay.css";
 
 interface PoiOverlayProps {
@@ -42,7 +43,8 @@ function isLayerVisible(
   arControls: ReturnType<typeof useARControls>["state"]
 ): boolean {
   const cls = className ?? "boat";
-  if (cls === "boat" || cls === "vessel") return arControls.vesselLayerVisible;
+  if (cls === "boat" || cls === "vessel" || cls === "sailboat")
+    return arControls.vesselLayerVisible;
   if (cls === "buoy") return arControls.buoyLayerVisible;
   if (cls === "flotsam") return arControls.flotsamLayerVisible;
   if (cls === "mob") return arControls.mobLayerVisible;
@@ -72,12 +74,10 @@ function PoiOverlay({
 }: PoiOverlayProps) {
   const { state: arControls } = useARControls();
   const overlayRef = useRef<HTMLDivElement>(null);
+  const debugOverlayRef = useRef<HTMLDivElement>(null);
   const layerElRef = useRef<HTMLElement | null>(null);
   const [layerTopOffset, setLayerTopOffset] = useState(0);
 
-  // Tracks all imperatively-created obc-poi-data elements by trackId.
-  // We never query layer.children because the web component may move elements
-  // into obc-poi-group containers; instead we own the references ourselves.
   const poiElementsRef = useRef<Map<string | number, PoiDataElement>>(new Map());
 
   const layerRefCallback = useCallback((el: unknown) => {
@@ -111,26 +111,15 @@ function PoiOverlay({
     };
   }, [measureLayerOffset]);
 
-  // Imperatively sync obc-poi-data elements with the current vessel list.
-  // We bypass React reconciliation entirely for these elements because
-  // obc-poi-layer internally moves its light-DOM children (even without
-  // overlap-mode), which breaks React's removeChild assumptions.
-  useEffect(() => {
-    const layer = layerElRef.current;
-    if (!layer) return;
-
-    // Skip when dimensions are invalid — prevents obc-poi-pointer SVG negative-value errors
+  // Compute screen-space positions once, shared by both POI sync and debug boxes.
+  const screenItems = useMemo(() => {
     if (
       videoTransform.videoWidth <= 0 ||
       videoTransform.videoHeight <= 0 ||
       videoTransform.sourceWidth <= 0 ||
       videoTransform.sourceHeight <= 0
     ) {
-      for (const el of poiElementsRef.current.values()) {
-        el.parentNode?.removeChild(el);
-      }
-      poiElementsRef.current.clear();
-      return;
+      return [];
     }
 
     const sourceWidth = videoTransform.sourceWidth;
@@ -142,26 +131,63 @@ function PoiOverlay({
     const mapX = detectionWidth > 0 ? sourceWidth / detectionWidth : 1;
     const mapY = detectionHeight > 0 ? sourceHeight / detectionHeight : 1;
 
+    return vessels
+      .map((item, index) => {
+        const detection = item?.detection;
+        if (!detection) return null;
+        if (!isLayerVisible(detection.class_name, arControls)) return null;
+
+        const trackId = detection.track_id ?? `vessel-${index}`;
+        const scaledX = detection.x * mapX * videoTransform.scaleX;
+        const scaledY = detection.y * mapY * videoTransform.scaleY;
+        const scaledWidth = Math.max(1, Math.abs(detection.width * mapX * videoTransform.scaleX));
+        const scaledHeight = Math.max(1, Math.abs(detection.height * mapY * videoTransform.scaleY));
+        const screenX = scaledX + videoTransform.offsetX;
+        const screenY = scaledY + videoTransform.offsetY;
+
+        return { item, trackId, screenX, screenY, scaledWidth, scaledHeight };
+      })
+      .filter((v): v is NonNullable<typeof v> => v !== null);
+  }, [vessels, arControls, videoTransform, detectionFrame]);
+
+  // Build debug box items from screenItems
+  const debugBoxItems: DebugBoxItem[] = useMemo(
+    () =>
+      screenItems.map(({ item, trackId, screenX, screenY, scaledWidth, scaledHeight }) => ({
+        trackId,
+        screenX,
+        screenY,
+        width: scaledWidth,
+        height: scaledHeight,
+        label: item.vessel?.name || item.vessel?.mmsi || String(trackId),
+        directionDeg: item.displayDirectionDeg,
+      })),
+    [screenItems]
+  );
+
+  useDebugBoxes(debugOverlayRef, arControls.debugBboxVisible, debugBoxItems);
+
+  // Imperatively sync obc-poi-data elements with the current vessel list.
+  // We bypass React reconciliation entirely for these elements because
+  // obc-poi-layer internally moves its light-DOM children (even without
+  // overlap-mode), which breaks React's removeChild assumptions.
+  useEffect(() => {
+    const layer = layerElRef.current;
+    if (!layer) return;
+
+    if (screenItems.length === 0) {
+      for (const el of poiElementsRef.current.values()) {
+        el.parentNode?.removeChild(el);
+      }
+      poiElementsRef.current.clear();
+      return;
+    }
+
     const keysToRemove = new Set(poiElementsRef.current.keys());
 
-    vessels.forEach((item, index) => {
-      const detection = item?.detection;
-      if (!detection) {
-        return;
-      }
-      if (!isLayerVisible(detection.class_name, arControls)) {
-        return;
-      }
-
-      const trackId = detection.track_id ?? `vessel-${index}`;
+    for (const { item, trackId, screenX, screenY, scaledWidth, scaledHeight } of screenItems) {
       keysToRemove.delete(trackId);
-
-      const scaledX = detection.x * mapX * videoTransform.scaleX;
-      const scaledY = detection.y * mapY * videoTransform.scaleY;
-      const scaledWidth = Math.max(1, Math.abs(detection.width * mapX * videoTransform.scaleX));
-      const scaledHeight = Math.max(1, Math.abs(detection.height * mapY * videoTransform.scaleY));
-      const screenX = scaledX + videoTransform.offsetX;
-      const screenY = scaledY + videoTransform.offsetY;
+      const detection = item.detection;
       const lineLength = Math.max(0, screenY - layerTopOffset);
 
       const matchDistancePx = item.fusion?.match_distance_px ?? item.match_distance_px;
@@ -198,15 +224,14 @@ function PoiOverlay({
         layer.appendChild(el);
       }
 
-      // Update Lit reactive properties directly on the element.
       el.x = screenX;
       el.y = lineLength;
       el.boxWidth = scaledWidth;
       el.boxHeight = scaledHeight;
       el.value = PoiDataValue.Unchecked;
       el.data = vesselData;
-      el.relativeDirection = item.vessel?.heading ?? 0;
-    });
+      el.relativeDirection = item.displayDirectionDeg ?? 0;
+    }
 
     // Remove elements whose vessels are no longer present.
     // Use el.parentNode (not layer) because the web component may have
@@ -218,7 +243,7 @@ function PoiOverlay({
         poiElementsRef.current.delete(key);
       }
     }
-  }, [vessels, arControls, videoTransform, detectionFrame, layerTopOffset, metricsMode]);
+  }, [screenItems, arControls, layerTopOffset, metricsMode]);
 
   // Remove all imperative elements when this component unmounts.
   useEffect(() => {
@@ -233,6 +258,15 @@ function PoiOverlay({
 
   return (
     <div className="poi-overlay" ref={overlayRef}>
+      <div
+        ref={debugOverlayRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 9999,
+        }}
+      />
       <ObcPoiController
         style={
           {

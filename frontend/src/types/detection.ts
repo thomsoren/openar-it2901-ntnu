@@ -41,4 +41,5 @@ export interface DetectedVessel {
     range_m?: number | null;
     rel_bearing_deg?: number | null;
   };
+  displayDirectionDeg?: number; // Direction rendered by the POI icon (degrees, 0=up, clockwise)
 }

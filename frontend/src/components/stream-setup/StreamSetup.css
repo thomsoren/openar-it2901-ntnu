@@ -126,6 +126,7 @@
   color: var(--element-neutral-color, #535353);
   text-align: center;
   padding: 8px 0;
+  flex-shrink: 0;
 }
 
 .stream-setup__message {
@@ -135,6 +136,7 @@
   color: var(--element-neutral-color, #535353);
   text-align: center;
   padding: 8px 0;
+  flex-shrink: 0;
 }
 
 .stream-setup__message[data-status="error"] {
@@ -279,6 +281,11 @@
 .stream-setup__modal-progress {
   width: 100%;
   padding: 0 24px 8px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-top: 1px solid var(--border-divider-color, #ddd);
+  padding-top: 8px;
 }
 
 /* Auth gate within stream tab */

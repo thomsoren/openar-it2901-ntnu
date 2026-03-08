@@ -34,6 +34,10 @@
     top 0.2s ease-out;
 }
 
+obc-poi-data::part(icon) {
+  transition: transform 0.4s ease-out;
+}
+
 .poi-label {
   position: absolute;
   top: 100%; /* Position below the marker */
