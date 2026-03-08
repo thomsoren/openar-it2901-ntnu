@@ -81,6 +81,10 @@ function readPanelVisibility(value: unknown): ARControlPanelVisibilityState {
       obj.videoFitVisible,
       AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.videoFitVisible
     ),
+    debugBboxVisible: asBoolean(
+      obj.debugBboxVisible,
+      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.debugBboxVisible
+    ),
   };
 }
 
@@ -127,6 +131,7 @@ function readStoredState(): {
       aisCardsVisible: asBoolean(parsed.aisCardsVisible, AR_CONTROL_DEFAULTS.aisCardsVisible),
       detectionVisible: asBoolean(parsed.detectionVisible, AR_CONTROL_DEFAULTS.detectionVisible),
       videoFitMode: asVideoFitMode(parsed.videoFitMode, mobileDefault),
+      debugBboxVisible: asBoolean(parsed.debugBboxVisible, AR_CONTROL_DEFAULTS.debugBboxVisible),
     };
 
     return {

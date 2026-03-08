@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
+import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import {
   CircularProgressState,
   ProgressBarMode,
@@ -18,6 +19,7 @@ import { DETECTION_CONFIG, FUSION_PIRBADET_CONFIG, MOCK_DATA_CONFIG } from "../c
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import { startStream, stopStream, toStreamError } from "../services/streams";
+import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
 import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
@@ -28,11 +30,6 @@ const LOADER_STUCK_RECOVERY_MS = 12000;
 const PLAYER_RECOVERY_COOLDOWN_MS = 15000;
 const DETECTION_STALE_RECOVERY_MS = 10000;
 const DETECTION_RECOVERY_COOLDOWN_MS = 8000;
-const LOADER_PROGRESS_STYLE = {
-  "--instrument-enhanced-secondary-color": "#4ea9dd",
-  "--container-backdrop-color": "rgba(68, 88, 112, 0.22)",
-} as CSSProperties;
-
 interface AROverlayProps {
   externalStreamId?: string | null;
   onAuthGateVisibleChange?: (visible: boolean) => void;
@@ -46,11 +43,10 @@ function WorkspaceLoader({ label }: { label: string }) {
         type={ProgressBarType.circular}
         mode={ProgressBarMode.indeterminate}
         circularState={CircularProgressState.indeterminate}
-        style={LOADER_PROGRESS_STYLE}
       >
         <span slot="icon"></span>
       </ObcProgressBar>
-      <div className="video-loading-center__label">{label}</div>
+      <ObcTag className="video-loading-center__label" label={label} />
     </div>
   );
 }
@@ -136,7 +132,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
       !activeIsMockData &&
       (activeTabId !== FUSION_TAB_ID || Boolean(fusionRunningStream)),
   });
-  const { vessels: mockDataVessels } = useDetectionsWebSocket({
+  const { vessels: mockDataVessels, videoInfo: mockDataVideoInfo } = useDetectionsWebSocket({
     url: MOCK_DATA_CONFIG.WS_URL,
     enabled: wsEnabled && activeIsMockData,
   });
@@ -205,6 +201,19 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     MOCK_DATA_CONFIG.HEIGHT,
     activeIsMockData
   );
+  const activeVideoTransform = activeIsMockData ? mockDataVideoTransform : videoTransform;
+  const activeDetectionFrame = activeIsMockData ? mockDataVideoInfo : videoInfo;
+  const interpolatedVessels = useInterpolatedDetections(overlayVessels, {
+    motionDirectionScaleX:
+      activeDetectionFrame?.width && activeDetectionFrame.width > 0
+        ? activeVideoTransform.sourceWidth / activeDetectionFrame.width
+        : 1,
+    motionDirectionScaleY:
+      activeDetectionFrame?.height && activeDetectionFrame.height > 0
+        ? activeVideoTransform.sourceHeight / activeDetectionFrame.height
+        : 1,
+    cameraHeadingDeg: activeDetectionFrame?.cameraHeadingDeg,
+  });
 
   useEffect(() => {
     if (!activeIsMockData) return;
@@ -417,6 +426,8 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                   <div className="stream-setup-auth">
                     <AuthGate initialMode="login" onAuthenticated={auth.handleAuthenticated} />
                   </div>
+                ) : !mediaAuthReady ? (
+                  <WorkspaceLoader label="Authorizing..." />
                 ) : (
                   <StreamSetup tabId={activeTabId} onStreamReady={handleStreamReady} />
                 )}
@@ -443,7 +454,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                 {arControls.detectionVisible && (
                   <PoiErrorBoundary>
                     <PoiOverlay
-                      vessels={mockDataVessels}
+                      vessels={interpolatedVessels}
                       videoTransform={mockDataVideoTransform}
                       videoRef={mockDataVideoRef}
                       videoFitMode={arControls.videoFitMode}
@@ -531,7 +542,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                 {mediaAuthReady && arControls.detectionVisible && (
                   <PoiErrorBoundary>
                     <PoiOverlay
-                      vessels={overlayVessels}
+                      vessels={interpolatedVessels}
                       videoTransform={videoTransform}
                       detectionFrame={
                         videoInfo ? { width: videoInfo.width, height: videoInfo.height } : null

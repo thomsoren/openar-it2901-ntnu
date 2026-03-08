@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { DetectedVessel, Detection } from "../types/detection";
+import {
+  createMotionDirectionState,
+  resolveDisplayDirection,
+  updateMotionDirection,
+  type MotionDirectionState,
+} from "./directionModel";
 
 interface InterpolatedDetectionOptions {
   maxExtrapolationMs?: number;
   trackDropMs?: number;
   staleHoldMs?: number;
   anonMatchDistancePx?: number;
+  motionDirectionScaleX?: number;
+  motionDirectionScaleY?: number;
+  cameraHeadingDeg?: number;
 }
 
 interface Kalman1D {
@@ -30,6 +39,7 @@ interface TrackState {
   lastMeasurementAtMs: number;
   lastRenderAtMs: number;
   lastRendered: { x: number; y: number; width: number; height: number } | null;
+  motionDirection: MotionDirectionState;
 }
 
 const DEFAULT_OPTIONS = {
@@ -37,7 +47,10 @@ const DEFAULT_OPTIONS = {
   trackDropMs: 3000,
   staleHoldMs: 1500,
   anonMatchDistancePx: 240,
-} satisfies Required<InterpolatedDetectionOptions>;
+  motionDirectionScaleX: 1,
+  motionDirectionScaleY: 1,
+  cameraHeadingDeg: undefined as number | undefined,
+};
 
 const PROCESS_NOISE_POS = 80; // px² per prediction step
 const PROCESS_NOISE_VEL = 250; // (px/s)² per prediction step
@@ -128,6 +141,7 @@ const buildTrack = (
     width: item.detection.width,
     height: item.detection.height,
   },
+  motionDirection: createMotionDirectionState(),
 });
 
 export function useInterpolatedDetections(
@@ -140,8 +154,15 @@ export function useInterpolatedDetections(
   const [rendered, setRendered] = useState<DetectedVessel[]>([]);
 
   useEffect(() => {
-    const sampleTimeMs = getSampleTimeMs();
     const tracks = tracksRef.current;
+
+    if (vessels.length === 0) {
+      tracks.clear();
+      anonTrackCounterRef.current = -1;
+      return;
+    }
+
+    const sampleTimeMs = getSampleTimeMs();
     const seenKeys = new Set<string>();
     const unmatchedAnon = new Set<string>();
     const maxAnonDistanceSq = config.anonMatchDistancePx * config.anonMatchDistancePx;
@@ -257,6 +278,20 @@ export function useInterpolatedDetections(
 
         track.lastRendered = smoothed;
         track.lastRenderAtMs = nowMs;
+        track.motionDirection = updateMotionDirection(track.motionDirection, {
+          vx: track.kx.v,
+          vy: track.ky.v,
+          nowMs,
+          dtMs: dtRenderMs,
+          scaleX: config.motionDirectionScaleX,
+          scaleY: config.motionDirectionScaleY,
+        });
+
+        const { displayDirectionDeg } = resolveDisplayDirection(
+          track.motionDirection.smoothedDirectionDeg,
+          track.vessel?.heading,
+          config.cameraHeadingDeg
+        );
 
         next.push({
           detection: {
@@ -269,6 +304,7 @@ export function useInterpolatedDetections(
             track_id: track.trackIdForOutput,
           },
           vessel: track.vessel,
+          displayDirectionDeg,
         });
       }
 
@@ -278,7 +314,14 @@ export function useInterpolatedDetections(
 
     rafId = window.requestAnimationFrame(render);
     return () => window.cancelAnimationFrame(rafId);
-  }, [config.maxExtrapolationMs, config.staleHoldMs, config.trackDropMs]);
+  }, [
+    config.cameraHeadingDeg,
+    config.maxExtrapolationMs,
+    config.motionDirectionScaleX,
+    config.motionDirectionScaleY,
+    config.staleHoldMs,
+    config.trackDropMs,
+  ]);
 
   return rendered;
 }

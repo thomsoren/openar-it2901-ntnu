@@ -22,6 +22,8 @@ interface VideoInfo {
   height: number;
   /** Video native FPS */
   fps: number;
+  /** Camera geographic heading in degrees (0=north, clockwise) */
+  cameraHeadingDeg?: number;
 }
 
 interface WebSocketState {
@@ -149,13 +151,17 @@ function createWebSocketStore(
           switch (data.type) {
             case "ready":
               if (data.width && data.height) {
+                const videoInfo: VideoInfo = {
+                  width: data.width,
+                  height: data.height,
+                  fps: data.fps || 25,
+                };
+                if (typeof data.camera_heading_deg === "number") {
+                  videoInfo.cameraHeadingDeg = data.camera_heading_deg;
+                }
                 setState({
                   lastMessageAtMs: Date.now(),
-                  videoInfo: {
-                    width: data.width,
-                    height: data.height,
-                    fps: data.fps || 25,
-                  },
+                  videoInfo,
                 });
               }
               break;

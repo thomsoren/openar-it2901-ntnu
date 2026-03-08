@@ -40,6 +40,7 @@ class FusionProfileState:
     duration: int
     by_second: dict[int, list[dict]]
     row_kind: str  # "gt" | "ais_ndjson"
+    camera_heading_deg: float | None = None
 
 
 _PROFILE_CACHE: dict[str, FusionProfileState] = {}
@@ -288,6 +289,7 @@ def _load_pirbadet_profile() -> FusionProfileState | None:
             duration=duration,
             by_second=by_second,
             row_kind="ais_ndjson",
+            camera_heading_deg=90.0,  # Pirbadet camera faces east
         )
 
     logger.warning("[fusion:pirbadet] No usable AIS NDJSON in any configured source")
@@ -359,9 +361,10 @@ async def handle_fusion_ws(websocket: WebSocket, profile: str = "mock") -> None:
             )
             return
 
-        await websocket.send_json(
-            {"type": "ready", "width": state.width, "height": state.height, "fps": state.fps}
-        )
+        ready_msg: dict = {"type": "ready", "width": state.width, "height": state.height, "fps": state.fps}
+        if state.camera_heading_deg is not None:
+            ready_msg["camera_heading_deg"] = state.camera_heading_deg
+        await websocket.send_json(ready_msg)
 
         last_second = None
         while True:

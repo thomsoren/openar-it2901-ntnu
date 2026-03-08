@@ -24,9 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 class RTDETRDetector:
-    DEFAULT_MODEL = "optuna_model.pt"
-    # All classes are boats in our custom model, no filtering needed
-    BOAT_CLASSES = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+    DEFAULT_MODEL = "1000_german_images.pt"
+    # Classes 1-3 are maritime vessels; 0=obstacle and 4=seaplane are excluded
+    BOAT_CLASSES = {1, 2, 3}
+    # Map verbose model class names to frontend-compatible layer names
+    CLASS_NAME_MAP: dict[str, str] = {
+        "power-driven vessel": "boat",
+        "sailboat": "sailboat",
+        "seamark": "buoy",
+    }
 
     def __init__(
         self,
@@ -145,7 +151,8 @@ class RTDETRDetector:
             h = xyxy[3] - xyxy[1]
 
             track_id = int(ids_all[i]) if ids_all is not None else None
-            class_name = results.names.get(class_id, "boat")
+            raw_name = results.names.get(class_id, "boat")
+            class_name = self.CLASS_NAME_MAP.get(raw_name, raw_name)
 
             detections.append(Detection(
                 x=float(xyxy[0] + w / 2),

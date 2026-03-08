@@ -95,16 +95,7 @@
   pointer-events: none;
 }
 
-.video-loading-center__label {
-  font-family: "Noto Sans", "Noto Sans Regular", Arial, sans-serif;
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.78);
-}
-
 .video-loading-center__progress {
-  opacity: 0.95;
   width: 48px;
   min-width: 48px;
   max-width: 48px;
