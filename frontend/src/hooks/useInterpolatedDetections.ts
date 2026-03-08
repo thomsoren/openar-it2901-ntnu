@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DetectedVessel, Detection } from "../types/detection";
 import {
   createMotionDirectionState,
+  resolveDisplayDirection,
   updateMotionDirection,
   type MotionDirectionState,
 } from "./directionModel";
@@ -276,19 +277,10 @@ export function useInterpolatedDetections(
         });
 
         const motionDirectionDeg = track.motionDirection.smoothedDirectionDeg;
-        const aisHeadingDeg = track.vessel?.heading;
-        const hasMotion = motionDirectionDeg !== undefined;
-        const hasAis = aisHeadingDeg !== undefined && !Number.isNaN(aisHeadingDeg);
-        const displayDirectionDeg = hasMotion
-          ? motionDirectionDeg
-          : hasAis
-            ? aisHeadingDeg
-            : undefined;
-        const displayDirectionSource: "motion" | "ais" | undefined = hasMotion
-          ? "motion"
-          : hasAis
-            ? "ais"
-            : undefined;
+        const { displayDirectionDeg, displayDirectionSource } = resolveDisplayDirection(
+          motionDirectionDeg,
+          track.vessel?.heading
+        );
 
         next.push({
           detection: {

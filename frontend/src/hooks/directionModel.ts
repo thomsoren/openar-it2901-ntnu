@@ -69,6 +69,24 @@ export function computeMotionDirectionDeg(
   };
 }
 
+export interface DisplayDirection {
+  displayDirectionDeg: number | undefined;
+  displayDirectionSource: "motion" | "ais" | undefined;
+}
+
+export function resolveDisplayDirection(
+  motionDirectionDeg: number | undefined,
+  aisHeadingDeg: number | undefined
+): DisplayDirection {
+  if (motionDirectionDeg !== undefined) {
+    return { displayDirectionDeg: motionDirectionDeg, displayDirectionSource: "motion" };
+  }
+  if (aisHeadingDeg !== undefined && !Number.isNaN(aisHeadingDeg)) {
+    return { displayDirectionDeg: aisHeadingDeg, displayDirectionSource: "ais" };
+  }
+  return { displayDirectionDeg: undefined, displayDirectionSource: undefined };
+}
+
 export function updateMotionDirection(
   state: MotionDirectionState,
   { vx, vy, nowMs, dtMs, scaleX = 1, scaleY = 1 }: MotionDirectionInput
