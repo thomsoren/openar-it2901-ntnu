@@ -28,6 +28,8 @@ export interface Vessel {
   longitude?: number; // Current longitude
 }
 
+export type DisplayDirectionSource = "motion" | "ais";
+
 /**
  * A detected boat with optional AIS data.
  * This is what the frontend receives and renders.
@@ -41,4 +43,7 @@ export interface DetectedVessel {
     range_m?: number | null;
     rel_bearing_deg?: number | null;
   };
+  motionDirectionDeg?: number; // Motion-derived screen direction from tracked velocity (degrees, 0=up, clockwise)
+  displayDirectionDeg?: number; // Direction currently rendered by the POI icon (degrees, 0=up, clockwise)
+  displayDirectionSource?: DisplayDirectionSource;
 }
