@@ -28,7 +28,6 @@ SUPPORTED_PROFILES = {"mock", "pirbadet"}
 PIRBADET_AIS_ASSET_NAMES = ("fusion_ais_pirbadet",)
 PIRBADET_BOX_WIDTH = 80.0
 PIRBADET_BOX_HEIGHT = 48.0
-PIRBADET_CAMERA_HEADING_DEG = 90.0  # Pirbadet camera faces east
 
 
 @dataclass
@@ -290,7 +289,7 @@ def _load_pirbadet_profile() -> FusionProfileState | None:
             duration=duration,
             by_second=by_second,
             row_kind="ais_ndjson",
-            camera_heading_deg=PIRBADET_CAMERA_HEADING_DEG,
+            camera_heading_deg=90.0,  # Pirbadet camera faces east
         )
 
     logger.warning("[fusion:pirbadet] No usable AIS NDJSON in any configured source")

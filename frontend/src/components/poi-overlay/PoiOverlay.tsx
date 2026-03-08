@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect, useCallback, useEffect } from "react";
+import React, { useRef, useState, useLayoutEffect, useCallback, useEffect, useMemo } from "react";
 import { ObcPoiController } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-controller/poi-controller";
 import { ObcPoiLayerStack } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer-stack/poi-layer-stack";
 import { ObcPoiLayer } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-layer/poi-layer";
@@ -6,6 +6,7 @@ import { PoiDataValue } from "@ocean-industries-concept-lab/openbridge-webcompon
 import { DetectedVessel } from "../../types/detection";
 import { VideoTransform } from "../../hooks/useVideoTransform";
 import { useARControls } from "../ar-control-panel/useARControls";
+import { useDebugBoxes, DebugBoxItem } from "../../hooks/useDebugBoxes";
 import "./PoiOverlay.css";
 
 interface PoiOverlayProps {
@@ -77,9 +78,6 @@ function PoiOverlay({
   const layerElRef = useRef<HTMLElement | null>(null);
   const [layerTopOffset, setLayerTopOffset] = useState(0);
 
-  // Tracks all imperatively-created obc-poi-data elements by trackId.
-  // We never query layer.children because the web component may move elements
-  // into obc-poi-group containers; instead we own the references ourselves.
   const poiElementsRef = useRef<Map<string | number, PoiDataElement>>(new Map());
 
   const layerRefCallback = useCallback((el: unknown) => {
@@ -113,33 +111,15 @@ function PoiOverlay({
     };
   }, [measureLayerOffset]);
 
-  // Debug bounding-box refs — managed imperatively like the POI elements
-  const debugBoxesRef = useRef<Map<string | number, HTMLDivElement>>(new Map());
-
-  // Imperatively sync obc-poi-data elements with the current vessel list.
-  // We bypass React reconciliation entirely for these elements because
-  // obc-poi-layer internally moves its light-DOM children (even without
-  // overlap-mode), which breaks React's removeChild assumptions.
-  useEffect(() => {
-    const layer = layerElRef.current;
-    if (!layer) return;
-
-    // Skip when dimensions are invalid — prevents obc-poi-pointer SVG negative-value errors
+  // Compute screen-space positions once, shared by both POI sync and debug boxes.
+  const screenItems = useMemo(() => {
     if (
       videoTransform.videoWidth <= 0 ||
       videoTransform.videoHeight <= 0 ||
       videoTransform.sourceWidth <= 0 ||
       videoTransform.sourceHeight <= 0
     ) {
-      for (const el of poiElementsRef.current.values()) {
-        el.parentNode?.removeChild(el);
-      }
-      poiElementsRef.current.clear();
-      for (const el of debugBoxesRef.current.values()) {
-        el.parentNode?.removeChild(el);
-      }
-      debugBoxesRef.current.clear();
-      return;
+      return [];
     }
 
     const sourceWidth = videoTransform.sourceWidth;
@@ -151,70 +131,64 @@ function PoiOverlay({
     const mapX = detectionWidth > 0 ? sourceWidth / detectionWidth : 1;
     const mapY = detectionHeight > 0 ? sourceHeight / detectionHeight : 1;
 
-    const keysToRemove = new Set(poiElementsRef.current.keys());
-    const debugKeysToRemove = new Set(debugBoxesRef.current.keys());
+    return vessels
+      .map((item, index) => {
+        const detection = item?.detection;
+        if (!detection) return null;
+        if (!isLayerVisible(detection.class_name, arControls)) return null;
 
-    // When debug mode is toggled off, remove all debug boxes immediately
-    if (!arControls.debugBboxVisible && debugBoxesRef.current.size > 0) {
-      for (const el of debugBoxesRef.current.values()) {
+        const trackId = detection.track_id ?? `vessel-${index}`;
+        const scaledX = detection.x * mapX * videoTransform.scaleX;
+        const scaledY = detection.y * mapY * videoTransform.scaleY;
+        const scaledWidth = Math.max(1, Math.abs(detection.width * mapX * videoTransform.scaleX));
+        const scaledHeight = Math.max(1, Math.abs(detection.height * mapY * videoTransform.scaleY));
+        const screenX = scaledX + videoTransform.offsetX;
+        const screenY = scaledY + videoTransform.offsetY;
+
+        return { item, trackId, screenX, screenY, scaledWidth, scaledHeight };
+      })
+      .filter((v): v is NonNullable<typeof v> => v !== null);
+  }, [vessels, arControls, videoTransform, detectionFrame]);
+
+  // Build debug box items from screenItems
+  const debugBoxItems: DebugBoxItem[] = useMemo(
+    () =>
+      screenItems.map(({ item, trackId, screenX, screenY, scaledWidth, scaledHeight }) => ({
+        trackId,
+        screenX,
+        screenY,
+        width: scaledWidth,
+        height: scaledHeight,
+        label: item.vessel?.name || item.vessel?.mmsi || String(trackId),
+        directionDeg: item.displayDirectionDeg,
+      })),
+    [screenItems]
+  );
+
+  useDebugBoxes(debugOverlayRef, arControls.debugBboxVisible, debugBoxItems);
+
+  // Imperatively sync obc-poi-data elements with the current vessel list.
+  // We bypass React reconciliation entirely for these elements because
+  // obc-poi-layer internally moves its light-DOM children (even without
+  // overlap-mode), which breaks React's removeChild assumptions.
+  useEffect(() => {
+    const layer = layerElRef.current;
+    if (!layer) return;
+
+    if (screenItems.length === 0) {
+      for (const el of poiElementsRef.current.values()) {
         el.parentNode?.removeChild(el);
       }
-      debugBoxesRef.current.clear();
-      debugKeysToRemove.clear();
+      poiElementsRef.current.clear();
+      return;
     }
 
-    vessels.forEach((item, index) => {
-      const detection = item?.detection;
-      if (!detection) {
-        return;
-      }
-      if (!isLayerVisible(detection.class_name, arControls)) {
-        return;
-      }
+    const keysToRemove = new Set(poiElementsRef.current.keys());
 
-      const trackId = detection.track_id ?? `vessel-${index}`;
+    for (const { item, trackId, screenX, screenY, scaledWidth, scaledHeight } of screenItems) {
       keysToRemove.delete(trackId);
-      debugKeysToRemove.delete(trackId);
-
-      const scaledX = detection.x * mapX * videoTransform.scaleX;
-      const scaledY = detection.y * mapY * videoTransform.scaleY;
-      const scaledWidth = Math.max(1, Math.abs(detection.width * mapX * videoTransform.scaleX));
-      const scaledHeight = Math.max(1, Math.abs(detection.height * mapY * videoTransform.scaleY));
-      const screenX = scaledX + videoTransform.offsetX;
-      const screenY = scaledY + videoTransform.offsetY;
+      const detection = item.detection;
       const lineLength = Math.max(0, screenY - layerTopOffset);
-
-      // --- Debug bounding boxes ---
-      if (arControls.debugBboxVisible) {
-        const debugContainer = debugOverlayRef.current;
-        if (debugContainer) {
-          let box = debugBoxesRef.current.get(trackId);
-          if (!box) {
-            box = document.createElement("div");
-            box.style.position = "absolute";
-            box.style.border = "2px solid lime";
-            box.style.pointerEvents = "none";
-            box.style.zIndex = "9999";
-            box.style.boxSizing = "border-box";
-            debugBoxesRef.current.set(trackId, box);
-            debugContainer.appendChild(box);
-          }
-          box.style.left = `${screenX - scaledWidth / 2}px`;
-          box.style.top = `${screenY - scaledHeight / 2}px`;
-          box.style.width = `${scaledWidth}px`;
-          box.style.height = `${scaledHeight}px`;
-
-          // Show direction arrow and label
-          const dirDeg = item.displayDirectionDeg;
-          const label = item.vessel?.name || item.vessel?.mmsi || String(trackId);
-          const dirLabel = dirDeg !== undefined ? ` ${Math.round(dirDeg)}°` : "";
-          box.textContent = `${label}${dirLabel}`;
-          box.style.color = "lime";
-          box.style.fontSize = "10px";
-          box.style.overflow = "visible";
-          box.style.whiteSpace = "nowrap";
-        }
-      }
 
       const matchDistancePx = item.fusion?.match_distance_px ?? item.match_distance_px;
       const hasFusionMetrics =
@@ -250,7 +224,6 @@ function PoiOverlay({
         layer.appendChild(el);
       }
 
-      // Update Lit reactive properties directly on the element.
       el.x = screenX;
       el.y = lineLength;
       el.boxWidth = scaledWidth;
@@ -258,7 +231,7 @@ function PoiOverlay({
       el.value = PoiDataValue.Unchecked;
       el.data = vesselData;
       el.relativeDirection = item.displayDirectionDeg ?? 0;
-    });
+    }
 
     // Remove elements whose vessels are no longer present.
     // Use el.parentNode (not layer) because the web component may have
@@ -270,28 +243,16 @@ function PoiOverlay({
         poiElementsRef.current.delete(key);
       }
     }
-    for (const key of debugKeysToRemove) {
-      const el = debugBoxesRef.current.get(key);
-      if (el) {
-        el.parentNode?.removeChild(el);
-        debugBoxesRef.current.delete(key);
-      }
-    }
-  }, [vessels, arControls, videoTransform, detectionFrame, layerTopOffset, metricsMode]);
+  }, [screenItems, arControls, layerTopOffset, metricsMode]);
 
   // Remove all imperative elements when this component unmounts.
   useEffect(() => {
     const poiElements = poiElementsRef.current;
-    const debugBoxes = debugBoxesRef.current;
     return () => {
       for (const el of poiElements.values()) {
         el.parentNode?.removeChild(el);
       }
       poiElements.clear();
-      for (const el of debugBoxes.values()) {
-        el.parentNode?.removeChild(el);
-      }
-      debugBoxes.clear();
     };
   }, []);
 
