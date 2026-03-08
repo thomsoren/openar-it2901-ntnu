@@ -22,7 +22,7 @@ import math
 from typing import Any
 
 from common.config import FUSION_MAX_MATCH_PX as MAX_MATCH_DISTANCE_PX
-from common.types import Detection, DetectedVessel, Vessel
+from common.types import Detection, Vessel
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,6 @@ def match_detections_to_ais(
         fused.append({
             "detection": parsed_dets[di].model_dump(),
             "vessel": vessel.model_dump(),
-            "match_distance_px": round(dist, 1),
             "fusion": {
                 "match_distance_px": round(dist, 1),
                 "range_m": projection.get("distance_m"),
@@ -131,7 +130,7 @@ def match_detections_to_ais(
     # Unmatched detections
     for di, det in enumerate(parsed_dets):
         if di not in matched_det:
-            fused.append({"detection": det.model_dump(), "vessel": None, "match_distance_px": None})
+            fused.append({"detection": det.model_dump(), "vessel": None})
 
     # Optionally include unmatched AIS
     if include_unmatched_ais:
@@ -140,7 +139,6 @@ def match_detections_to_ais(
                 fused.append({
                     "detection": None,
                     "vessel": _record_to_vessel(rec).model_dump(),
-                    "match_distance_px": None,
                 })
 
     return fused

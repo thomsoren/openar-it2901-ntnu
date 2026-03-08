@@ -35,7 +35,6 @@ export interface Vessel {
 export interface DetectedVessel {
   detection: Detection; // Screen coordinates from YOLO
   vessel?: Vessel; // AIS data if matched, undefined otherwise
-  match_distance_px?: number | null;
   fusion?: {
     match_distance_px?: number | null;
     range_m?: number | null;

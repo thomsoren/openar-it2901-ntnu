@@ -36,7 +36,8 @@ def _load_ndjson_text_from_assets(asset_names: list[str]) -> tuple[str | None, s
             continue
         try:
             s3_key = s3.resolve_system_asset_key(name)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Failed to resolve asset %s: %s", name, exc)
             continue
 
         text = s3.read_text_from_sources(s3_key)
