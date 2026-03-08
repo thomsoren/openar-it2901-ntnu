@@ -42,7 +42,8 @@ function isLayerVisible(
   arControls: ReturnType<typeof useARControls>["state"]
 ): boolean {
   const cls = className ?? "boat";
-  if (cls === "boat" || cls === "vessel") return arControls.vesselLayerVisible;
+  if (cls === "boat" || cls === "vessel" || cls === "sailboat")
+    return arControls.vesselLayerVisible;
   if (cls === "buoy") return arControls.buoyLayerVisible;
   if (cls === "flotsam") return arControls.flotsamLayerVisible;
   if (cls === "mob") return arControls.mobLayerVisible;
@@ -72,6 +73,7 @@ function PoiOverlay({
 }: PoiOverlayProps) {
   const { state: arControls } = useARControls();
   const overlayRef = useRef<HTMLDivElement>(null);
+  const debugOverlayRef = useRef<HTMLDivElement>(null);
   const layerElRef = useRef<HTMLElement | null>(null);
   const [layerTopOffset, setLayerTopOffset] = useState(0);
 
@@ -111,6 +113,9 @@ function PoiOverlay({
     };
   }, [measureLayerOffset]);
 
+  // Debug bounding-box refs — managed imperatively like the POI elements
+  const debugBoxesRef = useRef<Map<string | number, HTMLDivElement>>(new Map());
+
   // Imperatively sync obc-poi-data elements with the current vessel list.
   // We bypass React reconciliation entirely for these elements because
   // obc-poi-layer internally moves its light-DOM children (even without
@@ -130,6 +135,10 @@ function PoiOverlay({
         el.parentNode?.removeChild(el);
       }
       poiElementsRef.current.clear();
+      for (const el of debugBoxesRef.current.values()) {
+        el.parentNode?.removeChild(el);
+      }
+      debugBoxesRef.current.clear();
       return;
     }
 
@@ -143,6 +152,16 @@ function PoiOverlay({
     const mapY = detectionHeight > 0 ? sourceHeight / detectionHeight : 1;
 
     const keysToRemove = new Set(poiElementsRef.current.keys());
+    const debugKeysToRemove = new Set(debugBoxesRef.current.keys());
+
+    // When debug mode is toggled off, remove all debug boxes immediately
+    if (!arControls.debugBboxVisible && debugBoxesRef.current.size > 0) {
+      for (const el of debugBoxesRef.current.values()) {
+        el.parentNode?.removeChild(el);
+      }
+      debugBoxesRef.current.clear();
+      debugKeysToRemove.clear();
+    }
 
     vessels.forEach((item, index) => {
       const detection = item?.detection;
@@ -155,6 +174,7 @@ function PoiOverlay({
 
       const trackId = detection.track_id ?? `vessel-${index}`;
       keysToRemove.delete(trackId);
+      debugKeysToRemove.delete(trackId);
 
       const scaledX = detection.x * mapX * videoTransform.scaleX;
       const scaledY = detection.y * mapY * videoTransform.scaleY;
@@ -163,6 +183,38 @@ function PoiOverlay({
       const screenX = scaledX + videoTransform.offsetX;
       const screenY = scaledY + videoTransform.offsetY;
       const lineLength = Math.max(0, screenY - layerTopOffset);
+
+      // --- Debug bounding boxes ---
+      if (arControls.debugBboxVisible) {
+        const debugContainer = debugOverlayRef.current;
+        if (debugContainer) {
+          let box = debugBoxesRef.current.get(trackId);
+          if (!box) {
+            box = document.createElement("div");
+            box.style.position = "absolute";
+            box.style.border = "2px solid lime";
+            box.style.pointerEvents = "none";
+            box.style.zIndex = "9999";
+            box.style.boxSizing = "border-box";
+            debugBoxesRef.current.set(trackId, box);
+            debugContainer.appendChild(box);
+          }
+          box.style.left = `${screenX - scaledWidth / 2}px`;
+          box.style.top = `${screenY - scaledHeight / 2}px`;
+          box.style.width = `${scaledWidth}px`;
+          box.style.height = `${scaledHeight}px`;
+
+          // Show direction arrow and label
+          const dirDeg = item.displayDirectionDeg;
+          const label = item.vessel?.name || item.vessel?.mmsi || String(trackId);
+          const dirLabel = dirDeg !== undefined ? ` ${Math.round(dirDeg)}°` : "";
+          box.textContent = `${label}${dirLabel}`;
+          box.style.color = "lime";
+          box.style.fontSize = "10px";
+          box.style.overflow = "visible";
+          box.style.whiteSpace = "nowrap";
+        }
+      }
 
       const matchDistancePx = item.fusion?.match_distance_px ?? item.match_distance_px;
       const hasFusionMetrics =
@@ -218,21 +270,42 @@ function PoiOverlay({
         poiElementsRef.current.delete(key);
       }
     }
+    for (const key of debugKeysToRemove) {
+      const el = debugBoxesRef.current.get(key);
+      if (el) {
+        el.parentNode?.removeChild(el);
+        debugBoxesRef.current.delete(key);
+      }
+    }
   }, [vessels, arControls, videoTransform, detectionFrame, layerTopOffset, metricsMode]);
 
   // Remove all imperative elements when this component unmounts.
   useEffect(() => {
     const poiElements = poiElementsRef.current;
+    const debugBoxes = debugBoxesRef.current;
     return () => {
       for (const el of poiElements.values()) {
         el.parentNode?.removeChild(el);
       }
       poiElements.clear();
+      for (const el of debugBoxes.values()) {
+        el.parentNode?.removeChild(el);
+      }
+      debugBoxes.clear();
     };
   }, []);
 
   return (
     <div className="poi-overlay" ref={overlayRef}>
+      <div
+        ref={debugOverlayRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 9999,
+        }}
+      />
       <ObcPoiController
         style={
           {

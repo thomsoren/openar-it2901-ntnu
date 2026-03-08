@@ -143,6 +143,17 @@ export function ARControlPanel() {
         <ObiExpand />
       </ObcIconButton>
     ),
+    debugBboxVisible: (
+      <ObcIconButton
+        key="debugBboxVisible"
+        variant={IconButtonVariant.flat}
+        activated={state.debugBboxVisible}
+        title="Debug bounding boxes"
+        onClick={() => toggle("debugBboxVisible")}
+      >
+        <ObiVesselTypeGenericOutlined />
+      </ObcIconButton>
+    ),
   } as const;
 
   return (

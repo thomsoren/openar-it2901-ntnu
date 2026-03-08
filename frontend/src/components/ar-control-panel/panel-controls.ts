@@ -39,4 +39,9 @@ export const AR_PANEL_CONTROL_DEFINITIONS: readonly ARPanelControlDefinition[] =
     label: "Video fit",
     description: "Toggle between fill-screen (crop) and letterbox",
   },
+  {
+    key: "debugBboxVisible",
+    label: "Debug bounding boxes",
+    description: "Show raw bounding boxes instead of POI components",
+  },
 ] as const;
