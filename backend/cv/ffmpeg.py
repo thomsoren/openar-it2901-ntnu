@@ -5,7 +5,6 @@ import json
 import logging
 import subprocess
 import threading
-from urllib.parse import urlparse
 
 from common.config.mediamtx import (
     FFMPEG_BIN,
@@ -16,21 +15,18 @@ from common.config.mediamtx import (
     FFMPEG_SCALE_HEIGHT,
     FFMPEG_SCALE_WIDTH,
     FFMPEG_VIDEO_BITRATE,
+    FFPROBE_BIN,
     MEDIAMTX_ENABLED,
     build_rtsp_publish_url,
 )
+from cv.utils import is_http_url, is_remote_url
 
 logger = logging.getLogger(__name__)
 
 
-def _is_remote(source_url: str) -> bool:
-    scheme = urlparse(source_url).scheme.lower()
-    return scheme in {"rtsp", "rtsps", "http", "https", "rtmp", "udp", "tcp"}
-
-
 def _probe_video_codec(source_url: str) -> str | None:
     """Use ffprobe to detect the source video codec. Returns e.g. 'h264'."""
-    ffprobe_bin = FFMPEG_BIN.replace("ffmpeg", "ffprobe")
+    ffprobe_bin = FFPROBE_BIN
     try:
         result = subprocess.run(
             [
@@ -113,21 +109,19 @@ class FFmpegDirectPublisher:
         self.process: subprocess.Popen | None = None
         self._can_copy = False
         self._codec_candidates = _codec_order()
-        self._codec_index = 0
+        self._is_remote = is_remote_url(source_url)
+        self._is_http = is_http_url(source_url)
 
     def _probe(self) -> None:
         """Detect source codec to decide copy vs transcode."""
-        is_remote = _is_remote(self.source_url)
-        is_http = self.source_url.lower().startswith(("http://", "https://"))
-
         # Skip ffprobe for HTTP(S) sources — it requires a network download and
         # blocks the caller for several seconds. Just transcode directly.
-        if is_http:
+        if self._is_http:
             self._can_copy = False
             logger.info("[%s] HTTP(S) source — skipping probe, will transcode", self.stream_id)
             return
 
-        looping = self.loop and not is_remote
+        looping = self.loop and not self._is_remote
         codec = _probe_video_codec(self.source_url)
         if codec and codec.lower() in ("h264",) and not looping:
             # Copy mode only for non-looping sources. Looping with -c:v copy
@@ -144,11 +138,9 @@ class FFmpegDirectPublisher:
             )
 
     def _build_command(self, use_copy: bool, transcode_codec: str | None = None) -> list[str]:
-        is_remote = _is_remote(self.source_url)
-        is_http = self.source_url.lower().startswith(("http://", "https://"))
         # HTTP(S) sources are file-based (S3 presigned URLs) and support looping.
         # RTSP/RTMP are live streams and must not use -stream_loop.
-        looping = self.loop and (not is_remote or is_http)
+        looping = self.loop and (not self._is_remote or self._is_http)
         cmd = [FFMPEG_BIN, "-loglevel", "error"]
 
         # Looping for local files and HTTP(S) file sources
@@ -157,12 +149,12 @@ class FFmpegDirectPublisher:
 
         # Read at native framerate for file sources (prevents reading faster than realtime).
         # Local paths and HTTP(S) (S3 presigned URLs) are file-based; RTSP/RTMP are live.
-        is_file_source = not is_remote or is_http
+        is_file_source = not self._is_remote or self._is_http
         if is_file_source:
             cmd.append("-re")
 
         # Low-latency input flags for remote streams
-        if is_remote:
+        if self._is_remote:
             cmd.extend(["-fflags", "nobuffer", "-flags", "low_delay"])
 
         # RTSP input transport
@@ -213,8 +205,7 @@ class FFmpegDirectPublisher:
             logger.warning("[%s] Copy mode failed, falling back to transcode", self.stream_id)
 
         # Try each transcode codec
-        for i, codec in enumerate(self._codec_candidates):
-            self._codec_index = i
+        for codec in self._codec_candidates:
             if self._spawn(use_copy=False, transcode_codec=codec):
                 return True
 
@@ -244,8 +235,8 @@ class FFmpegDirectPublisher:
                         line = raw.decode(errors="replace").rstrip()
                         if line:
                             logger.error("[%s] FFmpeg: %s", s, line)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("[%s] FFmpeg stderr reader error: %s", s, exc)
             threading.Thread(target=_log_stderr, args=(proc, sid), daemon=True).start()
             return True
         except FileNotFoundError:

@@ -5,31 +5,15 @@ import logging
 import random
 import threading
 import time
-from urllib.parse import urlparse
 
 import cv2
 import numpy as np
 
 from cv.config import DEFAULT_FPS, INITIAL_RECONNECT_BACKOFF_SEC, MAX_RECONNECT_BACKOFF_SEC
+from cv.utils import is_http_url, is_live_stream_url
 from settings import cv_runtime_settings
 
 logger = logging.getLogger(__name__)
-
-
-def _is_remote_stream_url(source_url: str) -> bool:
-    """True if URL uses a network scheme (rtsp, http, etc.), False for local file paths."""
-    scheme = urlparse(source_url).scheme.lower()
-    return scheme in {"rtsp", "rtsps", "http", "https", "rtmp", "udp", "tcp"}
-
-
-def _is_live_stream_url(source_url: str) -> bool:
-    scheme = urlparse(source_url).scheme.lower()
-    return scheme in {"rtsp", "rtsps", "rtmp", "udp", "tcp"}
-
-
-def _is_http_source_url(source_url: str) -> bool:
-    scheme = urlparse(source_url).scheme.lower()
-    return scheme in {"http", "https"}
 
 
 def _jittered_backoff(current: float, maximum: float) -> float:
@@ -63,8 +47,8 @@ class DecodeThread:
 
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
-        self._is_live_source = _is_live_stream_url(source_url)
-        self._is_http_source = _is_http_source_url(source_url)
+        self._is_live_source = is_live_stream_url(source_url)
+        self._is_http_source = is_http_url(source_url)
 
     def start(self) -> bool:
         """Open the video source and start the reader thread.

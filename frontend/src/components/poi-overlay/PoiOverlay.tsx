@@ -190,7 +190,7 @@ function PoiOverlay({
       const detection = item.detection;
       const lineLength = Math.max(0, screenY - layerTopOffset);
 
-      const matchDistancePx = item.fusion?.match_distance_px ?? item.match_distance_px;
+      const matchDistancePx = item.fusion?.match_distance_px;
       const hasFusionMetrics =
         Boolean(item.vessel) && matchDistancePx !== null && matchDistancePx !== undefined;
 

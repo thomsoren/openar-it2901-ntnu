@@ -38,7 +38,7 @@ class RTDETRDetector:
         self,
         model_path: str | None = None,
         confidence: float = CONFIDENCE,
-        filter_boats: bool = True,  # Only return boat detections
+        filter_boats: bool = False,
     ):
         self.confidence = confidence
         self.filter_boats = filter_boats

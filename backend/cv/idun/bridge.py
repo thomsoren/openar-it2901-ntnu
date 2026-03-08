@@ -16,7 +16,6 @@ import time
 import cv2
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
-from cv.ais_matcher import create_matcher_from_env
 from cv.idun.config import (
     IDUN_FRAME_JPEG_QUALITY,
     IDUN_HEARTBEAT_TIMEOUT_S,
@@ -24,7 +23,7 @@ from cv.idun.config import (
 )
 from cv.idun.noop_inference import NoopInferenceThread
 from cv.publisher import DetectionPublisher
-from common.types import Detection as DetectionModel
+from cv.utils import build_ready_payload
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +45,7 @@ class IdunBridge:
     ) -> None:
         self._noop = noop_inference
         self._publisher = publisher
-        self._ais_matcher = create_matcher_from_env()
         self.is_connected = False
-
-        if self._ais_matcher.enabled:
-            logger.info("IDUN bridge: AIS sensor fusion enabled")
 
     async def handle_worker_connection(self, websocket: WebSocket) -> None:
         """Main handler for an IDUN worker WebSocket connection.
@@ -99,6 +94,7 @@ class IdunBridge:
     async def _sender_loop(self, websocket: WebSocket) -> None:
         """Send frames to IDUN at the target FPS."""
         interval = 1.0 / IDUN_TARGET_SEND_FPS
+        loop = asyncio.get_running_loop()
         prev_stream_id: str | None = None
         prev_frame_idx = -1
         is_paused = True
@@ -148,13 +144,10 @@ class IdunBridge:
 
             # Send ready payload to Redis on first frame of a stream
             if active_id not in ready_sent and decode_thread.is_alive:
-                ready_payload = {
-                    "type": "ready",
-                    "width": decode_thread.width,
-                    "height": decode_thread.height,
-                    "fps": decode_thread.fps,
-                }
-                self._publisher.publish(active_id, ready_payload)
+                self._publisher.publish(
+                    active_id,
+                    build_ready_payload(decode_thread.width, decode_thread.height, decode_thread.fps),
+                )
                 ready_sent.add(active_id)
 
             # Grab latest frame
@@ -164,8 +157,10 @@ class IdunBridge:
                 continue
             prev_frame_idx = frame_idx
 
-            # JPEG encode
-            ok, jpeg_buf = cv2.imencode(".jpg", frame, JPEG_ENCODE_PARAMS)
+            # JPEG encode (CPU-bound — run in thread pool to avoid blocking the event loop)
+            ok, jpeg_buf = await loop.run_in_executor(
+                None, cv2.imencode, ".jpg", frame, JPEG_ENCODE_PARAMS,
+            )
             if not ok:
                 logger.warning("IDUN bridge: JPEG encode failed for frame %d", frame_idx)
                 await asyncio.sleep(interval)
@@ -215,19 +210,6 @@ class IdunBridge:
                 active_id = self._noop.get_active_stream()
                 if stream_id != active_id:
                     continue
-
-                # Enrich with AIS data
-                raw_vessels = msg.get("vessels", [])
-                if self._ais_matcher.enabled and raw_vessels:
-                    detections = [
-                        DetectionModel(**v["detection"]) for v in raw_vessels
-                    ]
-                    enriched = self._ais_matcher.match_detections(
-                        detections=detections,
-                        frame_index=msg.get("frame_index", 0),
-                        fps=msg.get("fps", 0.0),
-                    )
-                    msg["vessels"] = enriched
 
                 msg["frame_sent_at_ms"] = time.time() * 1000.0
                 self._publisher.publish(stream_id, msg)

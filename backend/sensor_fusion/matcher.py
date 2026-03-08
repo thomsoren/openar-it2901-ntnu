@@ -9,8 +9,8 @@ Algorithm: greedy nearest-neighbour in pixel space.
     1. For each AIS record, compute pixel distance to every detection.
     2. Sort (ais, detection) pairs by distance ascending.
     3. Greedily assign the closest pair; mark both as used.
-    4. Unmatched detections → DetectedVessel(vessel=None).
-    5. AIS records with no detection match → DetectedVessel(detection=None)
+    4. Unmatched detections → dict with vessel=None.
+    5. AIS records with no detection match → dict with detection=None
        only when include_unmatched_ais=True.
 
 A match is only accepted when the pixel distance is ≤ MAX_MATCH_DISTANCE_PX.
@@ -22,7 +22,7 @@ import math
 from typing import Any
 
 from common.config import FUSION_MAX_MATCH_PX as MAX_MATCH_DISTANCE_PX
-from common.types import Detection, DetectedVessel, Vessel
+from common.types import Detection, Vessel
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,6 @@ def match_detections_to_ais(
         fused.append({
             "detection": parsed_dets[di].model_dump(),
             "vessel": vessel.model_dump(),
-            "match_distance_px": round(dist, 1),
             "fusion": {
                 "match_distance_px": round(dist, 1),
                 "range_m": projection.get("distance_m"),
@@ -131,7 +130,7 @@ def match_detections_to_ais(
     # Unmatched detections
     for di, det in enumerate(parsed_dets):
         if di not in matched_det:
-            fused.append({"detection": det.model_dump(), "vessel": None, "match_distance_px": None})
+            fused.append({"detection": det.model_dump(), "vessel": None})
 
     # Optionally include unmatched AIS
     if include_unmatched_ais:
@@ -140,7 +139,6 @@ def match_detections_to_ais(
                 fused.append({
                     "detection": None,
                     "vessel": _record_to_vessel(rec).model_dump(),
-                    "match_distance_px": None,
                 })
 
     return fused

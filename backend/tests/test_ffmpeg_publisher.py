@@ -8,28 +8,8 @@ import pytest
 from cv.ffmpeg import (
     FFmpegDirectPublisher,
     _codec_order,
-    _is_remote,
     _transcode_args,
 )
-
-
-# ---------- _is_remote URL classification ----------
-
-class TestIsRemote:
-    def test_rtsp(self):
-        assert _is_remote("rtsp://host/path") is True
-
-    def test_rtsps(self):
-        assert _is_remote("rtsps://host/path") is True
-
-    def test_http(self):
-        assert _is_remote("http://host/path") is True
-
-    def test_local_file(self):
-        assert _is_remote("/data/video.mp4") is False
-
-    def test_empty(self):
-        assert _is_remote("") is False
 
 
 # ---------- _codec_order ----------

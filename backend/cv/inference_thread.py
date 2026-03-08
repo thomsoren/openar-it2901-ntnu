@@ -7,10 +7,10 @@ import time
 
 import numpy as np
 
-from cv.ais_matcher import create_matcher_from_env
 from cv.decode_thread import DecodeThread
 from cv.detectors import RTDETRDetector
 from cv.publisher import DetectionPublisher
+from cv.utils import build_ready_payload
 from settings import cv_runtime_settings
 
 logger = logging.getLogger(__name__)
@@ -38,12 +38,6 @@ class InferenceThread:
 
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
-
-        self._ais_matcher = create_matcher_from_env()
-        if self._ais_matcher.enabled:
-            logger.info("AIS sensor fusion enabled")
-        else:
-            logger.info("AIS sensor fusion disabled (no configuration)")
 
     def set_active_stream(self, stream_id: str | None) -> None:
         with self._lock:
@@ -107,13 +101,10 @@ class InferenceThread:
     def _publish_ready_if_needed(self, active_id: str, decode_thread: DecodeThread) -> None:
         if active_id in self._ready_sent or not decode_thread.is_alive:
             return
-        ready_payload = {
-            "type": "ready",
-            "width": decode_thread.width,
-            "height": decode_thread.height,
-            "fps": decode_thread.fps,
-        }
-        self._publisher.publish(active_id, ready_payload)
+        self._publisher.publish(
+            active_id,
+            build_ready_payload(decode_thread.width, decode_thread.height, decode_thread.fps),
+        )
         self._ready_sent.add(active_id)
 
     def _next_pending_frame(
@@ -142,11 +133,7 @@ class InferenceThread:
                 active_id, frame_idx, frame.shape[1], frame.shape[0],
             )
         self._last_processed_idx[active_id] = frame_idx
-        vessels = self._ais_matcher.match_detections(
-            detections=detections,
-            frame_index=frame_idx,
-            fps=decode_thread.fps,
-        )
+        vessels = [{"detection": d.model_dump(), "vessel": None} for d in detections]
 
         payload = {
             "type": "detections",

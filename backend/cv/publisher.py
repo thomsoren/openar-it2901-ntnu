@@ -51,11 +51,6 @@ class FusionPublisher(DetectionPublisher):
         self.fusion_svc = fusion_svc
 
     def publish(self, stream_id: str, payload: dict) -> bool:
-        # Defaults: raw detections channel, original payload
-        channel = detections_channel(stream_id)
-        data = json.dumps(payload)
-
-        # Attempt synchronous enrichment in a single call (avoids TOCTOU)
         if payload.get("type") == "detections":
             maybe_configure(stream_id, self.fusion_svc)
             vessels, meta = self.fusion_svc.enrich(
@@ -64,14 +59,9 @@ class FusionPublisher(DetectionPublisher):
                 payload.get("timestamp_ms", 0),
             )
             if meta is not None:
-                data = json.dumps({**payload, "vessels": vessels, "fusion": meta})
+                payload = {**payload, "vessels": vessels, "fusion": meta}
 
-        try:
-            self._redis.publish(channel, data)
-            return True
-        except RedisError as exc:
-            logger.warning("Redis publish failed for stream '%s': %s", stream_id, exc)
-            return False
+        return super().publish(stream_id, payload)
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────
