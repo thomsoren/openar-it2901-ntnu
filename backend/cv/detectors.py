@@ -18,6 +18,7 @@ from cv.config import (
     AGNOSTIC_NMS,
     BYTETRACK_YAML,
     MODEL_INPUT_SIZE,
+    write_bytetrack_yaml,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class RTDETRDetector:
         self,
         model_path: str | None = None,
         confidence: float = CONFIDENCE,
-        filter_boats: bool = False,
+        filter_boats: bool = True,
     ):
         self.confidence = confidence
         self.filter_boats = filter_boats
@@ -69,6 +70,7 @@ class RTDETRDetector:
         return "cpu"
 
     def _load_model(self, model_path: str | None) -> RTDETR:
+        write_bytetrack_yaml()
         self.device = self._select_device()
         self._use_half = self.device == "cuda"
         logger.info("PyTorch device: %s", self.device)
