@@ -56,8 +56,9 @@
   height: 32px;
 }
 
-.geojson-map-container obi-placeholder-device-static,
 .geojson-map-container obi-arrow-bidirectional-vertical,
+.geojson-map-container obi-transform-rotate,
+.geojson-map-container obi-transform-move,
 .geojson-map-container obi-refresh-google {
   width: 20px;
   height: 20px;

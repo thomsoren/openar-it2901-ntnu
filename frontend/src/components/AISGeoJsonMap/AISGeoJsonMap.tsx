@@ -16,8 +16,9 @@ import {
   computeCrossTrackDistance,
 } from "../../utils/geometryMath";
 import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
-import { ObiPlaceholderDeviceStatic } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder-device-static";
 import { ObiArrowBidirectionalVertical } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-arrow-bidirectional-vertical";
+import { ObiTransformRotate } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-transform-rotate";
+import { ObiTransformMove } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-transform-move";
 import { ObiRefreshGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-refresh-google";
 import {
   addScanAreaLayers,
@@ -126,10 +127,10 @@ function applyAnchorPositions(
 // Component
 // ---------------------------------------------------------------------------
 
-const ORIGIN_ICON = <ObiPlaceholderDeviceStatic />;
+const ORIGIN_ICON = <ObiTransformMove />;
 const RANGE_ICON = <ObiArrowBidirectionalVertical />;
 const HEADING_ICON = <ObiRefreshGoogle />;
-const FOV_ICON = <ObiPlaceholderDeviceStatic />;
+const FOV_ICON = <ObiTransformRotate />;
 
 export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   shipLat,
