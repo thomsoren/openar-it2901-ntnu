@@ -382,7 +382,7 @@ export default function MediaLibrary() {
         <div className="media-library-page__left-column">
           <div className="media-library-page__table-panel">
             {mediaRows.length === 0 ? (
-              <div className="media-library-table-body__empty">No media assets found.</div>
+              <div className="media-library-page__table-empty">No media assets found.</div>
             ) : (
               <ObcTable
                 data={tableData}

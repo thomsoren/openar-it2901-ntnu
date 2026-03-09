@@ -134,15 +134,18 @@
 /* ── Table ────────────────────────────────────────────────────────────────── */
 
 .media-library-page__table-panel {
-  display: flex;
-  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
   padding: 4px;
 }
 
-.media-library-table-body__empty {
+.media-library-page__table-panel obc-table {
+  display: block;
+  height: 100%;
+}
+
+.media-library-page__table-empty {
   padding: 24px;
   text-align: center;
   color: var(--element-neutral-color, #535353);
@@ -176,7 +179,7 @@
 
 .media-library-preview__empty {
   padding: 24px;
-  color: var(--element-neutral-color, #535353);
+  color: var(--container-backdrop-color, #fff);
   font-size: 14px;
   text-align: center;
 }

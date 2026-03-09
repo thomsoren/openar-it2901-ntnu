@@ -17,6 +17,8 @@ import {
 } from "../../utils/geometryMath";
 import { AISDataPanel } from "../AISDataPanel/AISDataPanel";
 import { ObiPlaceholderDeviceStatic } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder-device-static";
+import { ObiArrowBidirectionalVertical } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-arrow-bidirectional-vertical";
+import { ObiRefreshGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-refresh-google";
 import {
   addScanAreaLayers,
   updateScanAreaData,
@@ -124,7 +126,10 @@ function applyAnchorPositions(
 // Component
 // ---------------------------------------------------------------------------
 
-const ANCHOR_ICON = <ObiPlaceholderDeviceStatic />;
+const ORIGIN_ICON = <ObiPlaceholderDeviceStatic />;
+const RANGE_ICON = <ObiArrowBidirectionalVertical />;
+const HEADING_ICON = <ObiRefreshGoogle />;
+const FOV_ICON = <ObiPlaceholderDeviceStatic />;
 
 export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   shipLat,
@@ -273,7 +278,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const originMarker = createAnchorMarker(map, {
       className: "geojson-map-origin-icon",
       lngLat: [shipLon, shipLat],
-      icon: ANCHOR_ICON,
+      icon: ORIGIN_ICON,
     });
 
     const originPopup = new maplibregl.Popup({
@@ -325,7 +330,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const rangeMarker = createAnchorMarker(map, {
       className: "geojson-map-range-icon",
       lngLat: initAnchors.range,
-      icon: ANCHOR_ICON,
+      icon: RANGE_ICON,
     });
 
     const rangePopup = new maplibregl.Popup({
@@ -392,7 +397,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const headingMarker = createAnchorMarker(map, {
       className: "geojson-map-heading-icon",
       lngLat: initAnchors.heading,
-      icon: ANCHOR_ICON,
+      icon: HEADING_ICON,
     });
 
     const headingPopup = new maplibregl.Popup({
@@ -433,7 +438,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     const fovMarker = createAnchorMarker(map, {
       className: "geojson-map-fov-icon",
       lngLat: initAnchors.fov,
-      icon: ANCHOR_ICON,
+      icon: FOV_ICON,
     });
 
     const fovPopup = new maplibregl.Popup({
