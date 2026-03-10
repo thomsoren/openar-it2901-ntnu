@@ -1,0 +1,125 @@
+@startuml video_delivery_live_camera
+!theme plain
+hide footbox
+
+skinparam {
+    ParticipantPadding 10
+    BoxPadding 10
+    SequenceMessageAlignment center
+    ResponseMessageBelowArrow true
+    MaxMessageSize 200
+    NoteFontSize 11
+    ParticipantFontSize 12
+    SequenceGroupBodyBackgroundColor #F8F8F8
+    ArrowColor #444444
+    LifeLineBorderColor #A8A8A8
+    LifeLineBackgroundColor #FFFFFF
+    ParticipantBorderColor #666666
+    ParticipantBackgroundColor #FFFFFF
+    NoteBackgroundColor #FBFBFB
+    NoteBorderColor #D7D7D7
+    GroupBorderColor #D0D0D0
+}
+
+title Video Streaming
+
+actor "User" as User
+participant "Frontend" as FE
+participant "API" as API
+participant "Orchestrator" as Orch
+participant "FFmpeg" as FFmpeg
+participant "DecodeThread" as Decode
+participant "InferenceThread" as Inference
+participant "Redis" as Redis
+participant "MediaMTX" as MTX
+participant "Source" as Source
+
+== Stream Startup ==
+
+User -> FE : Select video stream
+FE -> API : POST /api/streams/{id}/start
+activate API
+
+API -> Orch : start_stream
+activate Orch
+
+Orch -> FFmpeg ** : spawn
+activate FFmpeg
+FFmpeg -> Source : read
+FFmpeg -> MTX : publish RTSP /{id}
+activate MTX
+
+Orch -> Decode ** : spawn
+activate Decode
+Decode -> Source : read
+Orch -> Inference ** : start shared thread (once)
+activate Inference
+Orch -> Inference : register_stream(id, decode) map
+
+Orch --> API : started
+API --> FE : 200 OK
+deactivate API
+
+== Client Connection ==
+
+par Video session setup
+    FE -> MTX : WHEP /{id}/whep
+    MTX -> API : POST /api/mediamtx/auth
+    API --> MTX : 204 OK
+    MTX --> FE : WebRTC connected
+else Detection session setup
+    FE -> API : WS /api/detections/ws/{id}
+    activate API
+    API -> Orch : acquire_stream_viewer(id)
+    API -> Redis : subscribe detections:{id}
+    Orch -> Inference : set_active_stream(id) gate
+    deactivate API
+end
+
+== Video Delivery Path (WebRTC) ==
+
+loop Continues video delivery
+    Source -> FFmpeg : frames (independent read)
+    FFmpeg -> MTX : H.264
+    MTX -> FE : video
+    FE -> User : render
+end
+
+== Inference and Detection Delivery Path ==
+
+par DecodeThread
+    loop decode
+        Source -> Decode : frames (independent read)
+        Decode -> Decode : store latest
+    end
+else InferenceThread
+    loop inference
+        Inference -> Decode : get_latest()
+        Inference -> Inference : detect + track
+        Inference -> Redis : publish detections
+    end
+end
+
+loop detection delivery
+    Redis -> API : payload (pub/sub)
+    API -> FE : WS forward
+    FE -> User : render overlay
+end
+
+== Stream Teardown ==
+
+User -> FE : Disconnect stream
+FE -> API : DELETE /api/streams/{id}
+API -> Orch : stop_stream(id)
+API -> Redis : unsubscribe
+deactivate API
+
+Orch -> Inference : unregister_stream(id) keep thread
+Orch -> Decode !! : stop
+deactivate Decode
+Orch -> FFmpeg !! : stop
+deactivate FFmpeg
+deactivate MTX
+deactivate Orch
+
+@enduml

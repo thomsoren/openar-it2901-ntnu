@@ -1,0 +1,37 @@
+@startuml streaming_activity
+!theme plain
+skinparam shadowing false
+skinparam ArrowColor #444444
+skinparam ActivityBorderColor #666666
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam DiamondBorderColor #666666
+skinparam DiamondBackgroundColor #FFFFFF
+
+title Video Streaming — Activity Diagram
+
+start
+
+:User selects video stream;
+
+:Orchestrator spawns stream processes;
+
+if () then (Video)
+  :FFmpeg reads from source;
+  :Encode and publish\nto MediaMTX;
+  :Serve video via WebRTC\nto frontend;
+else (Detection)
+  :Decode thread reads\nfrom source;
+  :Run inference on frames;
+  :Publish detections\nto Redis;
+  :Forward to frontend\nvia WebSocket;
+endif
+
+:Render video with AR overlay;
+
+:User disconnects;
+
+:Orchestrator tears down stream;
+
+stop
+
+@enduml
