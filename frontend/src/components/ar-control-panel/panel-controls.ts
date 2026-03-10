@@ -1,7 +1,12 @@
 import type { ARControlPanelVisibilityKey } from "./ar-control-context";
 
+export type ARToolbarControlVisibilityKey = Exclude<
+  ARControlPanelVisibilityKey,
+  "performanceTelemetryVisible"
+>;
+
 export interface ARPanelControlDefinition {
-  key: ARControlPanelVisibilityKey;
+  key: ARToolbarControlVisibilityKey;
   label: string;
   description: string;
 }

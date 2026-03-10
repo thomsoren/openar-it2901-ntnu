@@ -28,6 +28,7 @@ interface RecoveryState {
 }
 
 const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 25_000;
+const STALLED_RECONNECT_TIMEOUT_MS = 4_000;
 
 type RecoveryAction =
   | { type: "RESET_STREAM"; streamKey: string; session: number }
@@ -102,6 +103,7 @@ export function useVideoSessionRecovery({
   const firstFrameRetryDoneRef = useRef(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const firstFrameWatchdogRef = useRef<number | null>(null);
+  const stalledReconnectTimerRef = useRef<number | null>(null);
   const previousStreamKeyRef = useRef<string | null>(null);
 
   const clearReconnectTimers = useCallback(() => {
@@ -113,6 +115,11 @@ export function useVideoSessionRecovery({
     if (firstFrameWatchdogRef.current !== null) {
       window.clearTimeout(firstFrameWatchdogRef.current);
       firstFrameWatchdogRef.current = null;
+    }
+
+    if (stalledReconnectTimerRef.current !== null) {
+      window.clearTimeout(stalledReconnectTimerRef.current);
+      stalledReconnectTimerRef.current = null;
     }
   }, []);
 
@@ -223,6 +230,11 @@ export function useVideoSessionRecovery({
       videoStateRef.current = next;
       dispatch({ type: "SET_VIDEO_STATE", payload: next });
 
+      if (next.status !== "stalled" && stalledReconnectTimerRef.current !== null) {
+        window.clearTimeout(stalledReconnectTimerRef.current);
+        stalledReconnectTimerRef.current = null;
+      }
+
       if (next.status === "playing") {
         imageLoadedRef.current = true;
         reconnectCountRef.current = 0;
@@ -241,6 +253,24 @@ export function useVideoSessionRecovery({
           return previous;
         })();
         dispatch({ type: "SET_CONTROL_ERROR", payload: nextControlError });
+        return;
+      }
+
+      if (next.status === "stalled") {
+        if (stalledReconnectTimerRef.current !== null) {
+          return;
+        }
+        stalledReconnectTimerRef.current = window.setTimeout(() => {
+          stalledReconnectTimerRef.current = null;
+          const currentVideoState = videoStateRef.current;
+          if (currentVideoState.status === "stalled") {
+            scheduleReconnect(
+              currentVideoState.transport === "webrtc"
+                ? "WebRTC stream stalled, reconnecting"
+                : "HLS stream stalled, reconnecting"
+            );
+          }
+        }, STALLED_RECONNECT_TIMEOUT_MS);
         return;
       }
 

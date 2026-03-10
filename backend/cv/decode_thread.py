@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from cv.config import DEFAULT_FPS, INITIAL_RECONNECT_BACKOFF_SEC, MAX_RECONNECT_BACKOFF_SEC
+from cv.performance import DecodedFrameTelemetry, now_epoch_ms
 from cv.utils import is_http_url, is_live_stream_url
 from settings import cv_runtime_settings
 
@@ -40,6 +41,7 @@ class DecodeThread:
         self._frame: np.ndarray | None = None
         self._frame_idx: int = 0
         self._timestamp_ms: float = 0.0
+        self._decoded_at_ms: float = 0.0
 
         self._fps: float = DEFAULT_FPS
         self._width: int = 0
@@ -92,6 +94,15 @@ class DecodeThread:
         """Return (frame, frame_idx, timestamp_ms). Thread-safe."""
         with self._lock:
             return self._frame, self._frame_idx, self._timestamp_ms
+
+    def get_latest_telemetry(self) -> DecodedFrameTelemetry:
+        with self._lock:
+            return DecodedFrameTelemetry(
+                frame=self._frame,
+                frame_index=self._frame_idx,
+                timestamp_ms=self._timestamp_ms,
+                decoded_at_ms=self._decoded_at_ms,
+            )
 
     def stop(self) -> None:
         self._stopped.set()
@@ -234,6 +245,7 @@ class DecodeThread:
                     self._frame = frame
                     self._frame_idx = frame_idx
                     self._timestamp_ms = ts
+                    self._decoded_at_ms = now_epoch_ms()
 
                 # FPS pacing for local file playback
                 if not self._is_live_source:

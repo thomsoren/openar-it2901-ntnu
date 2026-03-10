@@ -14,6 +14,7 @@ export interface ARControlPanelVisibilityState {
   poiSettingsVisible: boolean;
   videoFitVisible: boolean;
   debugBboxVisible: boolean;
+  performanceTelemetryVisible: boolean;
 }
 
 export interface ARControlState {
@@ -82,6 +83,7 @@ export const AR_CONTROL_PANEL_VISIBILITY_DEFAULTS: ARControlPanelVisibilityState
   poiSettingsVisible: true,
   videoFitVisible: true,
   debugBboxVisible: true,
+  performanceTelemetryVisible: true,
 };
 
 export const ARControlContext = createContext<ARControlContextType | undefined>(undefined);

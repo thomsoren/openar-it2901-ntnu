@@ -9,8 +9,10 @@ import {
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import PoiErrorBoundary from "../components/poi-overlay/PoiErrorBoundary";
 import VideoPlayer from "../components/video-player/VideoPlayer";
+import StreamPerformancePanel from "../components/performance-panel/StreamPerformancePanel";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
+import { useStreamPerformanceTelemetry } from "../hooks/useStreamPerformanceTelemetry";
 import { useStreamTabs } from "../hooks/useStreamTabs";
 import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useARControls } from "../components/ar-control-panel/useARControls";
@@ -20,6 +22,7 @@ import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import { startStream, stopStream, toStreamError } from "../services/streams";
 import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
+import { shouldRecoverFrozenVideo } from "../hooks/videoRecoveryHeuristics";
 import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
 import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
@@ -30,6 +33,8 @@ const LOADER_STUCK_RECOVERY_MS = 12000;
 const PLAYER_RECOVERY_COOLDOWN_MS = 15000;
 const DETECTION_STALE_RECOVERY_MS = 10000;
 const DETECTION_RECOVERY_COOLDOWN_MS = 8000;
+const VIDEO_FRAME_FREEZE_RECOVERY_MS = 4000;
+const VIDEO_FRAME_FRESH_DETECTION_MS = 2500;
 interface AROverlayProps {
   externalStreamId?: string | null;
   onAuthGateVisibleChange?: (visible: boolean) => void;
@@ -54,12 +59,13 @@ function WorkspaceLoader({ label }: { label: string }) {
 function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlayProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mockDataVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [activeVideoElement, setActiveVideoElement] = useState<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fusionStartInFlightRef = useRef(false);
   const fusionStartLastAttemptMsRef = useRef(0);
   const playerRecoveryLastAtRef = useRef(0);
   const detectionRecoveryLastAtRef = useRef(0);
-  const { state: arControls } = useARControls();
+  const { state: arControls, panelVisibility } = useARControls();
   const auth = useAuth();
 
   const {
@@ -86,6 +92,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   const {
     recoveryStreamKey,
     videoSession,
+    videoState,
     imageLoaded,
     showVideoLoader,
     setControlError,
@@ -125,14 +132,31 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   }, [activePlayableStreamId, videoSession]);
 
   const detectionWsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
-  const { vessels, videoInfo, lastMessageAtMs, connect, disconnect } = useDetectionsWebSocket({
+  const {
+    vessels,
+    videoInfo,
+    inferenceFps,
+    detectionTimestampMs,
+    lastMessageAtMs,
+    detectionReceivedAtMs,
+    performance,
+    connect,
+    disconnect,
+  } = useDetectionsWebSocket({
     url: detectionWsUrl,
     enabled:
       wsEnabled &&
       !activeIsMockData &&
       (activeTabId !== FUSION_TAB_ID || Boolean(fusionRunningStream)),
   });
-  const { vessels: mockDataVessels, videoInfo: mockDataVideoInfo } = useDetectionsWebSocket({
+  const {
+    vessels: mockDataVessels,
+    videoInfo: mockDataVideoInfo,
+    inferenceFps: mockInferenceFps,
+    detectionTimestampMs: mockDetectionTimestampMs,
+    detectionReceivedAtMs: mockDetectionReceivedAtMs,
+    performance: mockPerformance,
+  } = useDetectionsWebSocket({
     url: MOCK_DATA_CONFIG.WS_URL,
     enabled: wsEnabled && activeIsMockData,
   });
@@ -144,7 +168,22 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
 
   const handleActiveVideoReady = useCallback((videoEl: HTMLVideoElement) => {
     videoRef.current = videoEl;
+    setActiveVideoElement(videoEl);
   }, []);
+
+  const handleMockVideoRef = useCallback(
+    (videoEl: HTMLVideoElement | null) => {
+      mockDataVideoRef.current = videoEl;
+      if (activeIsMockData) {
+        setActiveVideoElement(videoEl);
+      }
+    },
+    [activeIsMockData]
+  );
+
+  useEffect(() => {
+    setActiveVideoElement(activeIsMockData ? mockDataVideoRef.current : videoRef.current);
+  }, [activeIsMockData, activePlayableStreamId]);
 
   const cachedStreamIds = useMemo(() => {
     const seen = new Set<string>();
@@ -203,6 +242,14 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   );
   const activeVideoTransform = activeIsMockData ? mockDataVideoTransform : videoTransform;
   const activeDetectionFrame = activeIsMockData ? mockDataVideoInfo : videoInfo;
+  const activeDetectionPerformance = activeIsMockData ? mockPerformance : performance;
+  const activeInferenceFps = activeIsMockData ? mockInferenceFps : inferenceFps;
+  const activeDetectionTimestampMs = activeIsMockData
+    ? mockDetectionTimestampMs
+    : detectionTimestampMs;
+  const activeDetectionReceivedAtMs = activeIsMockData
+    ? mockDetectionReceivedAtMs
+    : detectionReceivedAtMs;
   const interpolatedVessels = useInterpolatedDetections(overlayVessels, {
     motionDirectionScaleX:
       activeDetectionFrame?.width && activeDetectionFrame.width > 0
@@ -214,6 +261,18 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
         : 1,
     cameraHeadingDeg: activeDetectionFrame?.cameraHeadingDeg,
   });
+  const performanceSnapshot = useStreamPerformanceTelemetry({
+    videoElement: activeVideoElement,
+    detectionPerformance: activeDetectionPerformance,
+    backendInferenceFps: activeInferenceFps,
+    detectionReceivedAtMs: activeDetectionReceivedAtMs,
+    detectionTimestampMs: activeDetectionTimestampMs,
+  });
+  const performanceTransportLabel = activeIsMockData
+    ? "mp4"
+    : videoState.transport === "webrtc"
+      ? "whep / webrtc"
+      : "hls";
 
   useEffect(() => {
     if (!activeIsMockData) return;
@@ -361,6 +420,48 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     mediaAuthReady,
   ]);
 
+  useEffect(() => {
+    if (
+      !isTabsHydrated ||
+      activeIsSetup ||
+      activeIsMockData ||
+      !mediaAuthReady ||
+      !effectiveActiveStream ||
+      !imageLoaded
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    const shouldRecover = shouldRecoverFrozenVideo({
+      nowMs: now,
+      imageLoaded,
+      lastVideoFrameAtMs: performanceSnapshot.lastVideoFrameAtMs,
+      lastDetectionAtMs: performanceSnapshot.lastDetectionAtMs,
+      freezeThresholdMs: VIDEO_FRAME_FREEZE_RECOVERY_MS,
+      detectionFreshThresholdMs: VIDEO_FRAME_FRESH_DETECTION_MS,
+    });
+    if (!shouldRecover) {
+      return;
+    }
+    if (now - playerRecoveryLastAtRef.current < PLAYER_RECOVERY_COOLDOWN_MS) {
+      return;
+    }
+
+    playerRecoveryLastAtRef.current = now;
+    forceReconnect("Video froze, reconnecting stream...");
+  }, [
+    activeIsSetup,
+    activeIsMockData,
+    effectiveActiveStream,
+    forceReconnect,
+    imageLoaded,
+    isTabsHydrated,
+    mediaAuthReady,
+    performanceSnapshot.lastDetectionAtMs,
+    performanceSnapshot.lastVideoFrameAtMs,
+  ]);
+
   const onTabClosed = useCallback(
     async (event: CustomEvent<{ id?: string }>) => {
       const tabId = event.detail?.id?.trim();
@@ -437,7 +538,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
             {isTabsHydrated && !activeIsSetup && activeIsMockData && (
               <>
                 <video
-                  ref={mockDataVideoRef}
+                  ref={handleMockVideoRef}
                   className="background-video"
                   autoPlay
                   loop
@@ -551,8 +652,26 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                     />
                   </PoiErrorBoundary>
                 )}
+
+                {mediaAuthReady && panelVisibility.performanceTelemetryVisible && (
+                  <StreamPerformancePanel
+                    transportLabel={performanceTransportLabel}
+                    snapshot={performanceSnapshot}
+                  />
+                )}
               </>
             )}
+
+            {isTabsHydrated &&
+              !activeIsSetup &&
+              activeIsMockData &&
+              panelVisibility.performanceTelemetryVisible && (
+                <StreamPerformancePanel
+                  title="Performance telemetry"
+                  transportLabel={performanceTransportLabel}
+                  snapshot={performanceSnapshot}
+                />
+              )}
           </div>
         </div>
       </section>

@@ -11,7 +11,6 @@ import asyncio
 import json
 import logging
 import struct
-import time
 
 import cv2
 from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
@@ -22,6 +21,7 @@ from cv.idun.config import (
     IDUN_TARGET_SEND_FPS,
 )
 from cv.idun.noop_inference import NoopInferenceThread
+from cv.performance import now_epoch_ms
 from cv.publisher import DetectionPublisher
 from cv.utils import build_ready_payload
 
@@ -46,6 +46,7 @@ class IdunBridge:
         self._noop = noop_inference
         self._publisher = publisher
         self.is_connected = False
+        self._pending_frame_metrics: dict[tuple[str, int], dict[str, float]] = {}
 
     async def handle_worker_connection(self, websocket: WebSocket) -> None:
         """Main handler for an IDUN worker WebSocket connection.
@@ -151,11 +152,16 @@ class IdunBridge:
                 ready_sent.add(active_id)
 
             # Grab latest frame
-            frame, frame_idx, ts = decode_thread.get_latest()
+            latest = decode_thread.get_latest_telemetry()
+            frame, frame_idx, ts = latest.frame, latest.frame_index, latest.timestamp_ms
             if frame is None or frame_idx == prev_frame_idx:
                 await asyncio.sleep(0.005)
                 continue
             prev_frame_idx = frame_idx
+            self._pending_frame_metrics[(active_id, frame_idx)] = {
+                "decoded_at_ms": latest.decoded_at_ms,
+                "source_fps": decode_thread.fps or 0.0,
+            }
 
             # JPEG encode (CPU-bound — run in thread pool to avoid blocking the event loop)
             ok, jpeg_buf = await loop.run_in_executor(
@@ -167,12 +173,13 @@ class IdunBridge:
                 continue
 
             # Build binary message: [header_len(4 bytes)][json header][jpeg data]
-            header = json.dumps({
+                header = json.dumps({
                 "type": "frame",
                 "stream_id": active_id,
                 "frame_index": frame_idx,
                 "timestamp_ms": ts,
                 "fps": decode_thread.fps or 0.0,
+                "decoded_at_ms": latest.decoded_at_ms,
             }).encode()
             jpeg_bytes: bytes = jpeg_buf.tobytes()
             message = struct.pack(">I", len(header)) + header + jpeg_bytes
@@ -211,7 +218,21 @@ class IdunBridge:
                 if stream_id != active_id:
                     continue
 
-                msg["frame_sent_at_ms"] = time.time() * 1000.0
+                published_at_ms = now_epoch_ms()
+                msg["frame_sent_at_ms"] = published_at_ms
+                frame_index = int(msg.get("frame_index", -1))
+                pending = self._pending_frame_metrics.pop((stream_id, frame_index), None)
+                if pending is not None:
+                    decoded_at_ms = pending["decoded_at_ms"]
+                    source_fps = pending["source_fps"]
+                    performance = msg.get("performance", {})
+                    performance.update({
+                        "source_fps": round(source_fps, 2),
+                        "decoded_at_ms": round(decoded_at_ms, 3),
+                        "published_at_ms": round(published_at_ms, 3),
+                        "total_detection_latency_ms": round(max(0.0, published_at_ms - decoded_at_ms), 3),
+                    })
+                    msg["performance"] = performance
                 self._publisher.publish(stream_id, msg)
 
             elif msg_type == "error":

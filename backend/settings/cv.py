@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from settings._env import get_float, get_int
+from settings._env import get_bool, get_float, get_int
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,18 @@ class CVRuntimeSettings:
     )
     inference_wait_no_frame_sec: float = field(
         default_factory=lambda: get_float("CV_INFERENCE_WAIT_NO_FRAME_SEC", 0.005, minimum=0.001)
+    )
+    adaptive_rate_enabled: bool = field(
+        default_factory=lambda: get_bool("ADAPTIVE_RATE_ENABLED", True)
+    )
+    adaptive_rate_max_skip: int = field(
+        default_factory=lambda: get_int("ADAPTIVE_RATE_MAX_SKIP", 4, minimum=1)
+    )
+    adaptive_rate_high_load_threshold: float = field(
+        default_factory=lambda: get_float("ADAPTIVE_RATE_HIGH_LOAD_THRESHOLD", 0.85, minimum=0.1)
+    )
+    adaptive_rate_low_load_threshold: float = field(
+        default_factory=lambda: get_float("ADAPTIVE_RATE_LOW_LOAD_THRESHOLD", 0.6, minimum=0.05)
     )
 
 

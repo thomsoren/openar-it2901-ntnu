@@ -26,6 +26,16 @@ class NoopInferenceThread:
         self._streams: dict[str, DecodeThread] = {}
         self._active_stream_id: str | None = None
 
+    def add_active_stream(self, stream_id: str) -> None:
+        """IDUN mode only supports one active stream (last-writer-wins)."""
+        with self._lock:
+            self._active_stream_id = stream_id
+
+    def remove_active_stream(self, stream_id: str) -> None:
+        with self._lock:
+            if self._active_stream_id == stream_id:
+                self._active_stream_id = None
+
     def set_active_stream(self, stream_id: str | None) -> None:
         with self._lock:
             self._active_stream_id = stream_id
@@ -33,6 +43,12 @@ class NoopInferenceThread:
     def get_active_stream(self) -> str | None:
         with self._lock:
             return self._active_stream_id
+
+    def get_active_streams(self) -> set[str]:
+        with self._lock:
+            if self._active_stream_id:
+                return {self._active_stream_id}
+            return set()
 
     def register_stream(self, stream_id: str, decode_thread: DecodeThread) -> None:
         with self._lock:

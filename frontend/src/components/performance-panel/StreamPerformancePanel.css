@@ -1,0 +1,68 @@
+.stream-performance-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 29;
+  width: min(360px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.stream-performance-panel__card {
+  width: 100%;
+}
+
+.stream-performance-panel__card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.stream-performance-panel__card-description {
+  color: var(--obc-color-sky-25, #5b7083);
+  font-size: 12px;
+}
+
+.stream-performance-panel__section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.stream-performance-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.stream-performance-panel__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stream-performance-panel__label {
+  font-size: 11px;
+  color: #5b7083;
+}
+
+.stream-performance-panel__grid strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .stream-performance-panel {
+    top: auto;
+    right: 8px;
+    left: 8px;
+    bottom: 8px;
+    width: auto;
+  }
+}
