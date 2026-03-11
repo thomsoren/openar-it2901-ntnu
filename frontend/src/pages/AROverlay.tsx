@@ -26,6 +26,10 @@ import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/str
 import { apiFetchPublic } from "../lib/api-client";
 import "./AROverlay.css";
 
+import Navigation from "../components/navigation/Navigation";
+import aisMock from "../components/navigation/ais-navigation-mock.json";
+import routeMock from "../components/navigation/routes-navigation-mock.json";
+
 const LOADER_STUCK_RECOVERY_MS = 12000;
 const PLAYER_RECOVERY_COOLDOWN_MS = 15000;
 const DETECTION_STALE_RECOVERY_MS = 10000;
@@ -461,6 +465,15 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                       metricsMode="mock-data"
                     />
                   </PoiErrorBoundary>
+                )}
+                {arControls.navigationVisible && (
+                  <Navigation
+                    videoTransform={mockDataVideoTransform}
+                    horizon={0.47}
+                    fov={70}
+                    ais={aisMock}
+                    route={routeMock.route}
+                  />
                 )}
               </>
             )}

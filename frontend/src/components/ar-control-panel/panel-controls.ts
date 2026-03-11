@@ -44,4 +44,9 @@ export const AR_PANEL_CONTROL_DEFINITIONS: readonly ARPanelControlDefinition[] =
     label: "Debug bounding boxes",
     description: "Show raw bounding boxes instead of POI components",
   },
+  {
+    key: "navigationVisible",
+    label: "Navigational direction",
+    description: "Directional arrows towards next waypoint",
+  },
 ] as const;

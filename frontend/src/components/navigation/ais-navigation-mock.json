@@ -1,0 +1,14 @@
+{
+  "courseOverGround": 223.4,
+  "latitude": 63.439218,
+  "longitude": 10.398735,
+  "name": "OCEAN SPACE DRONE1",
+  "rateOfTurn": -6,
+  "shipType": 99,
+  "speedOverGround": 0.1,
+  "trueHeading": 236.8,
+  "navigationalStatus": 0,
+  "mmsi": 257030830,
+  "msgtime": "2026-02-17T14:13:04+00:00",
+  "stream": "terra"
+}
