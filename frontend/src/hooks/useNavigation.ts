@@ -16,7 +16,7 @@ const pageLabels: Record<PageId, string> = {
   ais: "AIS",
   "media-library": "Media Library",
   components: "Components",
-  "control-customization": "Control Customization",
+  "control-customization": "Configuration",
 };
 
 const getPageFromPath = (pathname: string): PageId => {
