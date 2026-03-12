@@ -6,7 +6,7 @@
   bottom: 0;
   overflow: auto;
   box-sizing: border-box;
-  padding: 0 2rem 3rem;
+  padding: 2rem 2rem 3rem;
   color: var(--element-active-color, #1f2b38);
   background: var(--container-backdrop-color, #ffffff);
 }
@@ -14,7 +14,6 @@
 .control-customization-page__content {
   width: 100%;
   max-width: 1080px;
-  padding-top: 2rem;
   margin: 0 auto;
 }
 
@@ -162,11 +161,7 @@
 
 @media (max-width: 960px) {
   .control-customization-page {
-    padding: 0 1.25rem 2rem;
-  }
-
-  .control-customization-page__content {
-    padding-top: 1.5rem;
+    padding: 1.5rem 1.25rem 2rem;
   }
 
   .control-customization-table__header,
@@ -177,11 +172,7 @@
 
 @media (max-width: 720px) {
   .control-customization-page {
-    padding: 0 1rem 2rem;
-  }
-
-  .control-customization-page__content {
-    padding-top: 1.25rem;
+    padding: 1.25rem 1rem 2rem;
   }
 
   .control-customization-preview {

@@ -32,7 +32,7 @@ export function NavigationPanel({ currentPage, onNavigate }: NavigationPanelProp
           onClick={() => onNavigate("components")}
         />
         <ObcNavigationItem
-          label="Configuration"
+          label="Control Customization"
           checked={currentPage === "control-customization"}
           onClick={() => onNavigate("control-customization")}
         />
