@@ -154,6 +154,17 @@ export function ARControlPanel() {
         <ObiVesselTypeGenericOutlined />
       </ObcIconButton>
     ),
+    navigationVisible: (
+      <ObcIconButton
+        key="navigationVisible"
+        variant={IconButtonVariant.flat}
+        activated={state.navigationVisible}
+        title="Navigation"
+        onClick={() => toggle("navigationVisible")}
+      >
+        <ObiVesselTypeGenericOutlined />
+      </ObcIconButton>
+    ),
   } as const;
 
   return (

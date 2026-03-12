@@ -14,6 +14,7 @@ export interface ARControlPanelVisibilityState {
   poiSettingsVisible: boolean;
   videoFitVisible: boolean;
   debugBboxVisible: boolean;
+  navigationVisible: boolean;
 }
 
 export interface ARControlState {
@@ -30,6 +31,7 @@ export interface ARControlState {
   detectionVisible: boolean;
   videoFitMode: VideoFitMode;
   debugBboxVisible: boolean;
+  navigationVisible: boolean;
 }
 
 export type ARBooleanControlKey =
@@ -42,7 +44,8 @@ export type ARBooleanControlKey =
   | "poiVisible"
   | "aisCardsVisible"
   | "detectionVisible"
-  | "debugBboxVisible";
+  | "debugBboxVisible"
+  | "navigationVisible";
 
 export type ARControlPanelVisibilityKey = keyof ARControlPanelVisibilityState;
 
@@ -70,6 +73,7 @@ export const AR_CONTROL_DEFAULTS: ARControlState = {
   detectionVisible: true,
   videoFitMode: "cover",
   debugBboxVisible: false,
+  navigationVisible: false,
 };
 
 export const AR_CONTROL_PANEL_VISIBILITY_DEFAULTS: ARControlPanelVisibilityState = {
@@ -82,6 +86,7 @@ export const AR_CONTROL_PANEL_VISIBILITY_DEFAULTS: ARControlPanelVisibilityState
   poiSettingsVisible: true,
   videoFitVisible: true,
   debugBboxVisible: true,
+  navigationVisible: true,
 };
 
 export const ARControlContext = createContext<ARControlContextType | undefined>(undefined);
