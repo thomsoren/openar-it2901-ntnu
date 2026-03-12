@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
 import { DETECTION_CONFIG } from "../config/video";
-import { DetectedVessel, DetectionPerformance } from "../types/detection";
+import { DetectedVessel } from "../types/detection";
 
 interface UseDetectionsWebSocketOptions {
   /** WebSocket endpoint URL (ws:// or wss://) */
@@ -30,12 +30,8 @@ interface WebSocketState {
   vessels: DetectedVessel[];
   frameIndex: number;
   fps: number;
-  inferenceFps: number | null;
-  detectionTimestampMs: number;
   lastMessageAtMs: number;
-  detectionReceivedAtMs: number;
   detectionFrameSentAtMs: number;
-  performance: DetectionPerformance | null;
   videoInfo: VideoInfo | null;
   isConnected: boolean;
   isLoading: boolean;
@@ -72,12 +68,8 @@ function createWebSocketStore(
     vessels: [],
     frameIndex: 0,
     fps: 0,
-    inferenceFps: null,
-    detectionTimestampMs: 0,
     lastMessageAtMs: 0,
-    detectionReceivedAtMs: 0,
     detectionFrameSentAtMs: 0,
-    performance: null,
     videoInfo: null,
     isConnected: false,
     isLoading: true,
@@ -127,12 +119,8 @@ function createWebSocketStore(
         vessels: [],
         frameIndex: 0,
         fps: 0,
-        inferenceFps: null,
-        detectionTimestampMs: 0,
         lastMessageAtMs: 0,
-        detectionReceivedAtMs: 0,
         detectionFrameSentAtMs: 0,
-        performance: null,
         videoInfo: null,
         isConnected: false,
         isLoading: true,
@@ -179,24 +167,10 @@ function createWebSocketStore(
               const receivedAtMs = Date.now();
               setState({
                 frameIndex: typeof data.frame_index === "number" ? data.frame_index : 0,
-                detectionTimestampMs: typeof data.timestamp_ms === "number" ? data.timestamp_ms : 0,
                 lastMessageAtMs: receivedAtMs,
-                detectionReceivedAtMs: receivedAtMs,
                 detectionFrameSentAtMs:
                   typeof data.frame_sent_at_ms === "number" ? data.frame_sent_at_ms : 0,
-                performance:
-                  data.performance && typeof data.performance === "object"
-                    ? (data.performance as DetectionPerformance)
-                    : null,
                 fps: typeof data.fps === "number" ? data.fps : 0,
-                inferenceFps:
-                  data.performance &&
-                  typeof data.performance === "object" &&
-                  typeof (data.performance as DetectionPerformance).detection_fps === "number"
-                    ? (data.performance as DetectionPerformance).detection_fps
-                    : typeof data.inference_fps === "number"
-                      ? data.inference_fps
-                      : null,
                 vessels: Array.isArray(data.vessels) ? (data.vessels as DetectedVessel[]) : [],
               });
               break;
@@ -252,13 +226,9 @@ function createWebSocketStore(
       isLoading: false,
       vessels: [],
       frameIndex: 0,
-      detectionTimestampMs: 0,
       lastMessageAtMs: 0,
-      detectionReceivedAtMs: 0,
       detectionFrameSentAtMs: 0,
-      performance: null,
       fps: 0,
-      inferenceFps: null,
       videoInfo: null,
     });
   };

@@ -51,6 +51,17 @@ class IdunBridge:
         self.is_connected = False
         self._pending_frame_metrics: dict[tuple[str, int], dict[str, float]] = {}
 
+    def _pop_pending_metrics(self, stream_id: str, frame_index: int) -> dict[str, float] | None:
+        return self._pending_frame_metrics.pop((stream_id, frame_index), None)
+
+    def _clear_pending_metrics_for_stream(self, stream_id: str) -> None:
+        stale_keys = [key for key in self._pending_frame_metrics if key[0] == stream_id]
+        for key in stale_keys:
+            self._pending_frame_metrics.pop(key, None)
+
+    def _clear_all_pending_metrics(self) -> None:
+        self._pending_frame_metrics.clear()
+
     async def handle_worker_connection(self, websocket: WebSocket) -> None:
         """Main handler for an IDUN worker WebSocket connection.
 
@@ -85,6 +96,7 @@ class IdunBridge:
             logger.error("IDUN bridge error: %s", exc)
         finally:
             self.is_connected = False
+            self._clear_all_pending_metrics()
             if sender_task and not sender_task.done():
                 sender_task.cancel()
                 try:
@@ -128,6 +140,7 @@ class IdunBridge:
                 }))
                 prev_frame_idx.pop(stream_id, None)
                 ready_sent.discard(stream_id)
+                self._clear_pending_metrics_for_stream(stream_id)
                 logger.info("IDUN bridge: stream removed '%s'", stream_id)
 
             for stream_id in added:
@@ -186,6 +199,7 @@ class IdunBridge:
                     None, cv2.imencode, ".jpg", frame, JPEG_ENCODE_PARAMS,
                 )
                 if not ok:
+                    self._pop_pending_metrics(stream_id, frame_idx)
                     logger.warning("IDUN bridge: JPEG encode failed for stream '%s' frame %d", stream_id, frame_idx)
                     continue
 
@@ -237,12 +251,13 @@ class IdunBridge:
                 # Discard detections for a stream that is no longer active
                 active_ids = self._noop.get_active_streams()
                 if stream_id not in active_ids:
+                    self._pop_pending_metrics(stream_id, int(msg.get("frame_index", -1)))
                     continue
 
                 published_at_ms = now_epoch_ms()
                 msg["frame_sent_at_ms"] = published_at_ms
                 frame_index = int(msg.get("frame_index", -1))
-                pending = self._pending_frame_metrics.pop((stream_id, frame_index), None)
+                pending = self._pop_pending_metrics(stream_id, frame_index)
                 if pending is not None:
                     decoded_at_ms = pending["decoded_at_ms"]
                     source_fps = pending["source_fps"]

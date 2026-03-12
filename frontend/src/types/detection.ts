@@ -42,16 +42,3 @@ export interface DetectedVessel {
   };
   displayDirectionDeg?: number; // Direction rendered by the POI icon (degrees, 0=up, clockwise)
 }
-
-export interface DetectionPerformance {
-  source_fps: number;
-  detection_fps: number;
-  decoded_at_ms: number;
-  inference_started_at_ms?: number;
-  inference_completed_at_ms?: number;
-  published_at_ms: number;
-  decode_to_inference_start_ms?: number;
-  inference_duration_ms?: number;
-  publish_duration_ms?: number;
-  total_detection_latency_ms: number;
-}
