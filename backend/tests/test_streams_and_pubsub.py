@@ -9,7 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 import api
+from auth.deps import get_current_user
 from common.config import create_redis_client, detections_channel
+from db.models import AppUser
 from orchestrator import StreamConfig, WorkerOrchestrator
 
 
@@ -22,6 +24,23 @@ def redis_available():
         pytest.skip(f"Redis unavailable for integration tests: {exc}")
     finally:
         client.close()
+
+
+@pytest.fixture(autouse=True)
+def _auth_override(monkeypatch):
+    """Override auth for tests that create their own TestClient(api.app)."""
+    test_user = AppUser(id="test-admin-1", username="test-admin", email="admin@test.local", is_admin=True)
+    api.app.dependency_overrides[get_current_user] = lambda: test_user
+
+    async def _fake_authenticate_websocket(websocket):
+        return test_user
+
+    monkeypatch.setattr(
+        "webapi.routes.detections.authenticate_websocket",
+        _fake_authenticate_websocket,
+    )
+    yield
+    api.app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_concurrent_stream_starts(fake_decode_thread, fake_ffmpeg, fake_inference_thread):
@@ -80,7 +99,6 @@ def test_detections_websocket_uses_redis_pubsub(
 
         try:
             with client.websocket_connect(f"/api/detections/ws/{stream_id}") as websocket:
-                # Skip any non-detection messages (e.g. "ready" from inference thread)
                 for _ in range(10):
                     message = websocket.receive_json()
                     if message.get("type") == "detections":

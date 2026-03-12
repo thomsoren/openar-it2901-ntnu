@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 JPEG_ENCODE_PARAMS = [cv2.IMWRITE_JPEG_QUALITY, IDUN_FRAME_JPEG_QUALITY]
 
 
+_PENDING_METRICS_MAX_AGE_S = 20.0
+_PENDING_METRICS_MAX_PER_STREAM = 300
+
+
 class IdunBridge:
     """Bridges the orchestrator's decode threads to a remote IDUN worker.
 
@@ -50,6 +54,7 @@ class IdunBridge:
         self._publisher = publisher
         self.is_connected = False
         self._pending_frame_metrics: dict[tuple[str, int], dict[str, float]] = {}
+        self._last_eviction_ms: float = 0.0
 
     def _pop_pending_metrics(self, stream_id: str, frame_index: int) -> dict[str, float] | None:
         return self._pending_frame_metrics.pop((stream_id, frame_index), None)
@@ -61,6 +66,39 @@ class IdunBridge:
 
     def _clear_all_pending_metrics(self) -> None:
         self._pending_frame_metrics.clear()
+
+    def _evict_stale_pending_metrics(self) -> None:
+        """Remove entries older than _PENDING_METRICS_MAX_AGE_S. Runs at most once per second."""
+        now = now_epoch_ms()
+        if now - self._last_eviction_ms < 1000.0:
+            return
+        self._last_eviction_ms = now
+
+        max_age_ms = _PENDING_METRICS_MAX_AGE_S * 1000.0
+        stale_keys = [
+            key for key, metrics in self._pending_frame_metrics.items()
+            if now - metrics.get("decoded_at_ms", 0.0) > max_age_ms
+        ]
+        if stale_keys:
+            for key in stale_keys:
+                self._pending_frame_metrics.pop(key, None)
+            logger.debug(
+                "IDUN bridge: evicted %d stale pending metrics entries", len(stale_keys),
+            )
+
+        if len(self._pending_frame_metrics) > _PENDING_METRICS_MAX_PER_STREAM * 10:
+            oldest_keys = sorted(
+                self._pending_frame_metrics,
+                key=lambda k: self._pending_frame_metrics[k].get("decoded_at_ms", 0.0),
+            )
+            to_remove = oldest_keys[: len(oldest_keys) - _PENDING_METRICS_MAX_PER_STREAM * 5]
+            for key in to_remove:
+                self._pending_frame_metrics.pop(key, None)
+            logger.warning(
+                "IDUN bridge: cap-evicted %d pending metrics entries (total was %d)",
+                len(to_remove),
+                len(oldest_keys),
+            )
 
     async def handle_worker_connection(self, websocket: WebSocket) -> None:
         """Main handler for an IDUN worker WebSocket connection.
@@ -193,6 +231,7 @@ class IdunBridge:
                     "decoded_at_ms": latest.decoded_at_ms,
                     "source_fps": decode_thread.fps or 0.0,
                 }
+                self._evict_stale_pending_metrics()
 
                 # JPEG encode (CPU-bound — run in thread pool)
                 ok, jpeg_buf = await loop.run_in_executor(

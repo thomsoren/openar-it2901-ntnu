@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
 import { DETECTION_CONFIG } from "../config/video";
+import { getApiAccessToken } from "../lib/api-client";
 import { DetectedVessel } from "../types/detection";
 
 interface UseDetectionsWebSocketOptions {
@@ -132,7 +133,11 @@ function createWebSocketStore(
     try {
       const currentEpoch = socketEpoch + 1;
       socketEpoch = currentEpoch;
-      const socket = new WebSocket(url);
+      const token = getApiAccessToken();
+      const wsUrl = token
+        ? `${url}${url.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`
+        : url;
+      const socket = new WebSocket(wsUrl);
       ws = socket;
 
       socket.onopen = () => {

@@ -9,6 +9,10 @@ def bad_request(detail: str) -> NoReturn:
     raise HTTPException(status_code=400, detail=detail)
 
 
+def forbidden(detail: str) -> NoReturn:
+    raise HTTPException(status_code=403, detail=detail)
+
+
 def not_found(detail: str) -> NoReturn:
     raise HTTPException(status_code=404, detail=detail)
 
