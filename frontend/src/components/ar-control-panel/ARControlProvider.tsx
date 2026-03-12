@@ -85,10 +85,6 @@ function readPanelVisibility(value: unknown): ARControlPanelVisibilityState {
       obj.debugBboxVisible,
       AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.debugBboxVisible
     ),
-    performanceTelemetryVisible: asBoolean(
-      obj.performanceTelemetryVisible,
-      AR_CONTROL_PANEL_VISIBILITY_DEFAULTS.performanceTelemetryVisible
-    ),
   };
 }
 

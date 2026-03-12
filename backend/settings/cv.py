@@ -19,6 +19,9 @@ class CVRuntimeSettings:
     inference_wait_no_frame_sec: float = field(
         default_factory=lambda: get_float("CV_INFERENCE_WAIT_NO_FRAME_SEC", 0.005, minimum=0.001)
     )
+    inference_batch_fill_timeout_sec: float = field(
+        default_factory=lambda: get_float("CV_INFERENCE_BATCH_FILL_TIMEOUT_SEC", 0.02, minimum=0.0)
+    )
     adaptive_rate_enabled: bool = field(
         default_factory=lambda: get_bool("ADAPTIVE_RATE_ENABLED", True)
     )

@@ -9,7 +9,6 @@ import {
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import PoiErrorBoundary from "../components/poi-overlay/PoiErrorBoundary";
 import VideoPlayer from "../components/video-player/VideoPlayer";
-import StreamPerformancePanel from "../components/performance-panel/StreamPerformancePanel";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useStreamPerformanceTelemetry } from "../hooks/useStreamPerformanceTelemetry";
@@ -65,7 +64,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   const fusionStartLastAttemptMsRef = useRef(0);
   const playerRecoveryLastAtRef = useRef(0);
   const detectionRecoveryLastAtRef = useRef(0);
-  const { state: arControls, panelVisibility } = useARControls();
+  const { state: arControls } = useARControls();
   const auth = useAuth();
 
   const {
@@ -92,7 +91,6 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   const {
     recoveryStreamKey,
     videoSession,
-    videoState,
     imageLoaded,
     showVideoLoader,
     setControlError,
@@ -268,11 +266,6 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     detectionReceivedAtMs: activeDetectionReceivedAtMs,
     detectionTimestampMs: activeDetectionTimestampMs,
   });
-  const performanceTransportLabel = activeIsMockData
-    ? "mp4"
-    : videoState.transport === "webrtc"
-      ? "whep / webrtc"
-      : "hls";
 
   useEffect(() => {
     if (!activeIsMockData) return;
@@ -652,26 +645,8 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                     />
                   </PoiErrorBoundary>
                 )}
-
-                {mediaAuthReady && panelVisibility.performanceTelemetryVisible && (
-                  <StreamPerformancePanel
-                    transportLabel={performanceTransportLabel}
-                    snapshot={performanceSnapshot}
-                  />
-                )}
               </>
             )}
-
-            {isTabsHydrated &&
-              !activeIsSetup &&
-              activeIsMockData &&
-              panelVisibility.performanceTelemetryVisible && (
-                <StreamPerformancePanel
-                  title="Performance telemetry"
-                  transportLabel={performanceTransportLabel}
-                  snapshot={performanceSnapshot}
-                />
-              )}
           </div>
         </div>
       </section>

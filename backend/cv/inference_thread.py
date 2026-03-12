@@ -48,6 +48,7 @@ class InferenceThread:
         self._ready_sent: set[str] = set()
         self._last_inf_time: dict[str, float] = {}
         self._rate_controllers: dict[str, AdaptiveRateController] = {}
+        self._batch_cursor: int = 0
 
         self._thread: threading.Thread | None = None
         self._stopped = threading.Event()
@@ -120,32 +121,46 @@ class InferenceThread:
         )
         self._ready_sent.add(stream_id)
 
-    def _loop(self) -> None:
-        wait_no_stream = cv_runtime_settings.inference_wait_no_stream_sec
-        wait_no_frame = cv_runtime_settings.inference_wait_no_frame_sec
-        logger.info("Inference thread loop started, waiting for active streams")
+    def _snapshot_active_streams(self) -> tuple[list[str], dict[str, DecodeThread]]:
+        with self._lock:
+            active_ids = sorted(sid for sid in self._active_stream_ids if sid in self._streams)
+            streams = {sid: self._streams[sid] for sid in active_ids}
+        return active_ids, streams
+
+    def _ordered_stream_ids_for_batch(self, active_ids: list[str]) -> list[str]:
+        if not active_ids:
+            return []
+        if len(active_ids) == 1:
+            return active_ids
+        start = self._batch_cursor % len(active_ids)
+        ordered = active_ids[start:] + active_ids[:start]
+        self._batch_cursor = (
+            self._batch_cursor + min(self._max_batch_size, len(active_ids))
+        ) % len(active_ids)
+        return ordered
+
+    def _collect_batch(
+        self,
+        ordered_stream_ids: list[str],
+        streams: dict[str, DecodeThread],
+        *,
+        wait_no_frame: float,
+        fill_timeout: float,
+    ) -> list[tuple[str, DecodeThread, np.ndarray, int, float, float]]:
+        target_size = min(len(ordered_stream_ids), self._max_batch_size)
+        if target_size == 0:
+            return []
+
+        deadline = time.monotonic() + max(0.0, fill_timeout)
+        batch: dict[str, tuple[str, DecodeThread, np.ndarray, int, float, float]] = {}
 
         while not self._stopped.is_set():
-            # 1. Snapshot active streams and their decode threads
-            with self._lock:
-                active_ids = set(self._active_stream_ids)
-                streams = {
-                    sid: self._streams[sid]
-                    for sid in active_ids
-                    if sid in self._streams
-                }
-
-            if not streams:
-                time.sleep(wait_no_stream)
-                continue
-
-            # 2. Publish "ready" for any new streams
-            for sid, dt in streams.items():
-                self._publish_ready_if_needed(sid, dt)
-
-            # 3. Collect pending frames from all active streams (respecting adaptive rate)
-            batch: list[tuple[str, DecodeThread, np.ndarray, int, float, float]] = []
-            for sid, dt in streams.items():
+            for sid in ordered_stream_ids:
+                if sid in batch:
+                    continue
+                dt = streams.get(sid)
+                if dt is None:
+                    continue
                 latest = dt.get_latest_telemetry()
                 frame = latest.frame
                 frame_idx = latest.frame_index
@@ -155,9 +170,44 @@ class InferenceThread:
                 if rate_ctrl and not rate_ctrl.should_process():
                     self._last_processed_idx[sid] = frame_idx
                     continue
-                batch.append((sid, dt, frame, frame_idx, latest.timestamp_ms, latest.decoded_at_ms))
-                if len(batch) >= self._max_batch_size:
-                    break
+                batch[sid] = (sid, dt, frame, frame_idx, latest.timestamp_ms, latest.decoded_at_ms)
+                if len(batch) >= target_size:
+                    return list(batch.values())
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(wait_no_frame, remaining))
+
+        return list(batch.values())
+
+    def _loop(self) -> None:
+        wait_no_stream = cv_runtime_settings.inference_wait_no_stream_sec
+        wait_no_frame = cv_runtime_settings.inference_wait_no_frame_sec
+        fill_timeout = cv_runtime_settings.inference_batch_fill_timeout_sec
+        logger.info("Inference thread loop started, waiting for active streams")
+
+        while not self._stopped.is_set():
+            # 1. Snapshot active streams and their decode threads
+            active_ids, streams = self._snapshot_active_streams()
+
+            if not streams:
+                time.sleep(wait_no_stream)
+                continue
+
+            # 2. Publish "ready" for any new streams
+            for sid, dt in streams.items():
+                self._publish_ready_if_needed(sid, dt)
+
+            # 3. Collect pending frames from active streams, but only wait a bounded
+            #    time to fill the batch so low-traffic streams don't stall inference.
+            ordered_stream_ids = self._ordered_stream_ids_for_batch(active_ids)
+            batch = self._collect_batch(
+                ordered_stream_ids,
+                streams,
+                wait_no_frame=wait_no_frame,
+                fill_timeout=fill_timeout,
+            )
 
             if not batch:
                 time.sleep(wait_no_frame)

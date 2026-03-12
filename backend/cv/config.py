@@ -37,7 +37,7 @@ def write_bytetrack_yaml() -> None:
     BYTETRACK_YAML.write_text(content)
 
 # Batched inference
-MAX_INFERENCE_BATCH_SIZE = int(os.getenv("MAX_INFERENCE_BATCH_SIZE", "4"))
+MAX_INFERENCE_BATCH_SIZE = int(os.getenv("MAX_INFERENCE_BATCH_SIZE", "10"))
 
 # Decode thread defaults
 DEFAULT_FPS = 25.0  # Fallback when source FPS is unavailable or invalid

@@ -5,14 +5,7 @@ import { AR_PANEL_CONTROL_DEFINITIONS } from "../components/ar-control-panel/pan
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import "./ControlCustomization.css";
 
-const CONTROL_CUSTOMIZATION_ITEMS = [
-  ...AR_PANEL_CONTROL_DEFINITIONS,
-  {
-    key: "performanceTelemetryVisible",
-    label: "Performance telemetry",
-    description: "Show or hide the performance telemetry panel in the AR workspace",
-  },
-] as const;
+const CONTROL_CUSTOMIZATION_ITEMS = [...AR_PANEL_CONTROL_DEFINITIONS] as const;
 
 function ControlCustomizationInner() {
   const { panelVisibility, setPanelControlVisibility } = useARControls();
