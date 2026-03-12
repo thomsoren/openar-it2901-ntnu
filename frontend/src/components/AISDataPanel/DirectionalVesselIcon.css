@@ -8,10 +8,10 @@
   );
   --dvi-heading-angle: 0deg;
   --dvi-course-angle: 0deg;
-  --dvi-bg-color: #ffffff;
+  --dvi-bg-color: var(--container-backdrop-color, #ffffff);
   width: var(--dvi-size);
   height: var(--dvi-size);
-  border: 2px solid #bebebe;
+  border: 2px solid var(--border-subtle-color, #bebebe);
   border-radius: 50%;
   background: var(--dvi-bg-color);
   position: relative;
@@ -21,7 +21,7 @@
 .dvi-inner-ring {
   position: absolute;
   inset: var(--dvi-inner-inset);
-  border: var(--dvi-inner-border) solid #535353;
+  border: var(--dvi-inner-border) solid var(--element-neutral-color, #535353);
   border-radius: 50%;
 }
 
@@ -33,7 +33,7 @@
   top: 50%;
   transform-origin: 50% 100%;
   transform: translate(-50%, -100%) rotate(var(--dvi-heading-angle));
-  background: #bebebe;
+  background: var(--border-subtle-color, #bebebe);
   border-radius: 999px;
   z-index: 0;
 }
@@ -46,7 +46,7 @@
   top: 50%;
   transform-origin: 50% 100%;
   transform: translate(-50%, -100%) rotate(var(--dvi-course-angle));
-  background: #21262d;
+  background: var(--element-active-color, #21262d);
   border-radius: 999px;
   z-index: 1;
 }
@@ -60,7 +60,7 @@
   left: 50%;
   transform: translate(-50%, -50%) rotate(var(--dvi-course-angle))
     translateY(calc(-1 * var(--dvi-dot-radius)));
-  background: #535353;
+  background: var(--element-neutral-color, #535353);
   z-index: 3;
   /* Cirkular cut-off around turn-dot */
   box-shadow: 0 0 0 var(--dvi-dot-cutout) var(--dvi-bg-color);
@@ -84,11 +84,11 @@
 }
 
 .dvi-rot-unknown .dvi-turn-dot {
-  background: #535353;
+  background: var(--element-neutral-color, #535353);
 }
 
 .dvi-rot-steady .dvi-turn-dot {
-  background: #535353;
+  background: var(--element-neutral-color, #535353);
 }
 
 .dvi-rot-gentle .dvi-turn-dot {
