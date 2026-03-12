@@ -8,7 +8,7 @@ import {
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import PoiErrorBoundary from "../components/poi-overlay/PoiErrorBoundary";
-import VideoPlayer from "../components/video-player/VideoPlayer";
+import VideoPlayer, { type VideoPlayerState } from "../components/video-player/VideoPlayer";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useStreamTabs } from "../hooks/useStreamTabs";
@@ -24,6 +24,11 @@ import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
 import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
 import { apiFetchPublic } from "../lib/api-client";
 import "./AROverlay.css";
+
+const LOADER_STUCK_RECOVERY_MS = 12_000;
+const PLAYER_RECOVERY_COOLDOWN_MS = 15_000;
+const DETECTION_STALE_RECOVERY_MS = 10_000;
+const DETECTION_RECOVERY_COOLDOWN_MS = 8_000;
 
 interface AROverlayProps {
   externalStreamId?: string | null;
@@ -52,9 +57,19 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   const containerRef = useRef<HTMLDivElement>(null);
   const fusionStartInFlightRef = useRef(false);
   const fusionStartLastAttemptMsRef = useRef(0);
+  const playerRecoveryLastAtRef = useRef(0);
+  const detectionRecoveryLastAtRef = useRef(0);
   const { state: arControls } = useARControls();
   const auth = useAuth();
   const [, setControlError] = useState<string | null>(null);
+  const [sessionTokensByStream, setSessionTokensByStream] = useState<Record<string, number>>({});
+  const [videoSession, setVideoSession] = useState(0);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [videoState, setVideoState] = useState<VideoPlayerState>({
+    transport: "webrtc",
+    status: "idle",
+    error: null,
+  });
 
   const {
     tabs,
@@ -94,8 +109,47 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     onAuthGateVisibleChange?.(showingAuthGate);
   }, [showingAuthGate, onAuthGateVisibleChange]);
 
+  useEffect(() => {
+    setVideoSession(sessionTokensByStream[activeTabId] ?? 0);
+    setImageLoaded(false);
+    setVideoState({
+      transport: "webrtc",
+      status: "idle",
+      error: null,
+    });
+  }, [activeTabId, sessionTokensByStream]);
+
+  useEffect(() => {
+    if (!activePlayableStreamId) {
+      return;
+    }
+    setSessionTokensByStream((previous) => {
+      if (previous[activePlayableStreamId] === videoSession) {
+        return previous;
+      }
+      return { ...previous, [activePlayableStreamId]: videoSession };
+    });
+  }, [activePlayableStreamId, videoSession]);
+
+  const handleVideoStatusChange = useCallback((next: VideoPlayerState) => {
+    setVideoState(next);
+    setImageLoaded(next.status === "playing");
+  }, []);
+
+  const forceReconnect = useCallback(() => {
+    setImageLoaded(false);
+    setVideoState({
+      transport: "webrtc",
+      status: "idle",
+      error: null,
+    });
+    setVideoSession((current) => current + 1);
+  }, []);
+
+  const showVideoLoader = !imageLoaded || videoState.status === "connecting";
+
   const detectionWsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
-  const { vessels, videoInfo } = useDetectionsWebSocket({
+  const { vessels, videoInfo, lastMessageAtMs, connect, disconnect } = useDetectionsWebSocket({
     url: detectionWsUrl,
     enabled:
       wsEnabled &&
@@ -151,7 +205,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     arControls.videoFitMode,
     undefined,
     undefined,
-    activePlayableStreamId
+    imageLoaded
   );
   const mockDataVideoTransform = useVideoTransform(
     mockDataVideoRef,
@@ -226,6 +280,100 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
       cancelled = true;
     };
   }, [activeTabId, fusionRunningStream, refreshStreams, setControlError]);
+
+  useEffect(() => {
+    if (
+      !isTabsHydrated ||
+      activeIsSetup ||
+      activeIsMockData ||
+      !mediaAuthReady ||
+      !effectiveActiveStream ||
+      !showVideoLoader
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const now = Date.now();
+      if (now - playerRecoveryLastAtRef.current < PLAYER_RECOVERY_COOLDOWN_MS) {
+        return;
+      }
+      playerRecoveryLastAtRef.current = now;
+      forceReconnect();
+
+      if (activeTabId === FUSION_TAB_ID) {
+        void startStream(FUSION_TAB_ID, {
+          sourceUrl: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
+          loop: true,
+          allowExisting: true,
+        })
+          .catch((err) => {
+            setControlError(toStreamError(err, "Failed to recover Fusion stream"));
+          })
+          .finally(() => {
+            void refreshStreams();
+          });
+        return;
+      }
+
+      void refreshStreams();
+    }, LOADER_STUCK_RECOVERY_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeIsSetup,
+    activeIsMockData,
+    activeTabId,
+    effectiveActiveStream,
+    forceReconnect,
+    isTabsHydrated,
+    mediaAuthReady,
+    refreshStreams,
+    setControlError,
+    showVideoLoader,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isTabsHydrated ||
+      activeIsSetup ||
+      activeIsMockData ||
+      !mediaAuthReady ||
+      !effectiveActiveStream ||
+      !imageLoaded
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    const isStale = lastMessageAtMs <= 0 || now - lastMessageAtMs > DETECTION_STALE_RECOVERY_MS;
+    if (!isStale) {
+      return;
+    }
+    if (now - detectionRecoveryLastAtRef.current < DETECTION_RECOVERY_COOLDOWN_MS) {
+      return;
+    }
+    detectionRecoveryLastAtRef.current = now;
+    disconnect();
+    const timer = window.setTimeout(() => {
+      connect();
+    }, 180);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeIsSetup,
+    activeIsMockData,
+    connect,
+    disconnect,
+    effectiveActiveStream,
+    imageLoaded,
+    isTabsHydrated,
+    lastMessageAtMs,
+    mediaAuthReady,
+  ]);
 
   const onTabClosed = useCallback(
     async (event: CustomEvent<{ id?: string }>) => {
@@ -381,6 +529,11 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                         streamId={streamId}
                         whepUrl={playbackUrls?.whep_url}
                         hlsUrl={playbackUrls?.hls_url}
+                        sessionToken={
+                          streamId === activePlayableStreamId
+                            ? videoSession
+                            : (sessionTokensByStream[streamId] ?? 0)
+                        }
                         allowHlsFallback={isActivePlayer}
                         className="background-video"
                         style={{
@@ -391,9 +544,18 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                           transition: "opacity 120ms linear",
                         }}
                         onVideoReady={isActivePlayer ? handleActiveVideoReady : undefined}
+                        onStatusChange={isActivePlayer ? handleVideoStatusChange : undefined}
                       />
                     );
                   })}
+
+                {mediaAuthReady && showVideoLoader && (
+                  <WorkspaceLoader
+                    label={
+                      !imageLoaded ? "Connecting to video stream..." : "Waiting for detections..."
+                    }
+                  />
+                )}
 
                 {mediaAuthReady && arControls.detectionVisible && (
                   <PoiErrorBoundary>
