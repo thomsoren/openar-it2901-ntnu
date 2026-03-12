@@ -175,6 +175,12 @@ class RTDETRDetector:
             verbose=False,
         )
 
+    @staticmethod
+    def _boxes_for_tracking(boxes: object) -> object:
+        """Normalize tracker input to host memory when detections live on an accelerator."""
+        cpu = getattr(boxes, "cpu", None)
+        return cpu() if callable(cpu) else boxes
+
     def update_tracker(self, stream_id: str, results: object) -> List[Detection]:
         """Run per-stream ByteTrack on a single ultralytics Results object.
 
@@ -194,7 +200,7 @@ class RTDETRDetector:
             tracker.frame_id += 1
             return []
 
-        tracked = tracker.update(boxes, None)
+        tracked = tracker.update(self._boxes_for_tracking(boxes), None)
         if len(tracked) == 0:
             return []
 
