@@ -97,34 +97,9 @@ class RTDETRDetector:
             "an IDUN inference worker via WebSocket."
         )
 
-    def detect(self, frame: np.ndarray, track: bool = False) -> list[Detection]:
-        half = self._use_half
-        if track:
-            results = self.model.track(
-                frame,
-                device=self.device,
-                conf=self.confidence,
-                iou=IOU_THRESHOLD,
-                imgsz=MODEL_INPUT_SIZE,
-                half=half,
-                persist=True,
-                tracker=str(BYTETRACK_YAML),
-                agnostic_nms=AGNOSTIC_NMS,
-                verbose=False,
-            )[0]
-        else:
-            results = self.model(
-                frame,
-                device=self.device,
-                conf=self.confidence,
-                iou=IOU_THRESHOLD,
-                imgsz=MODEL_INPUT_SIZE,
-                half=half,
-                agnostic_nms=AGNOSTIC_NMS,
-                verbose=False,
-            )[0]
-
-        detections = []
+    def _parse_results(self, results: object, track: bool = False) -> list[Detection]:
+        """Parse an ultralytics Results object into a list of Detection."""
+        detections: list[Detection] = []
         boxes = results.boxes
         if boxes is None or len(boxes) == 0:
             return detections
@@ -168,6 +143,54 @@ class RTDETRDetector:
             ))
 
         return detections
+
+    def detect(self, frame: np.ndarray, track: bool = False) -> list[Detection]:
+        half = self._use_half
+        if track:
+            results = self.model.track(
+                frame,
+                device=self.device,
+                conf=self.confidence,
+                iou=IOU_THRESHOLD,
+                imgsz=MODEL_INPUT_SIZE,
+                half=half,
+                persist=True,
+                tracker=str(BYTETRACK_YAML),
+                agnostic_nms=AGNOSTIC_NMS,
+                verbose=False,
+            )[0]
+        else:
+            results = self.model(
+                frame,
+                device=self.device,
+                conf=self.confidence,
+                iou=IOU_THRESHOLD,
+                imgsz=MODEL_INPUT_SIZE,
+                half=half,
+                agnostic_nms=AGNOSTIC_NMS,
+                verbose=False,
+            )[0]
+
+        return self._parse_results(results, track=track)
+
+    def predict_batch(self, frames: list[np.ndarray]) -> list:
+        """Run RT-DETR on a batch of frames without tracking.
+
+        Returns a list of raw ultralytics Results objects (one per frame).
+        Callers handle per-stream tracking externally.
+        """
+        if not frames:
+            return []
+        return self.model.predict(
+            frames,
+            device=self.device,
+            conf=self.confidence,
+            iou=IOU_THRESHOLD,
+            imgsz=MODEL_INPUT_SIZE,
+            half=self._use_half,
+            agnostic_nms=AGNOSTIC_NMS,
+            verbose=False,
+        )
 
 
 def get_detector(confidence: float = CONFIDENCE, model_path: str | None = None) -> RTDETRDetector:

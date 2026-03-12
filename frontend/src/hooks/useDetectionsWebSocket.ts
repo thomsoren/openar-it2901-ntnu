@@ -15,7 +15,7 @@ interface UseDetectionsWebSocketOptions {
   reconnectDelay?: number;
 }
 
-interface VideoInfo {
+export interface VideoInfo {
   /** Video width in pixels */
   width: number;
   /** Video height in pixels */
@@ -30,7 +30,6 @@ interface WebSocketState {
   vessels: DetectedVessel[];
   frameIndex: number;
   fps: number;
-  detectionTimestampMs: number;
   lastMessageAtMs: number;
   detectionFrameSentAtMs: number;
   videoInfo: VideoInfo | null;
@@ -69,7 +68,6 @@ function createWebSocketStore(
     vessels: [],
     frameIndex: 0,
     fps: 0,
-    detectionTimestampMs: 0,
     lastMessageAtMs: 0,
     detectionFrameSentAtMs: 0,
     videoInfo: null,
@@ -121,7 +119,6 @@ function createWebSocketStore(
         vessels: [],
         frameIndex: 0,
         fps: 0,
-        detectionTimestampMs: 0,
         lastMessageAtMs: 0,
         detectionFrameSentAtMs: 0,
         videoInfo: null,
@@ -146,15 +143,15 @@ function createWebSocketStore(
       socket.onmessage = (event) => {
         if (socketEpoch !== currentEpoch || ws !== socket) return;
         try {
-          const data = JSON.parse(event.data);
+          const data = JSON.parse(event.data) as Record<string, unknown>;
 
           switch (data.type) {
             case "ready":
-              if (data.width && data.height) {
+              if (typeof data.width === "number" && typeof data.height === "number") {
                 const videoInfo: VideoInfo = {
                   width: data.width,
                   height: data.height,
-                  fps: data.fps || 25,
+                  fps: typeof data.fps === "number" ? data.fps : 25,
                 };
                 if (typeof data.camera_heading_deg === "number") {
                   videoInfo.cameraHeadingDeg = data.camera_heading_deg;
@@ -166,22 +163,27 @@ function createWebSocketStore(
               }
               break;
 
-            case "detections":
+            case "detections": {
+              const receivedAtMs = Date.now();
               setState({
-                frameIndex: data.frame_index,
-                detectionTimestampMs: data.timestamp_ms || 0,
-                lastMessageAtMs: Date.now(),
-                detectionFrameSentAtMs: data.frame_sent_at_ms || 0,
-                fps: data.fps,
-                vessels: data.vessels || [],
+                frameIndex: typeof data.frame_index === "number" ? data.frame_index : 0,
+                lastMessageAtMs: receivedAtMs,
+                detectionFrameSentAtMs:
+                  typeof data.frame_sent_at_ms === "number" ? data.frame_sent_at_ms : 0,
+                fps: typeof data.fps === "number" ? data.fps : 0,
+                vessels: Array.isArray(data.vessels) ? (data.vessels as DetectedVessel[]) : [],
               });
               break;
+            }
             case "complete":
               setState({ isComplete: true, lastMessageAtMs: Date.now() });
               break;
 
             case "error":
-              setState({ error: data.message, lastMessageAtMs: Date.now() });
+              setState({
+                error: typeof data.message === "string" ? data.message : "Unknown error",
+                lastMessageAtMs: Date.now(),
+              });
               break;
           }
         } catch {
@@ -224,10 +226,10 @@ function createWebSocketStore(
       isLoading: false,
       vessels: [],
       frameIndex: 0,
-      detectionTimestampMs: 0,
       lastMessageAtMs: 0,
       detectionFrameSentAtMs: 0,
       fps: 0,
+      videoInfo: null,
     });
   };
 
