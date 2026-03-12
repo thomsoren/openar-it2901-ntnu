@@ -7,7 +7,10 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { AISData } from "../types/aisData";
-import { createVesselMarker } from "../components/AISGeoJsonMap/mapHelpers";
+import {
+  createVesselMarker,
+  getVesselMarkerRotation,
+} from "../components/AISGeoJsonMap/mapHelpers";
 
 export function useVesselMarkers(
   map: maplibregl.Map | null,
@@ -38,7 +41,7 @@ export function useVesselMarkers(
       if (existing) {
         // Update existing marker position and rotation
         existing.setLngLat([vessel.longitude, vessel.latitude]);
-        existing.setRotation(vessel.courseOverGround || 0);
+        existing.setRotation(getVesselMarkerRotation(vessel));
       } else {
         // Create new marker
         const marker = createVesselMarker(map, vessel, (v) => {

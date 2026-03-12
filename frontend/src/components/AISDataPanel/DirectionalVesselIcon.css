@@ -1,0 +1,104 @@
+.dvi {
+  --dvi-size: 52px;
+  --dvi-inner-inset: 6px;
+  --dvi-inner-border: 2px;
+  --dvi-dot-cutout: 2px;
+  --dvi-dot-radius: calc(
+    var(--dvi-size) / 2 - var(--dvi-inner-inset) - var(--dvi-inner-border) / 2
+  );
+  --dvi-heading-angle: 0deg;
+  --dvi-course-angle: 0deg;
+  --dvi-bg-color: #ffffff;
+  width: var(--dvi-size);
+  height: var(--dvi-size);
+  border: 2px solid #bebebe;
+  border-radius: 50%;
+  background: var(--dvi-bg-color);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.dvi-inner-ring {
+  position: absolute;
+  inset: var(--dvi-inner-inset);
+  border: var(--dvi-inner-border) solid #535353;
+  border-radius: 50%;
+}
+
+.dvi-heading-line {
+  position: absolute;
+  width: 1px;
+  height: calc(var(--dvi-size) * 0.5);
+  left: 50%;
+  top: 50%;
+  transform-origin: 50% 100%;
+  transform: translate(-50%, -100%) rotate(var(--dvi-heading-angle));
+  background: #bebebe;
+  border-radius: 999px;
+  z-index: 0;
+}
+
+.dvi-course-line {
+  position: absolute;
+  width: 1px;
+  height: calc(var(--dvi-size) * 0.5);
+  left: 50%;
+  top: 50%;
+  transform-origin: 50% 100%;
+  transform: translate(-50%, -100%) rotate(var(--dvi-course-angle));
+  background: #21262d;
+  border-radius: 999px;
+  z-index: 1;
+}
+
+.dvi-turn-dot {
+  position: absolute;
+  width: calc(var(--dvi-size) * 0.1);
+  height: calc(var(--dvi-size) * 0.1);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(var(--dvi-course-angle))
+    translateY(calc(-1 * var(--dvi-dot-radius)));
+  background: #535353;
+  z-index: 3;
+  /* Cirkular cut-off around turn-dot */
+  box-shadow: 0 0 0 var(--dvi-dot-cutout) var(--dvi-bg-color);
+}
+
+.dvi-vessel-icon {
+  position: absolute;
+  width: calc(var(--dvi-size) * 0.4);
+  height: calc(var(--dvi-size) * 0.4);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(var(--dvi-heading-angle));
+  transform-origin: 50% 50%;
+  z-index: 2;
+}
+
+.dvi-vessel-icon-glyph {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.dvi-rot-unknown .dvi-turn-dot {
+  background: #535353;
+}
+
+.dvi-rot-steady .dvi-turn-dot {
+  background: #535353;
+}
+
+.dvi-rot-gentle .dvi-turn-dot {
+  background: #22c55e;
+}
+
+.dvi-rot-moderate .dvi-turn-dot {
+  background: #f59e0b;
+}
+
+.dvi-rot-sharp .dvi-turn-dot {
+  background: #ef4444;
+}

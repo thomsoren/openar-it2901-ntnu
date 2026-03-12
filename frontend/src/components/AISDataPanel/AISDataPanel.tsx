@@ -1,60 +1,176 @@
+import { useEffect, useRef } from "react";
 import { AISData } from "../../types/aisData";
+import getVesselIcon from "../../utils/vesselIconMapper";
 import "./AISDataPanel.css";
+import { distanceTo } from "../../utils/geometryMath";
+import { DirectionalVesselIcon } from "./DirectionalVesselIcon";
+import { ObcPoiCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-card/poi-card";
+import {
+  ObcPoiCard as ObcPoiCardElement,
+  ObcPoiCardHeaderVariant,
+} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/ar/poi-card/poi-card";
 
-// Maps AIS data fields to display labels and formatting functions
-type AISLabeledFields = {
-  label: string;
-  format: (vessel: AISData) => string | number | undefined | null;
-};
-// The order of this array determines the display order in the panel
-const AIS_DATA_LABELS: AISLabeledFields[] = [
-  { label: "MMSI", format: (v) => v.mmsi },
-  { label: "Name", format: (v) => v.name },
-  { label: "Latitude", format: (v) => v.latitude?.toFixed(5) },
-  { label: "Longitude", format: (v) => v.longitude?.toFixed(5) },
-  {
-    label: "COG",
-    format: (v) => (v.courseOverGround != null ? `${v.courseOverGround}°` : undefined),
-  },
-  {
-    label: "SOG",
-    format: (v) => (v.speedOverGround != null ? `${v.speedOverGround} kn` : undefined),
-  },
-  {
-    label: "True Heading",
-    format: (v) => (v.trueHeading != null ? `${v.trueHeading}°` : undefined),
-  },
-  { label: "ROT", format: (v) => (v.rateOfTurn != null ? `${v.rateOfTurn}°/min` : undefined) },
-  { label: "Nav Status", format: (v) => v.navigationalStatus },
-  { label: "Ship Type", format: (v) => v.shipType },
-  {
-    label: "Last Update",
-    format: (v) => (v.msgtime ? new Date(v.msgtime).toLocaleString() : undefined),
-  },
-];
+// Requires lat & long from origin vessel to calculate distance,
+// but other fields are optional for future CPA (closest point of approach) calculations or other use cases
+type OriginVesselData = Pick<AISData, "latitude" | "longitude"> &
+  Partial<Omit<AISData, "latitude" | "longitude">>;
 
 interface AISDataPanelProps {
   vessel: AISData;
+  originVessel: OriginVesselData;
   onClose: () => void;
+  useAISData?: boolean;
 }
 
-export const AISDataPanel: React.FC<AISDataPanelProps> = ({ vessel, onClose }) => (
-  <div className="geojson-map-vessel-panel">
-    <div className="geojson-map-vessel-panel-header">
-      <span>{vessel.name || "Unknown Vessel"}</span>
-      <button className="geojson-map-vessel-panel-close" onClick={onClose}>
-        ✕
-      </button>
-    </div>
-    <div className="geojson-map-vessel-panel-body">
-      {AIS_DATA_LABELS.map(({ label, format }) => ({ label, value: format(vessel) }))
-        .filter(({ value }) => value != null && value !== "" && value !== -1)
-        .map(({ label, value }) => (
-          <div key={label} className="geojson-map-vessel-panel-row">
-            <span className="geojson-map-vessel-panel-label">{label}</span>
-            <span className="geojson-map-vessel-panel-value">{String(value)}</span>
+const formatMetric = (value: number | null | undefined, digits = 1): string => {
+  if (value == null || !Number.isFinite(value)) {
+    return "N/A";
+  }
+  return value.toFixed(digits);
+};
+
+const formatRelativeTime = (msgtime?: string): string => {
+  if (!msgtime) {
+    return "Unknown time";
+  }
+
+  const timestamp = new Date(msgtime);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "Unknown time";
+  }
+
+  const deltaMinutes = Math.round((Date.now() - timestamp.getTime()) / 60000);
+
+  if (deltaMinutes < 1) {
+    return "Just now";
+  }
+  if (deltaMinutes < 60) {
+    return `${deltaMinutes} min ago`;
+  }
+
+  const deltaHours = Math.round(deltaMinutes / 60);
+  if (deltaHours < 24) {
+    return `${deltaHours} h ago`;
+  }
+
+  const deltaDays = Math.round(deltaHours / 24);
+  return `${deltaDays} d ago`;
+};
+
+export const AISDataPanel: React.FC<AISDataPanelProps> = ({
+  vessel,
+  originVessel,
+  onClose,
+  useAISData,
+}) => {
+  const cardRef = useRef<ObcPoiCardElement | null>(null);
+
+  // Listen for the custom "close-click" event from the ObcPoiCard to trigger onClose callback
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+
+    const handleCloseClick = (event: Event) => {
+      event.stopPropagation();
+      onClose();
+    };
+
+    el.addEventListener("close-click", handleCloseClick);
+    return () => {
+      el.removeEventListener("close-click", handleCloseClick);
+    };
+  }, [onClose]);
+
+  // Calculate range from origin vessel to target vessel in meters
+  const rangeMeters = distanceTo(
+    vessel.latitude,
+    vessel.longitude,
+    originVessel.latitude,
+    originVessel.longitude
+  ).toFixed(0);
+
+  // Format vessel data for display, with fallbacks for missing values
+  const statusBadge = vessel.navigationalStatus ?? "-";
+  const relativeTime = formatRelativeTime(vessel.msgtime);
+  const bearing = formatMetric(vessel.courseOverGround, 0);
+  const heading = formatMetric(vessel.trueHeading, 0);
+  const speed = formatMetric(vessel.speedOverGround);
+  const rot = formatMetric(vessel.rateOfTurn);
+
+  return (
+    <div className="ais-poi-panel">
+      <ObcPoiCard
+        ref={cardRef}
+        className="ais-poi-card"
+        index={String(statusBadge)}
+        cardTitle={vessel.name || "Unknown vessel"}
+        description={`MMSI ${vessel.mmsi || "N/A"}`}
+        source={useAISData ? "AIS" : "SRC"}
+        timestamp={relativeTime}
+        headerVariant={ObcPoiCardHeaderVariant.Detailed}
+        hasCloseButton
+      >
+        <span slot="poi-icon">{getVesselIcon(vessel.shipType)}</span>
+
+        {useAISData ? (
+          <div className="ais-poi-body">
+            <div className="ais-poi-primary-row">
+              <div className="ais-poi-primary-direction">
+                <DirectionalVesselIcon vessel={vessel} />
+              </div>
+
+              <div className="ais-poi-primary-metric">
+                <span className="ais-poi-primary-value">{bearing}</span>
+                <span className="ais-poi-primary-meta">
+                  <strong>BRG</strong>
+                  <br />
+                  DEG
+                </span>
+              </div>
+              <div className="ais-poi-primary-metric">
+                <span className="ais-poi-primary-value">{rangeMeters}</span>
+                <span className="ais-poi-primary-meta">
+                  <strong>RNG</strong>
+                  <br />m
+                </span>
+              </div>
+            </div>
+
+            <div className="ais-poi-secondary-row">
+              <div className="ais-poi-secondary-col">
+                <p>
+                  <span className="ais-poi-secondary-label">ROT</span>
+                  <span className="ais-poi-secondary-value">
+                    <strong>{rot}</strong> DEG
+                  </span>
+                </p>
+                <p>
+                  <span className="ais-poi-secondary-label">THD</span>
+                  <span className="ais-poi-secondary-value">
+                    <strong>{heading}</strong> DEG
+                  </span>
+                </p>
+              </div>
+              <div className="ais-poi-secondary-col">
+                <p>
+                  <span className="ais-poi-secondary-label">HDG</span>
+                  <span className="ais-poi-secondary-value">
+                    <strong>{heading}</strong> DEG
+                  </span>
+                </p>
+                <p>
+                  <span className="ais-poi-secondary-label">SPD</span>
+                  <span className="ais-poi-secondary-value">
+                    <strong>{speed}</strong> kn
+                  </span>
+                </p>
+              </div>
+            </div>
           </div>
-        ))}
+        ) : (
+          <p>No AIS data available for this vessel.</p>
+        )}
+      </ObcPoiCard>
     </div>
-  </div>
-);
+  );
+};
