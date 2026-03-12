@@ -56,6 +56,23 @@ def get_current_user(
     return user
 
 
+def get_optional_current_user(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> AppUser | None:
+    token = extract_token_from_request(request)
+    if not token:
+        return None
+
+    try:
+        payload = decode_access_token(token)
+    except HTTPException:
+        return None
+
+    user = db.get(AppUser, str(payload["sub"]))
+    return user
+
+
 def require_admin(
     current_user: Annotated[AppUser, Depends(get_current_user)],
 ) -> AppUser:
