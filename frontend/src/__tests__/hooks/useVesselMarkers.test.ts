@@ -51,6 +51,7 @@ vi.mock("maplibre-gl", () => {
 
 vi.mock("../../components/AISGeoJsonMap/mapHelpers", () => ({
   createVesselMarker: vi.fn(),
+  getVesselMarkerRotation: vi.fn(),
 }));
 
 describe("useVesselMarkers", () => {
@@ -81,6 +82,9 @@ describe("useVesselMarkers", () => {
     mockMarker = new maplibregl.Marker() as unknown as maplibregl.Marker;
     onVesselClick = vi.fn() as unknown as (vessel: AISData) => void;
     vi.mocked(mapHelpers.createVesselMarker).mockReturnValue(mockMarker);
+    vi.mocked(mapHelpers.getVesselMarkerRotation).mockImplementation(
+      (vessel) => vessel.courseOverGround ?? 0
+    );
   });
 
   afterEach(() => {

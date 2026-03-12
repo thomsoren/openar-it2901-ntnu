@@ -3,7 +3,7 @@ import { AISData } from "../../types/aisData";
 import getVesselIcon from "../../utils/vesselIconMapper";
 import "./AISDataPanel.css";
 import { distanceTo } from "../../utils/geometryMath";
-import { DirectionalVesselIcon } from "./DirectionalVesselIcon";
+import { DirectionalVesselIcon } from "../DirectionalVesselIcon/DirectionalVesselIcon";
 import { ObcPoiCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-card/poi-card";
 import {
   ObcPoiCard as ObcPoiCardElement,
