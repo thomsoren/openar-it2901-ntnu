@@ -18,7 +18,8 @@
     "format": "cd frontend && pnpm exec prettier --write .",
     "docker:up": "docker compose up",
     "docker:down": "docker compose down",
-    "docker:build": "docker compose build"
+    "docker:build": "docker compose build",
+    "diagrams:export": "bash docs/diagrams/export.sh"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

@@ -1,0 +1,72 @@
+@startuml runtime_physical_view
+!theme plain
+left to right direction
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultTextAlignment center
+skinparam ArrowColor #444444
+skinparam NodeBorderColor #666666
+skinparam NodeBackgroundColor #FFFFFF
+skinparam DatabaseBorderColor #666666
+skinparam DatabaseBackgroundColor #FFFFFF
+skinparam QueueBorderColor #666666
+skinparam QueueBackgroundColor #FFFFFF
+skinparam ArtifactBorderColor #666666
+skinparam ArtifactBackgroundColor #FFFFFF
+skinparam NoteBorderColor #D7D7D7
+skinparam NoteBackgroundColor #FBFBFB
+
+title Physical View - deployment topology
+
+node "Client device" as client {
+  artifact "Browser\nReact frontend" as browser
+}
+
+node "OpenAR host\n(local machine or VM)" as host {
+  node "FastAPI backend\n:8000" as backend
+  node "Auth service\n:3001" as auth
+  node "MediaMTX\n:8854 RTSP\n:8888 HLS\n:8889 WHEP/WebRTC" as mediamtx
+  database "PostgreSQL" as postgres
+  queue "Redis" as redis
+}
+
+cloud "External systems" as external {
+  node "Camera / RTSP source" as camera
+  database "S3-compatible storage" as s3
+  cloud "BarentsWatch AIS API" as ais
+}
+
+cloud "Remote inference environment" as remote {
+  node "IDUN worker" as idun
+}
+
+browser --> backend : HTTPS\nREST + WebSocket
+browser --> auth : HTTPS
+browser --> mediamtx : WHEP/WebRTC\nHLS fallback
+
+backend --> auth : session validation
+backend --> postgres : users + media assets
+backend --> redis : detection pub/sub
+backend --> mediamtx : RTSP publish
+mediamtx --> backend : auth callback
+
+backend --> s3 : video and asset access
+backend --> ais : AIS data
+camera --> backend : source for decode/inference
+camera --> mediamtx : optional direct source
+
+idun --> backend : /api/idun/ws
+
+note bottom of host
+Current development setup:
+- backend runs as a host process
+- auth, MediaMTX, PostgreSQL, and Redis run in Docker
+- frontend is served to the browser separately
+end note
+
+note bottom of remote
+IDUN is part of the deployed inference topology.
+The worker connects to the backend over /api/idun/ws.
+end note
+
+@enduml

@@ -13,7 +13,7 @@ function ControlCustomizationInner() {
     <section className="page control-customization-page">
       <div className="control-customization-page__content">
         <div className="control-customization-page__hero">
-          <h2 className="page-title control-customization-page__title">Control Customization</h2>
+          <h2 className="page-title control-customization-page__title">Configuration</h2>
           <p className="page-subtitle control-customization-page__subtitle">
             Choose which controls are shown in the AR panel. Changes are saved automatically.
           </p>
