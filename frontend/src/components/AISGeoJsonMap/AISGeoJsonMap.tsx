@@ -676,7 +676,12 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
       </div>
 
       {selectedVessel && (
-        <AISDataPanel vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
+        <AISDataPanel
+          vessel={selectedVessel}
+          originVessel={{ latitude: shipLat, longitude: shipLon, trueHeading: heading }}
+          onClose={() => setSelectedVessel(null)}
+          useAISData
+        />
       )}
     </div>
   );
