@@ -5,68 +5,105 @@ Separates all AIS-fetch + fusion-setup logic from the API layer.
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from sqlalchemy import select
+
 from ais.fetch_ais import fetch_historic_ais_data
 from ais.logger import AISSessionLogger
 from common.config.fusion import AUTO_FUSION_TIME_WINDOW_S
+from db.database import SessionLocal
+from db.models import MediaAsset
 from sensor_fusion.ais_store import AISStore
 from sensor_fusion.service import SensorFusionService
 from storage import s3
 
 logger = logging.getLogger(__name__)
 
-# Static fusion config for known pre-recorded streams (S3/URL sources only).
-# Maps stream_id -> {ais_sources: [...], video_epoch_utc: datetime}
-_STATIC_FUSION: dict[str, dict[str, object]] = {
-    "fusion": {
-        "ais_asset_names": ["fusion_ais_pirbadet"],
-        "video_epoch_utc": datetime(2026, 2, 19, 8, 10, 0, tzinfo=timezone.utc),
-    },
+# Maps stream_id -> video asset_name in media_assets (must have fusion=true + ais_data_path set).
+_FUSION_STREAM_VIDEO_ASSETS: dict[str, str] = {
+    "fusion": "fusion_video_gunnerus",
 }
 
 
-def _load_ndjson_text_from_assets(asset_names: list[str]) -> tuple[str | None, str | None]:
-    for asset_name in asset_names:
-        name = (asset_name or "").strip()
-        if not name:
+def _extract_first_msgtime(ndjson_text: str) -> datetime | None:
+    """Return the earliest msgtime across all non-session NDJSON rows as UTC datetime."""
+    earliest: datetime | None = None
+    for line in ndjson_text.splitlines():
+        line = line.strip()
+        if not line:
             continue
         try:
-            s3_key = s3.resolve_system_asset_key(name)
-        except Exception as exc:
-            logger.debug("Failed to resolve asset %s: %s", name, exc)
+            row = json.loads(line)
+        except json.JSONDecodeError:
             continue
-
-        text = s3.read_text_from_sources(s3_key)
-        if text and text.strip():
-            return text, f"{name} (s3://{s3_key})"
-
-    return None, None
+        msg_type = row.get("msgtype") or row.get("type", "")
+        if msg_type in ("session_start", "session_end"):
+            continue
+        raw = row.get("msgtime") or row.get("logReceivedAt") or row.get("timestamp")
+        if not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(raw))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            if earliest is None or dt < earliest:
+                earliest = dt
+        except (ValueError, TypeError):
+            continue
+    return earliest
 
 
 def maybe_configure(stream_id: str, fusion_svc: SensorFusionService) -> None:
-    """Auto-configure fusion for *stream_id* if a static config exists and it
-    is not yet configured.  Called on the first detection frame for the stream."""
-    config = _STATIC_FUSION.get(stream_id)
-    if not config:
+    """Auto-configure fusion for *stream_id* from the video asset's ais_data_path in DB.
+
+    Called on the first detection frame for the stream.
+    The epoch is derived from the earliest msgtime in the NDJSON, so no separate
+    video_epoch_utc column is needed.
+    """
+    video_asset_name = _FUSION_STREAM_VIDEO_ASSETS.get(stream_id)
+    if not video_asset_name:
         return
     if fusion_svc.is_configured(stream_id):
         return
 
-    asset_names = [str(source) for source in config.get("ais_asset_names", [])]
-    epoch = config.get("video_epoch_utc")
-    if not isinstance(epoch, datetime):
-        logger.warning("[fusion-config:%s] Missing static video epoch; skipping", stream_id)
+    # Look up the asset row to get ais_data_path.
+    try:
+        with SessionLocal() as db:
+            asset = db.scalar(
+                select(MediaAsset).where(MediaAsset.asset_name == video_asset_name)
+            )
+            ais_data_path = asset.ais_data_path if (asset and asset.fusion) else None
+    except Exception as exc:
+        logger.warning("[fusion-config:%s] DB lookup failed: %s", stream_id, exc)
         return
 
-    text, source_label = _load_ndjson_text_from_assets(asset_names)
-    if not text:
+    if not ais_data_path:
         logger.warning(
-            "[fusion-config:%s] No static NDJSON available from media_assets mapping",
-            stream_id,
+            "[fusion-config:%s] Asset '%s' has no ais_data_path set; skipping",
+            stream_id, video_asset_name,
+        )
+        return
+
+    text = s3.read_text_from_sources(ais_data_path)
+    if not text or not text.strip():
+        logger.warning(
+            "[fusion-config:%s] Could not load NDJSON from '%s'; skipping",
+            stream_id, ais_data_path,
+        )
+        return
+
+    epoch = _extract_first_msgtime(text)
+    if epoch is None:
+        logger.warning(
+            "[fusion-config:%s] No parseable msgtime in NDJSON '%s'; skipping",
+            stream_id, ais_data_path,
         )
         return
 
@@ -78,8 +115,8 @@ def maybe_configure(stream_id: str, fusion_svc: SensorFusionService) -> None:
             video_epoch_utc=epoch,
         )
         logger.info(
-            "[fusion-config:%s] Auto-configured from static NDJSON source %s — %d AIS records",
-            stream_id, source_label or "unknown", store.record_count,
+            "[fusion-config:%s] Auto-configured from DB asset '%s' (epoch=%s, %d AIS records)",
+            stream_id, video_asset_name, epoch.isoformat(), store.record_count,
         )
     except Exception as exc:
         logger.warning("[fusion-config:%s] Failed to auto-configure: %s", stream_id, exc)

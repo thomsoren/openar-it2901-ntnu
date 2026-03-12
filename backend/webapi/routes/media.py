@@ -12,13 +12,13 @@ router = APIRouter()
 
 # API boundary note: handlers intentionally catch broad exceptions and map
 # them to HTTP errors so failures are returned consistently.
-PIRBADET_VIDEO_ASSET_NAMES = ("fusion_video_pirbadet",)
+PIRBADET_VIDEO_ASSET_NAMES = ("fusion_video_gunnerus",)
 
 
 def _stream_pirbadet_video(request: Request) -> Response:
     try:
         _, key = s3.resolve_first_system_asset_key(PIRBADET_VIDEO_ASSET_NAMES)
-        return s3._stream_s3_response(key, request, "Pirbadet-edited.mp4")
+        return s3._stream_s3_response(key, request, "GunnerusVideoklipp1.mp4")
     except HTTPException:
         raise
     except Exception:

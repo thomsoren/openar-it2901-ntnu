@@ -12,7 +12,7 @@ from fastapi import APIRouter, Query, Response, UploadFile
 from pydantic import BaseModel
 
 from cv.publisher import get_fusion_publisher
-from sensor_fusion.ais_store import AISStore
+from sensor_fusion import fusion_config
 from webapi.errors import (
     bad_gateway,
     bad_request,
@@ -46,8 +46,6 @@ logger = logging.getLogger(__name__)
 # them to HTTP errors so failures are returned consistently.
 
 FUSION_STREAM_ID = "fusion"
-FUSION_AIS_ASSET_NAMES = ("fusion_ais_pirbadet",)
-FUSION_AIS_TIME_WINDOW_S = float(os.getenv("FUSION_STREAM_AIS_TIME_WINDOW_S", "900"))
 STREAM_UPLOAD_MAX_DURATION_S = float(os.getenv("STREAM_UPLOAD_MAX_DURATION_S", "300"))
 STREAM_UPLOAD_MAX_SIZE_MB = float(os.getenv("STREAM_UPLOAD_MAX_SIZE_MB", "300"))
 STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
@@ -78,45 +76,10 @@ def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamC
         service_unavailable(str(exc))
 
 
-def _load_fusion_ais_text() -> tuple[str | None, str | None]:
-    try:
-        asset_name, s3_key = s3.resolve_first_system_asset_key(FUSION_AIS_ASSET_NAMES)
-    except Exception:
-        return None, None
-
-    text = s3.read_text_from_sources(s3_key)
-    if text and text.strip():
-        return text, f"{asset_name} (s3://{s3_key})"
-    return None, f"{asset_name} (s3://{s3_key})"
-
-
 def _configure_fusion_stream_ais(stream_id: str) -> None:
     if stream_id != FUSION_STREAM_ID:
         return
-
-    text, source_label = _load_fusion_ais_text()
-    if not text:
-        logger.warning("[fusion:%s] No AIS NDJSON available; fusion enrichment disabled", stream_id)
-        return
-
-    store = AISStore(ndjson_text=text, time_window_s=FUSION_AIS_TIME_WINDOW_S)
-    time_range = store.time_range
-    if not time_range:
-        logger.warning("[fusion:%s] AIS NDJSON had no usable records", stream_id)
-        return
-
-    get_fusion_publisher().fusion_svc.configure(
-        stream_id=stream_id,
-        ais_store=store,
-        video_epoch_utc=time_range[0],
-    )
-    logger.info(
-        "[fusion:%s] Configured AIS enrichment from %s (%d records, time_window_s=%s)",
-        stream_id,
-        source_label or "unknown",
-        store.record_count,
-        FUSION_AIS_TIME_WINDOW_S,
-    )
+    fusion_config.maybe_configure(stream_id, get_fusion_publisher().fusion_svc)
 
 
 def _probe_video_duration_seconds(source: str) -> float | None:
