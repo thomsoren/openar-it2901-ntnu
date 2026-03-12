@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from cv.performance import DecodedFrameTelemetry
+
 
 class FakeDecodeThread:
     """Mimics DecodeThread without opening a real video source."""
@@ -23,6 +25,15 @@ class FakeDecodeThread:
 
     def get_latest(self) -> tuple[np.ndarray | None, int, float]:
         return np.zeros((480, 640, 3), dtype=np.uint8), 0, 0.0
+
+    def get_latest_telemetry(self) -> DecodedFrameTelemetry:
+        frame, frame_idx, timestamp_ms = self.get_latest()
+        return DecodedFrameTelemetry(
+            frame=frame,
+            frame_index=frame_idx,
+            timestamp_ms=timestamp_ms,
+            decoded_at_ms=0.0,
+        )
 
     def stop(self) -> None:
         self._alive = False
@@ -86,22 +97,33 @@ class FakeInferenceThread:
     """No-op inference thread for tests that don't need real inference."""
 
     def __init__(self, *_args, **_kwargs):
-        self._active_stream_id: str | None = None
+        self._active_stream_ids: set[str] = set()
         self._streams: dict[str, object] = {}
 
+    def add_active_stream(self, stream_id: str) -> None:
+        self._active_stream_ids.add(stream_id)
+
+    def remove_active_stream(self, stream_id: str) -> None:
+        self._active_stream_ids.discard(stream_id)
+
     def set_active_stream(self, stream_id: str | None) -> None:
-        self._active_stream_id = stream_id
+        if stream_id is None:
+            self._active_stream_ids.clear()
+        else:
+            self._active_stream_ids = {stream_id}
 
     def get_active_stream(self) -> str | None:
-        return self._active_stream_id
+        return next(iter(self._active_stream_ids), None)
+
+    def get_active_streams(self) -> set[str]:
+        return set(self._active_stream_ids)
 
     def register_stream(self, stream_id: str, decode_thread: object) -> None:
         self._streams[stream_id] = decode_thread
 
     def unregister_stream(self, stream_id: str) -> None:
         self._streams.pop(stream_id, None)
-        if self._active_stream_id == stream_id:
-            self._active_stream_id = None
+        self._active_stream_ids.discard(stream_id)
 
     def start(self) -> None:
         pass

@@ -8,7 +8,7 @@ import {
 } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import PoiOverlay from "../components/poi-overlay/PoiOverlay";
 import PoiErrorBoundary from "../components/poi-overlay/PoiErrorBoundary";
-import VideoPlayer from "../components/video-player/VideoPlayer";
+import VideoPlayer, { type VideoPlayerState } from "../components/video-player/VideoPlayer";
 import { ARControlProvider } from "../components/ar-control-panel/ARControlProvider";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useStreamTabs } from "../hooks/useStreamTabs";
@@ -20,16 +20,16 @@ import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import { startStream, stopStream, toStreamError } from "../services/streams";
 import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
-import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
 import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
 import { apiFetchPublic } from "../lib/api-client";
 import "./AROverlay.css";
 
-const LOADER_STUCK_RECOVERY_MS = 12000;
-const PLAYER_RECOVERY_COOLDOWN_MS = 15000;
-const DETECTION_STALE_RECOVERY_MS = 10000;
-const DETECTION_RECOVERY_COOLDOWN_MS = 8000;
+const LOADER_STUCK_RECOVERY_MS = 12_000;
+const PLAYER_RECOVERY_COOLDOWN_MS = 15_000;
+const DETECTION_STALE_RECOVERY_MS = 10_000;
+const DETECTION_RECOVERY_COOLDOWN_MS = 8_000;
+
 interface AROverlayProps {
   externalStreamId?: string | null;
   onAuthGateVisibleChange?: (visible: boolean) => void;
@@ -61,6 +61,15 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   const detectionRecoveryLastAtRef = useRef(0);
   const { state: arControls } = useARControls();
   const auth = useAuth();
+  const [, setControlError] = useState<string | null>(null);
+  const [sessionTokensByStream, setSessionTokensByStream] = useState<Record<string, number>>({});
+  const [videoSession, setVideoSession] = useState(0);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [videoState, setVideoState] = useState<VideoPlayerState>({
+    transport: "webrtc",
+    status: "idle",
+    error: null,
+  });
 
   const {
     tabs,
@@ -80,18 +89,6 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     refreshStreams,
     runningStreams,
   } = useStreamTabs({ externalStreamId });
-  const [sessionTokensByStream, setSessionTokensByStream] = useState<Record<string, number>>({});
-  const activeInitialSession = sessionTokensByStream[activeTabId] ?? 0;
-
-  const {
-    recoveryStreamKey,
-    videoSession,
-    imageLoaded,
-    showVideoLoader,
-    setControlError,
-    handleVideoStatusChange,
-    forceReconnect,
-  } = useVideoSessionRecovery({ streamKey: activeTabId, initialSession: activeInitialSession });
 
   const showingAuthGate = activeIsSetup && !auth.session;
   const mediaAuthLoading = Boolean(auth.session) && auth.authBridgeStatus === "loading";
@@ -113,6 +110,16 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   }, [showingAuthGate, onAuthGateVisibleChange]);
 
   useEffect(() => {
+    setVideoSession(sessionTokensByStream[activeTabId] ?? 0);
+    setImageLoaded(false);
+    setVideoState({
+      transport: "webrtc",
+      status: "idle",
+      error: null,
+    });
+  }, [activeTabId, sessionTokensByStream]);
+
+  useEffect(() => {
     if (!activePlayableStreamId) {
       return;
     }
@@ -123,6 +130,23 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
       return { ...previous, [activePlayableStreamId]: videoSession };
     });
   }, [activePlayableStreamId, videoSession]);
+
+  const handleVideoStatusChange = useCallback((next: VideoPlayerState) => {
+    setVideoState(next);
+    setImageLoaded(next.status === "playing");
+  }, []);
+
+  const forceReconnect = useCallback(() => {
+    setImageLoaded(false);
+    setVideoState({
+      transport: "webrtc",
+      status: "idle",
+      error: null,
+    });
+    setVideoSession((current) => current + 1);
+  }, []);
+
+  const showVideoLoader = !imageLoaded || videoState.status === "connecting";
 
   const detectionWsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
   const { vessels, videoInfo, lastMessageAtMs, connect, disconnect } = useDetectionsWebSocket({
@@ -144,6 +168,10 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
 
   const handleActiveVideoReady = useCallback((videoEl: HTMLVideoElement) => {
     videoRef.current = videoEl;
+  }, []);
+
+  const handleMockVideoRef = useCallback((videoEl: HTMLVideoElement | null) => {
+    mockDataVideoRef.current = videoEl;
   }, []);
 
   const cachedStreamIds = useMemo(() => {
@@ -170,20 +198,6 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
 
     return ids;
   }, [activePlayableStreamId, warmStreamIds, streamsById]);
-
-  const getSessionTokenForStream = useCallback(
-    (streamId: string): number => {
-      const perStreamToken = sessionTokensByStream[streamId];
-      if (streamId === activePlayableStreamId) {
-        if (recoveryStreamKey === activeTabId) {
-          return videoSession;
-        }
-        return perStreamToken ?? 0;
-      }
-      return perStreamToken ?? 0;
-    },
-    [activePlayableStreamId, activeTabId, recoveryStreamKey, sessionTokensByStream, videoSession]
-  );
 
   const videoTransform = useVideoTransform(
     videoRef,
@@ -285,7 +299,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
         return;
       }
       playerRecoveryLastAtRef.current = now;
-      forceReconnect("Recovering stream...");
+      forceReconnect();
 
       if (activeTabId === FUSION_TAB_ID) {
         void startStream(FUSION_TAB_ID, {
@@ -437,7 +451,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
             {isTabsHydrated && !activeIsSetup && activeIsMockData && (
               <>
                 <video
-                  ref={mockDataVideoRef}
+                  ref={handleMockVideoRef}
                   className="background-video"
                   autoPlay
                   loop
@@ -515,7 +529,11 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                         streamId={streamId}
                         whepUrl={playbackUrls?.whep_url}
                         hlsUrl={playbackUrls?.hls_url}
-                        sessionToken={getSessionTokenForStream(streamId)}
+                        sessionToken={
+                          streamId === activePlayableStreamId
+                            ? videoSession
+                            : (sessionTokensByStream[streamId] ?? 0)
+                        }
                         allowHlsFallback={isActivePlayer}
                         className="background-video"
                         style={{

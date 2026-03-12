@@ -1,7 +1,9 @@
 import type { ARControlPanelVisibilityKey } from "./ar-control-context";
 
+export type ARToolbarControlVisibilityKey = ARControlPanelVisibilityKey;
+
 export interface ARPanelControlDefinition {
-  key: ARControlPanelVisibilityKey;
+  key: ARToolbarControlVisibilityKey;
   label: string;
   description: string;
 }

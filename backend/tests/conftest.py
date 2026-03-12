@@ -131,6 +131,16 @@ def fake_decode_thread(monkeypatch):
         import numpy as np
         return np.zeros((480, 640, 3), dtype=np.uint8), 0, 0.0
 
+    def _fake_get_latest_telemetry(self):
+        from cv.performance import DecodedFrameTelemetry
+        frame, frame_idx, timestamp_ms = _fake_get_latest(self)
+        return DecodedFrameTelemetry(
+            frame=frame,
+            frame_index=frame_idx,
+            timestamp_ms=timestamp_ms,
+            decoded_at_ms=0.0,
+        )
+
     def _fake_is_alive(self) -> bool:
         return self._alive
 
@@ -138,6 +148,10 @@ def fake_decode_thread(monkeypatch):
     monkeypatch.setattr("cv.decode_thread.DecodeThread.start", _fake_start)
     monkeypatch.setattr("cv.decode_thread.DecodeThread.stop", _fake_stop)
     monkeypatch.setattr("cv.decode_thread.DecodeThread.get_latest", _fake_get_latest)
+    monkeypatch.setattr(
+        "cv.decode_thread.DecodeThread.get_latest_telemetry",
+        _fake_get_latest_telemetry,
+    )
     monkeypatch.setattr(
         "cv.decode_thread.DecodeThread.is_alive",
         property(_fake_is_alive),
