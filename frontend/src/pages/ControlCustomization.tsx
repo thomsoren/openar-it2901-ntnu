@@ -5,11 +5,9 @@ import { AR_PANEL_CONTROL_DEFINITIONS } from "../components/ar-control-panel/pan
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import "./ControlCustomization.css";
 
-const CONTROL_CUSTOMIZATION_ITEMS = [...AR_PANEL_CONTROL_DEFINITIONS] as const;
-
 function ControlCustomizationInner() {
   const { panelVisibility, setPanelControlVisibility } = useARControls();
-  const hasVisibleControls = AR_PANEL_CONTROL_DEFINITIONS.some((item) => panelVisibility[item.key]);
+  const hasVisibleControls = Object.values(panelVisibility).some(Boolean);
 
   return (
     <section className="page control-customization-page">
@@ -46,7 +44,7 @@ function ControlCustomizationInner() {
             </div>
           </div>
 
-          {CONTROL_CUSTOMIZATION_ITEMS.map((item) => (
+          {AR_PANEL_CONTROL_DEFINITIONS.map((item) => (
             <section key={item.key} className="control-customization-row">
               <div className="control-customization-row__title-wrap">
                 <h3 className="control-customization-row__title">{item.label}</h3>

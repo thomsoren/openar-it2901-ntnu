@@ -49,7 +49,7 @@ class TestStartStream:
         # or decode to "a/b" → 400 from our regex. Either is acceptable.
         assert resp.status_code in (400, 404, 405)
 
-    def test_duplicate_returns_already_running(self, stream_app_client):
+    def test_duplicate_returns_409(self, stream_app_client):
         stream_app_client.post(
             "/api/streams/dup/start",
             json={"source_url": "rtsp://example.com/live"},
@@ -58,8 +58,7 @@ class TestStartStream:
             "/api/streams/dup/start",
             json={"source_url": "rtsp://example.com/live"},
         )
-        assert resp.status_code == 201
-        assert resp.json()["status"] in ("already_running", "running")
+        assert resp.status_code == 409
 
     def test_hyphens_and_underscores_allowed(self, stream_app_client):
         resp = stream_app_client.post(

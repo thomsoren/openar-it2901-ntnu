@@ -23,7 +23,3 @@ IDUN_TARGET_SEND_FPS = float(os.getenv("IDUN_TARGET_SEND_FPS", "15.0"))
 
 # Seconds without a heartbeat before considering the IDUN worker dead
 IDUN_HEARTBEAT_TIMEOUT_S = float(os.getenv("IDUN_HEARTBEAT_TIMEOUT_S", "90.0"))
-
-# Batched inference settings (matching local inference thread defaults)
-IDUN_MAX_BATCH_SIZE = int(os.getenv("IDUN_MAX_BATCH_SIZE", "10"))
-IDUN_BATCH_FILL_TIMEOUT_S = float(os.getenv("IDUN_BATCH_FILL_TIMEOUT_S", "0.02"))

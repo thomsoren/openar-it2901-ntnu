@@ -66,18 +66,6 @@ class TestPayloadShapes:
             "frame_sent_at_ms": 1000000.0,
             "fps": 25.0,
             "inference_fps": 18.3,
-            "performance": {
-                "source_fps": 25.0,
-                "detection_fps": 18.3,
-                "decoded_at_ms": 999950.0,
-                "inference_started_at_ms": 999980.0,
-                "inference_completed_at_ms": 999995.0,
-                "published_at_ms": 1000000.0,
-                "decode_to_inference_start_ms": 30.0,
-                "inference_duration_ms": 15.0,
-                "publish_duration_ms": 5.0,
-                "total_detection_latency_ms": 50.0,
-            },
             "vessels": [{"detection": d.model_dump(), "vessel": None}],
         }
         assert payload["type"] == "detections"
@@ -85,7 +73,6 @@ class TestPayloadShapes:
         assert payload["timestamp_ms"] >= 0.0
         assert "inference_fps" in payload
         assert "frame_sent_at_ms" in payload
-        assert payload["performance"]["total_detection_latency_ms"] >= 0.0
 
     def test_vessel_entry_shape(self):
         d = _sample_detection()

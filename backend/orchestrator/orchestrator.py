@@ -148,7 +148,7 @@ class WorkerOrchestrator:
                 handle.no_viewer_since = 0.0
                 handle.last_heartbeat = time.monotonic()
                 inf = self._ensure_inference_thread()
-                inf.add_active_stream(stream_id)
+                inf.set_active_stream(stream_id)
                 return handle
 
             config = self._stream_configs.get(stream_id)
@@ -160,7 +160,7 @@ class WorkerOrchestrator:
             handle = self._spawn_handle(config=config, viewer_count=1)
             self._workers[stream_id] = handle
             inf = self._ensure_inference_thread()
-            inf.add_active_stream(stream_id)
+            inf.set_active_stream(stream_id)
             logger.info("Started stream '%s' for active viewer", stream_id)
             return handle
 
@@ -174,7 +174,7 @@ class WorkerOrchestrator:
             if handle.viewer_count == 0 and handle.no_viewer_since == 0.0:
                 handle.no_viewer_since = time.monotonic()
             if handle.viewer_count == 0 and self._inference_thread:
-                self._inference_thread.remove_active_stream(stream_id)
+                self._inference_thread.set_active_stream(None)
 
     def list_streams(self) -> list[dict]:
         with self._lock:
