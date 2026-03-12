@@ -131,6 +131,16 @@ def fake_decode_thread(monkeypatch):
         import numpy as np
         return np.zeros((480, 640, 3), dtype=np.uint8), 0, 0.0
 
+    def _fake_get_latest_telemetry(self):
+        from cv.performance import DecodedFrameTelemetry
+        frame, frame_idx, timestamp_ms = _fake_get_latest(self)
+        return DecodedFrameTelemetry(
+            frame=frame,
+            frame_index=frame_idx,
+            timestamp_ms=timestamp_ms,
+            decoded_at_ms=0.0,
+        )
+
     def _fake_is_alive(self) -> bool:
         return self._alive
 
@@ -138,6 +148,10 @@ def fake_decode_thread(monkeypatch):
     monkeypatch.setattr("cv.decode_thread.DecodeThread.start", _fake_start)
     monkeypatch.setattr("cv.decode_thread.DecodeThread.stop", _fake_stop)
     monkeypatch.setattr("cv.decode_thread.DecodeThread.get_latest", _fake_get_latest)
+    monkeypatch.setattr(
+        "cv.decode_thread.DecodeThread.get_latest_telemetry",
+        _fake_get_latest_telemetry,
+    )
     monkeypatch.setattr(
         "cv.decode_thread.DecodeThread.is_alive",
         property(_fake_is_alive),
@@ -206,14 +220,23 @@ def orchestrator_factory(fake_decode_thread, fake_ffmpeg, fake_inference_thread)
 
 
 @pytest.fixture()
-def stream_app_client(fake_decode_thread, fake_ffmpeg, monkeypatch):
-    """TestClient for the full api.app with decode thread + FFmpeg deps mocked."""
+def _test_admin_user() -> AppUser:
+    """In-memory admin user for stream endpoint tests (not persisted to DB)."""
+    return AppUser(id="test-admin-1", username="test-admin", email="admin@test.local", is_admin=True)
+
+
+@pytest.fixture()
+def stream_app_client(fake_decode_thread, fake_ffmpeg, monkeypatch, _test_admin_user):
+    """TestClient for the full api.app with decode thread + FFmpeg deps mocked.
+
+    Injects a fake admin user for all authenticated endpoints so stream tests
+    don't need to set up a real database or JWT tokens.
+    """
     from tests.fakes import FakeInferenceThread
 
+    from auth.deps import get_current_user
     import api
 
-    # Patch InferenceThread so the orchestrator created in api.py's lifespan
-    # uses a no-op fake instead of a real one (which would need a real detector).
     monkeypatch.setattr(
         "orchestrator.orchestrator.InferenceThread",
         FakeInferenceThread,
@@ -223,5 +246,18 @@ def stream_app_client(fake_decode_thread, fake_ffmpeg, monkeypatch):
         lambda: None,
     )
 
+    # Override auth for both HTTP (dependency) and WebSocket (direct function call)
+    api.app.dependency_overrides[get_current_user] = lambda: _test_admin_user
+
+    async def _fake_authenticate_websocket(websocket):
+        return _test_admin_user
+
+    monkeypatch.setattr(
+        "webapi.routes.detections.authenticate_websocket",
+        _fake_authenticate_websocket,
+    )
+
     with TestClient(api.app) as c:
         yield c
+
+    api.app.dependency_overrides.pop(get_current_user, None)

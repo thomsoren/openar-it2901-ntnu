@@ -148,7 +148,7 @@ class WorkerOrchestrator:
                 handle.no_viewer_since = 0.0
                 handle.last_heartbeat = time.monotonic()
                 inf = self._ensure_inference_thread()
-                inf.set_active_stream(stream_id)
+                inf.add_active_stream(stream_id)
                 return handle
 
             config = self._stream_configs.get(stream_id)
@@ -160,7 +160,7 @@ class WorkerOrchestrator:
             handle = self._spawn_handle(config=config, viewer_count=1)
             self._workers[stream_id] = handle
             inf = self._ensure_inference_thread()
-            inf.set_active_stream(stream_id)
+            inf.add_active_stream(stream_id)
             logger.info("Started stream '%s' for active viewer", stream_id)
             return handle
 
@@ -174,11 +174,34 @@ class WorkerOrchestrator:
             if handle.viewer_count == 0 and handle.no_viewer_since == 0.0:
                 handle.no_viewer_since = time.monotonic()
             if handle.viewer_count == 0 and self._inference_thread:
-                self._inference_thread.set_active_stream(None)
+                self._inference_thread.remove_active_stream(stream_id)
 
-    def list_streams(self) -> list[dict]:
+    def list_streams(self, owner_user_id: str | None = None) -> list[dict]:
         with self._lock:
-            return [h.to_dict() for h in self._workers.values()]
+            handles = self._workers.values()
+            if owner_user_id is not None:
+                handles = [
+                    h for h in handles
+                    if h.config.owner_user_id is None or h.config.owner_user_id == owner_user_id
+                ]
+            return [h.to_dict() for h in handles]
+
+    def is_stream_owner(self, stream_id: str, user_id: str) -> bool:
+        with self._lock:
+            handle = self._workers.get(stream_id)
+            if not handle:
+                config = self._stream_configs.get(stream_id)
+                if not config:
+                    return False
+                return config.owner_user_id is None or config.owner_user_id == user_id
+            return handle.config.owner_user_id is None or handle.config.owner_user_id == user_id
+
+    def count_user_streams(self, user_id: str) -> int:
+        with self._lock:
+            return sum(
+                1 for h in self._workers.values()
+                if h.config.owner_user_id == user_id
+            )
 
     def start_monitoring(self) -> None:
         if self._monitor_thread and self._monitor_thread.is_alive():

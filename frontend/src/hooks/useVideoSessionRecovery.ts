@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { VideoPlayerState } from "../components/video-player/VideoPlayer";
 
+const FIRST_FRAME_WATCHDOG_MS = 10_000;
+const BASE_RECONNECT_DELAY_MS = 2_000;
+const MAX_RECONNECT_DELAY_MS = 15_000;
+const BACKOFF_FACTOR = 1.5;
+
 interface UseVideoSessionRecoveryOptions {
   streamKey: string;
   initialSession?: number;
@@ -27,8 +32,6 @@ interface RecoveryState {
   controlError: string | null;
 }
 
-const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 25_000;
-
 type RecoveryAction =
   | { type: "RESET_STREAM"; streamKey: string; session: number }
   | { type: "BUMP_SESSION" }
@@ -39,16 +42,12 @@ type RecoveryAction =
 const initialState: RecoveryState = {
   recoveryStreamKey: "",
   videoSession: 0,
-  videoState: {
-    transport: "webrtc",
-    status: "idle",
-    error: null,
-  },
+  videoState: { transport: "webrtc", status: "idle", error: null },
   imageLoaded: false,
   controlError: null,
 };
 
-const reducer = (state: RecoveryState, action: RecoveryAction): RecoveryState => {
+function reducer(state: RecoveryState, action: RecoveryAction): RecoveryState {
   switch (action.type) {
     case "RESET_STREAM":
       return {
@@ -76,14 +75,8 @@ const reducer = (state: RecoveryState, action: RecoveryAction): RecoveryState =>
     default:
       return state;
   }
-};
+}
 
-/**
- * @example
- * ```tsx
- * const recovery = useVideoSessionRecovery({ streamKey: activeTabId });
- * ```
- */
 export function useVideoSessionRecovery({
   streamKey,
   initialSession = 0,
@@ -91,6 +84,7 @@ export function useVideoSessionRecovery({
 }: UseVideoSessionRecoveryOptions): UseVideoSessionRecoveryResult {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { recoveryStreamKey, videoSession, videoState, imageLoaded, controlError } = state;
+
   const setControlError = useCallback((value: string | null) => {
     dispatch({ type: "SET_CONTROL_ERROR", payload: value });
   }, []);
@@ -109,7 +103,6 @@ export function useVideoSessionRecovery({
       window.clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
-
     if (firstFrameWatchdogRef.current !== null) {
       window.clearTimeout(firstFrameWatchdogRef.current);
       firstFrameWatchdogRef.current = null;
@@ -118,9 +111,7 @@ export function useVideoSessionRecovery({
 
   const scheduleReconnect = useCallback(
     (reason: string) => {
-      if (reconnectTimerRef.current !== null) {
-        return;
-      }
+      if (reconnectTimerRef.current !== null) return;
 
       if (reconnectCountRef.current >= maxReconnectAttempts) {
         dispatch({
@@ -132,29 +123,27 @@ export function useVideoSessionRecovery({
 
       reconnectCountRef.current += 1;
       firstFrameRetryDoneRef.current = false;
-      const delay = Math.min(2000 * Math.pow(1.5, reconnectCountRef.current - 1), 15000);
+      const delay = Math.min(
+        BASE_RECONNECT_DELAY_MS * Math.pow(BACKOFF_FACTOR, reconnectCountRef.current - 1),
+        MAX_RECONNECT_DELAY_MS
+      );
       dispatch({
         type: "SET_CONTROL_ERROR",
         payload: `${reason} (attempt ${reconnectCountRef.current})...`,
       });
       reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
         dispatch({ type: "BUMP_SESSION" });
       }, delay);
     },
     [maxReconnectAttempts]
   );
 
+  // Visibility change: reconnect when tab becomes visible again (if not already playing)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-
-      // Don't restart a stream that is already playing — switching browser
-      // windows should never interrupt an active video connection.
-      if (imageLoadedRef.current) {
-        return;
-      }
+      if (document.visibilityState !== "visible") return;
+      if (imageLoadedRef.current) return;
 
       reconnectCountRef.current = 0;
       firstFrameRetryDoneRef.current = false;
@@ -165,58 +154,44 @@ export function useVideoSessionRecovery({
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
+  // Stream key change: reset all recovery state
   useEffect(() => {
-    if (previousStreamKeyRef.current === streamKey) {
-      return;
-    }
+    if (previousStreamKeyRef.current === streamKey) return;
     previousStreamKeyRef.current = streamKey;
     reconnectCountRef.current = 0;
     firstFrameRetryDoneRef.current = false;
     dispatch({ type: "RESET_STREAM", streamKey, session: initialSession });
   }, [initialSession, streamKey]);
 
+  // Keep refs in sync
   useEffect(() => {
     controlErrorRef.current = controlError;
   }, [controlError]);
-
   useEffect(() => {
     videoStateRef.current = videoState;
   }, [videoState]);
 
+  // First-frame watchdog: schedule reconnect if no frame arrives within timeout
   useEffect(() => {
     imageLoadedRef.current = false;
     clearReconnectTimers();
 
     firstFrameWatchdogRef.current = window.setTimeout(() => {
-      if (imageLoadedRef.current || firstFrameRetryDoneRef.current) {
-        return;
-      }
+      if (imageLoadedRef.current || firstFrameRetryDoneRef.current) return;
 
-      const currentVideoState = videoStateRef.current;
-      if (currentVideoState.transport !== "webrtc") {
-        // HLS fallback can legitimately take longer than first WebRTC setup.
-        // Avoid thrashing sessions while fallback is in progress.
-        return;
-      }
-      if (currentVideoState.status === "error") {
-        // Error path has its own reconnect scheduling.
-        return;
-      }
+      const current = videoStateRef.current;
+      if (current.transport !== "webrtc") return;
+      if (current.status === "error") return;
 
       firstFrameRetryDoneRef.current = true;
       scheduleReconnect("Video stream reconnecting");
-    }, FIRST_FRAME_WATCHDOG_TIMEOUT_MS);
+    }, FIRST_FRAME_WATCHDOG_MS);
 
-    return () => {
-      clearReconnectTimers();
-    };
+    return () => clearReconnectTimers();
   }, [clearReconnectTimers, scheduleReconnect, streamKey, videoSession]);
 
-  useEffect(() => {
-    return () => {
-      clearReconnectTimers();
-    };
-  }, [clearReconnectTimers]);
+  // Cleanup on unmount
+  useEffect(() => () => clearReconnectTimers(), [clearReconnectTimers]);
 
   const handleVideoStatusChange = useCallback(
     (next: VideoPlayerState) => {
@@ -228,19 +203,14 @@ export function useVideoSessionRecovery({
         reconnectCountRef.current = 0;
         dispatch({ type: "SET_IMAGE_LOADED", payload: true });
         clearReconnectTimers();
-        const nextControlError = (() => {
-          const previous = controlErrorRef.current;
-          if (
-            previous?.startsWith("Video stream") ||
-            previous?.startsWith("Waiting for first video frame") ||
-            previous?.startsWith("WebRTC stream") ||
-            previous?.startsWith("HLS stream")
-          ) {
-            return null as string | null;
-          }
-          return previous;
-        })();
-        dispatch({ type: "SET_CONTROL_ERROR", payload: nextControlError });
+
+        const prev = controlErrorRef.current;
+        const isRecoveryError =
+          prev?.startsWith("Video stream") ||
+          prev?.startsWith("Waiting for first video frame") ||
+          prev?.startsWith("WebRTC stream") ||
+          prev?.startsWith("HLS stream");
+        dispatch({ type: "SET_CONTROL_ERROR", payload: isRecoveryError ? null : prev });
         return;
       }
 
