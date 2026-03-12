@@ -4,6 +4,9 @@ This module is self-contained. It reads frames from the orchestrator's
 DecodeThreads, JPEG-encodes them, sends them over WebSocket to the IDUN
 inference worker, and publishes received detections to Redis via
 DetectionPublisher (same channel and format as local InferenceThread).
+
+Supports multiple concurrent streams — frames from all active streams
+are sent to the worker which batches them for a single GPU forward pass.
 """
 from __future__ import annotations
 
@@ -33,9 +36,9 @@ JPEG_ENCODE_PARAMS = [cv2.IMWRITE_JPEG_QUALITY, IDUN_FRAME_JPEG_QUALITY]
 class IdunBridge:
     """Bridges the orchestrator's decode threads to a remote IDUN worker.
 
-    The bridge does not modify the orchestrator. It reads the active stream
+    The bridge does not modify the orchestrator. It reads active streams
     from the NoopInferenceThread (set by the orchestrator's acquire/release
-    viewer logic) and grabs frames from the corresponding DecodeThread.
+    viewer logic) and grabs frames from the corresponding DecodeThreads.
     """
 
     def __init__(
@@ -93,99 +96,117 @@ class IdunBridge:
             logger.info("IDUN bridge connection closed")
 
     async def _sender_loop(self, websocket: WebSocket) -> None:
-        """Send frames to IDUN at the target FPS."""
+        """Send frames from all active streams to IDUN at the target FPS."""
         interval = 1.0 / IDUN_TARGET_SEND_FPS
         loop = asyncio.get_running_loop()
-        prev_stream_id: str | None = None
-        prev_frame_idx = -1
+        known_streams: set[str] = set()
+        prev_frame_idx: dict[str, int] = {}
         is_paused = True
         ready_sent: set[str] = set()
 
         while True:
-            active_id = self._noop.get_active_stream()
+            active_ids = self._noop.get_active_streams()
 
-            # No active stream: pause
-            if active_id is None:
+            # No active streams: pause
+            if not active_ids:
                 if not is_paused:
                     await websocket.send_text(json.dumps({"type": "pause"}))
                     is_paused = True
-                    prev_stream_id = None
+                    known_streams.clear()
                     logger.debug("IDUN bridge: sent pause (no viewers)")
                 await asyncio.sleep(1.0)
                 continue
 
-            decode_thread = self._noop.get_decode_thread(active_id)
-            if decode_thread is None:
-                await asyncio.sleep(0.1)
-                continue
+            # Detect added/removed streams
+            added = active_ids - known_streams
+            removed = known_streams - active_ids
 
-            # Stream changed: notify IDUN to reset tracker
-            if active_id != prev_stream_id:
+            for stream_id in removed:
+                await websocket.send_text(json.dumps({
+                    "type": "stream_removed",
+                    "stream_id": stream_id,
+                }))
+                prev_frame_idx.pop(stream_id, None)
+                ready_sent.discard(stream_id)
+                logger.info("IDUN bridge: stream removed '%s'", stream_id)
+
+            for stream_id in added:
+                decode_thread = self._noop.get_decode_thread(stream_id)
                 stream_info = {
-                    "type": "stream_changed",
-                    "stream_id": active_id,
-                    "width": decode_thread.width or 0,
-                    "height": decode_thread.height or 0,
-                    "fps": decode_thread.fps or 0.0,
+                    "type": "stream_added",
+                    "stream_id": stream_id,
+                    "width": decode_thread.width if decode_thread else 0,
+                    "height": decode_thread.height if decode_thread else 0,
+                    "fps": decode_thread.fps if decode_thread else 0.0,
                 }
                 await websocket.send_text(json.dumps(stream_info))
-                prev_stream_id = active_id
-                prev_frame_idx = -1
-                ready_sent.discard(active_id)
-                logger.info("IDUN bridge: stream changed to '%s'", active_id)
+                prev_frame_idx[stream_id] = -1
+                ready_sent.discard(stream_id)
+                logger.info("IDUN bridge: stream added '%s'", stream_id)
+
+            known_streams = set(active_ids)
 
             # Resume if we were paused
             if is_paused:
                 await websocket.send_text(json.dumps({
                     "type": "resume",
-                    "stream_id": active_id,
+                    "stream_ids": list(active_ids),
                 }))
                 is_paused = False
-                logger.debug("IDUN bridge: sent resume for '%s'", active_id)
+                logger.debug("IDUN bridge: sent resume for %s", list(active_ids))
 
-            # Send ready payload to Redis on first frame of a stream
-            if active_id not in ready_sent and decode_thread.is_alive:
-                self._publisher.publish(
-                    active_id,
-                    build_ready_payload(decode_thread.width, decode_thread.height, decode_thread.fps),
+            # Send frames from all active streams
+            sent_any = False
+            for stream_id in active_ids:
+                decode_thread = self._noop.get_decode_thread(stream_id)
+                if decode_thread is None:
+                    continue
+
+                # Send ready payload to Redis on first frame of a stream
+                if stream_id not in ready_sent and decode_thread.is_alive:
+                    self._publisher.publish(
+                        stream_id,
+                        build_ready_payload(decode_thread.width, decode_thread.height, decode_thread.fps),
+                    )
+                    ready_sent.add(stream_id)
+
+                # Grab latest frame
+                latest = decode_thread.get_latest_telemetry()
+                frame, frame_idx, ts = latest.frame, latest.frame_index, latest.timestamp_ms
+                if frame is None or frame_idx == prev_frame_idx.get(stream_id, -1):
+                    continue
+                prev_frame_idx[stream_id] = frame_idx
+                self._pending_frame_metrics[(stream_id, frame_idx)] = {
+                    "decoded_at_ms": latest.decoded_at_ms,
+                    "source_fps": decode_thread.fps or 0.0,
+                }
+
+                # JPEG encode (CPU-bound — run in thread pool)
+                ok, jpeg_buf = await loop.run_in_executor(
+                    None, cv2.imencode, ".jpg", frame, JPEG_ENCODE_PARAMS,
                 )
-                ready_sent.add(active_id)
+                if not ok:
+                    logger.warning("IDUN bridge: JPEG encode failed for stream '%s' frame %d", stream_id, frame_idx)
+                    continue
 
-            # Grab latest frame
-            latest = decode_thread.get_latest_telemetry()
-            frame, frame_idx, ts = latest.frame, latest.frame_index, latest.timestamp_ms
-            if frame is None or frame_idx == prev_frame_idx:
-                await asyncio.sleep(0.005)
-                continue
-            prev_frame_idx = frame_idx
-            self._pending_frame_metrics[(active_id, frame_idx)] = {
-                "decoded_at_ms": latest.decoded_at_ms,
-                "source_fps": decode_thread.fps or 0.0,
-            }
-
-            # JPEG encode (CPU-bound — run in thread pool to avoid blocking the event loop)
-            ok, jpeg_buf = await loop.run_in_executor(
-                None, cv2.imencode, ".jpg", frame, JPEG_ENCODE_PARAMS,
-            )
-            if not ok:
-                logger.warning("IDUN bridge: JPEG encode failed for frame %d", frame_idx)
-                await asyncio.sleep(interval)
-                continue
-
-            # Build binary message: [header_len(4 bytes)][json header][jpeg data]
+                # Build binary message: [header_len(4 bytes)][json header][jpeg data]
                 header = json.dumps({
-                "type": "frame",
-                "stream_id": active_id,
-                "frame_index": frame_idx,
-                "timestamp_ms": ts,
-                "fps": decode_thread.fps or 0.0,
-                "decoded_at_ms": latest.decoded_at_ms,
-            }).encode()
-            jpeg_bytes: bytes = jpeg_buf.tobytes()
-            message = struct.pack(">I", len(header)) + header + jpeg_bytes
-            await websocket.send_bytes(message)
+                    "type": "frame",
+                    "stream_id": stream_id,
+                    "frame_index": frame_idx,
+                    "timestamp_ms": ts,
+                    "fps": decode_thread.fps or 0.0,
+                    "decoded_at_ms": latest.decoded_at_ms,
+                }).encode()
+                jpeg_bytes: bytes = jpeg_buf.tobytes()
+                message = struct.pack(">I", len(header)) + header + jpeg_bytes
+                await websocket.send_bytes(message)
+                sent_any = True
 
-            await asyncio.sleep(interval)
+            if not sent_any:
+                await asyncio.sleep(0.005)
+            else:
+                await asyncio.sleep(interval)
 
     async def _receiver_loop(self, websocket: WebSocket) -> None:
         """Receive detection results and heartbeats from IDUN."""
@@ -213,9 +234,9 @@ class IdunBridge:
                 if not stream_id:
                     continue
 
-                # Discard detections for a stale stream
-                active_id = self._noop.get_active_stream()
-                if stream_id != active_id:
+                # Discard detections for a stream that is no longer active
+                active_ids = self._noop.get_active_streams()
+                if stream_id not in active_ids:
                     continue
 
                 published_at_ms = now_epoch_ms()
