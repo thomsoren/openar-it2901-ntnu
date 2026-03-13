@@ -18,28 +18,36 @@ export function StreamAlarmPanel({ alerts, dismissed, onDismiss }: StreamAlarmPa
   if (visible.length === 0) {
     return null;
   }
+  const timeLabel = new Intl.DateTimeFormat("nb-NO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date());
 
   return (
     <aside className="stream-alarm-panel" aria-live="polite" aria-label="Stream alarms">
-      <ObcAlertMenu>
+      <ObcAlertMenu
+        canAckAll
+        onAckAllVisibleClick={() => {
+          visible.forEach((alert) => onDismiss(alert.id));
+        }}
+      >
         {visible.map((alert) => (
           <ObcAlertMenuItem
             key={alert.id}
             title={alert.title}
             description={alert.recovery ? `${alert.detail} ${alert.recovery}` : alert.detail}
-            time={new Date().toISOString()}
+            time={timeLabel}
             status={ObcAlertMenuItemStatus.Unacknowledged}
             size={ObcMessageMenuItemSize.DoubleLine}
-            hasIcon
-            open
             onAckClick={() => onDismiss(alert.id)}
           >
             {alert.source === "data" ? (
-              <ObiWarningUnacknowledgedIec slot="icon" useCssColor />
+              <ObiWarningUnacknowledgedIec slot="alert-icon" useCssColor />
             ) : alert.source === "system" ? (
-              <ObiCautionColorIec slot="icon" useCssColor />
+              <ObiCautionColorIec slot="alert-icon" useCssColor />
             ) : (
-              <ObiAlarmUnacknowledgedIec slot="icon" useCssColor />
+              <ObiAlarmUnacknowledgedIec slot="alert-icon" useCssColor />
             )}
           </ObcAlertMenuItem>
         ))}

@@ -118,6 +118,14 @@ function App() {
     setDismissedAlerts((prev) => new Set(prev).add(id));
   };
 
+  const handleDismissFirstAlert = () => {
+    const firstAlertId = visibleAlerts[0]?.id;
+    if (!firstAlertId) {
+      return;
+    }
+    handleDismissAlert(firstAlertId);
+  };
+
   return (
     <>
       <AppTopBar
@@ -125,9 +133,12 @@ function App() {
         clockDate={clockDate}
         isOnAuthGate={isOnAuthGate}
         alertCount={visibleAlerts.length}
+        alertTitle={visibleAlerts[0]?.title ?? ""}
+        alertDescription={visibleAlerts[0]?.detail ?? ""}
         showAlertPanel={isAlertPanelOpen}
         showNavigationMenu={showNavigationMenu}
         showUserPanel={showUserPanel}
+        onAckFirstAlert={handleDismissFirstAlert}
         onToggleAlertPanel={handleAlertPanelToggle}
         onToggleNavigationMenu={handleNavigationMenuToggle}
         onToggleBrillianceMenu={handleBrillianceToggle}
