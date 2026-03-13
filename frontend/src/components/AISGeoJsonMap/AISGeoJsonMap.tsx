@@ -4,9 +4,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./AISGeoJsonMap.css";
 import { useObcPalette } from "../../hooks/useOBCTheme";
 import { getMapLibreStyle } from "./AISGeoJsonMapTilemap";
-import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
-import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { AISData } from "../../types/aisData";
+import type { VesselIconSet } from "../../utils/vesselIconMapper";
 import {
   destinationPoint,
   headingTo,
@@ -43,6 +42,8 @@ export interface ScanAreaParams {
 }
 
 interface AISGeoJsonMapProps extends ScanAreaParams {
+  editMode?: boolean;
+  iconSet?: VesselIconSet;
   vessels?: AISData[];
   onChange?: (updates: Partial<ScanAreaParams>) => void;
 }
@@ -141,6 +142,8 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   shapeMode,
   rectLength,
   rectWidth,
+  editMode = true,
+  iconSet = "generic",
   vessels,
   onChange,
 }) => {
@@ -152,8 +155,6 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const fovRef = useRef<maplibregl.Marker | null>(null);
 
   const theme = useObcPalette();
-  const [followMode, setFollowMode] = useState(true);
-  const [editMode, setEditMode] = useState(true);
   const [selectedVessel, setSelectedVessel] = useState<AISData | null>(null);
 
   // Mutable ref so drag handlers always see latest props
@@ -183,24 +184,23 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
   // ---- Callbacks ----
 
-  const centerMap = useCallback(() => {
-    mapRef.current?.panTo([shipLon, shipLat], { duration: 500 });
-  }, [shipLat, shipLon]);
-
   const handleVesselClick = useCallback((vessel: AISData) => {
     setSelectedVessel(vessel);
   }, []);
 
-  const setAnchorVisibility = useCallback((visible: boolean) => {
-    const display = visible ? "flex" : "none";
+  const setAnchorVisibility = useCallback((enabled: boolean) => {
+    const display = enabled ? "flex" : "none";
     [originRef, rangeRef, headingRef, fovRef].forEach((ref) => {
-      if (ref.current) ref.current.getElement().style.display = display;
+      if (ref.current) {
+        ref.current.getElement().style.display = display;
+        ref.current.setDraggable(enabled);
+      }
     });
   }, []);
 
   // Keep vessel markers in sync with vessels data + selected vessel
 
-  useVesselMarkers(mapRef.current, vessels, handleVesselClick);
+  useVesselMarkers(mapRef.current, vessels, handleVesselClick, iconSet);
 
   // Map initialisation (runs once)
 
@@ -504,7 +504,6 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     });
     fovRef.current = fovMarker;
 
-    map.on("dragstart", () => setFollowMode(false));
     mapRef.current = map;
 
     return () => {
@@ -577,26 +576,18 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           ? `Width ${Math.round(rectWidth)}m`
           : `Sector ${Math.round(fovDegrees)}°`
       );
-
-    if (followMode) centerMap();
-  }, [
-    shipLat,
-    shipLon,
-    heading,
-    offsetMeters,
-    fovDegrees,
-    shapeMode,
-    rectLength,
-    rectWidth,
-    centerMap,
-    followMode,
-  ]);
+  }, [shipLat, shipLon, heading, offsetMeters, fovDegrees, shapeMode, rectLength, rectWidth]);
 
   // ---- Anchor visibility ---------------------------------------------------
 
   useEffect(() => {
     setAnchorVisibility(editMode);
   }, [editMode, setAnchorVisibility]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.panTo([shipLon, shipLat], { duration: 350 });
+  }, [shipLat, shipLon]);
 
   // ---- Theme sync ----------------------------------------------------------
 
@@ -631,49 +622,9 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
   // ---- Render --------------------------------------------------------------
 
-  const headerInfo =
-    shapeMode === "rect"
-      ? `${rectLength}m x ${rectWidth}m`
-      : `${offsetMeters}m . FOV ${fovDegrees}°`;
-
   return (
     <div className="geojson-map-container">
-      <div className="geojson-map-header">
-        <span className="geojson-map-text">
-          {Math.abs(shipLat).toFixed(4)}
-          {shipLat >= 0 ? "N" : "S"} . {Math.abs(shipLon).toFixed(4)}
-          {shipLon >= 0 ? "E" : "W"} . {heading}° . {headerInfo}
-        </span>
-      </div>
-
-      <div ref={containerRef} style={{ height: "420px", width: "100%" }} />
-
-      <div className="geojson-map-controls">
-        <ObcButton
-          variant={followMode ? ButtonVariant.raised : ButtonVariant.normal}
-          fullWidth
-          onClick={() => {
-            if (!followMode) centerMap();
-            setFollowMode((prev) => !prev);
-          }}
-        >
-          {followMode ? "Following" : "Follow"}
-        </ObcButton>
-        <ObcButton
-          variant={editMode ? ButtonVariant.raised : ButtonVariant.normal}
-          fullWidth
-          onClick={() => setEditMode((prev) => !prev)}
-        >
-          {editMode ? "Editing" : "Edit"}
-        </ObcButton>
-        <ObcButton
-          variant={shapeMode === "rect" ? ButtonVariant.raised : ButtonVariant.normal}
-          fullWidth
-          onClick={() => onChange?.({ shapeMode: shapeMode === "wedge" ? "rect" : "wedge" })}
-        >
-          {shapeMode === "rect" ? "Rect" : "Wedge"}
-        </ObcButton>
-      </div>
+      <div ref={containerRef} className="geojson-map-canvas" />
 
       {selectedVessel && (
         <AISDataPanel
@@ -681,6 +632,7 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
           originVessel={{ latitude: shipLat, longitude: shipLon, trueHeading: heading }}
           onClose={() => setSelectedVessel(null)}
           useAISData
+          iconSet={iconSet}
         />
       )}
     </div>

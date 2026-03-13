@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import maplibregl from "maplibre-gl";
 import type { ReactElement } from "react";
 import { AISData } from "../../types/aisData";
-import getVesselIcon from "../../utils/vesselIconMapper";
+import getVesselIcon, { type VesselIconSet } from "../../utils/vesselIconMapper";
 
 // Utility functions
 function isFiniteNumber(value: number | null | undefined): value is number {
@@ -124,15 +124,14 @@ export function createAnchorMarker(
 export function createVesselMarker(
   map: maplibregl.Map,
   vessel: AISData,
-  onClick: (vessel: AISData) => void
+  onClick: (vessel: AISData) => void,
+  iconSet: VesselIconSet = "generic"
 ): maplibregl.Marker {
   const element = document.createElement("div");
   element.className = "geojson-map-vessel-icon";
 
   const root = createRoot(element);
-  if (vessel.shipType) {
-    root.render(getVesselIcon(vessel.shipType));
-  }
+  root.render(getVesselIcon(vessel, { iconSet, returnType: "icon" }));
 
   const popup = new maplibregl.Popup({ offset: 10 }).setText(
     `MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`

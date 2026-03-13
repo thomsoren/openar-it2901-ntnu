@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  overflow: auto;
-  padding: 20px;
+  overflow: hidden;
+  padding: 0;
   background-color: var(--container-backdrop-color);
 }

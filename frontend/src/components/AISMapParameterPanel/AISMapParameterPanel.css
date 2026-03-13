@@ -1,0 +1,93 @@
+.ais-map-panel {
+  width: 360px;
+  max-height: min(92vh, 760px);
+  overflow: auto;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle-color);
+  background: var(--container-background-color);
+  box-shadow: 0 2px 16px var(--border-divider-color);
+  pointer-events: auto;
+}
+
+.ais-map-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.ais-map-panel__section + .ais-map-panel__section {
+  margin-top: 6px;
+  border-top: 1px solid var(--border-subtle-color);
+  padding-top: 12px;
+}
+
+.ais-map-panel__section h3 {
+  margin: 0;
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-label-active-font-size, 13px);
+  font-weight: var(--global-typography-ui-label-active-font-weight, 600);
+  line-height: var(--global-typography-ui-label-active-line-height, 16px);
+  color: var(--element-active-color);
+}
+
+.ais-map-panel__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ais-map-panel__button-row,
+.ais-map-panel__toggle-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ais-map-panel__toggle-row--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ais-map-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ais-map-panel__grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ais-map-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ais-map-panel__field span,
+.ais-map-panel__inline-label,
+.ais-map-panel__hint {
+  font-family: var(--font-family-main, "Noto Sans", sans-serif);
+  font-size: var(--global-typography-ui-label-font-size, 12px);
+  font-weight: var(--font-weight-regular, 400);
+  line-height: var(--global-typography-ui-label-line-height, 16px);
+  color: var(--element-neutral-color, #535353);
+}
+
+.ais-map-panel__hint {
+  margin: 0;
+}
+
+@media (max-width: 920px) {
+  .ais-map-panel {
+    width: min(420px, calc(100vw - 20px));
+    max-height: 50vh;
+  }
+
+  .ais-map-panel__grid--three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

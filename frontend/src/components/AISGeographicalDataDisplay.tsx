@@ -1,18 +1,10 @@
 import React, { useState } from "react";
 import { useFetchAISGeographicalData } from "../hooks/useFetchAISGeographicalData";
 import "./AISGeographicalDataDisplay.css";
-import { AISData } from "../types/aisData";
-import { ObcInput } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/input/input";
-import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
-import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
-import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
-import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
 import { AISGeoJsonMap } from "./AISGeoJsonMap/AISGeoJsonMap";
-import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
-import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/input/input";
-import { StatusIndicatorStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/status-indicator/status-indicator";
-import { TagColor } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/tag/tag";
-import { ObcElevatedCardSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
+import { AISMapParameterPanel } from "./AISMapParameterPanel/AISMapParameterPanel";
+import type { AISMapParameterSettings } from "./AISMapParameterPanel/AISMapParameterPanel";
+import type { VesselIconSet } from "../utils/vesselIconMapper";
 
 export const AISGeographicalDataDisplay: React.FC = () => {
   const [shouldStream, setShouldStream] = useState(false);
@@ -24,13 +16,9 @@ export const AISGeographicalDataDisplay: React.FC = () => {
   const [shapeMode, setShapeMode] = useState<"wedge" | "rect">("wedge");
   const [rectLength, setRectLength] = useState(1000);
   const [rectWidth, setRectWidth] = useState(600);
+  const [editMode, setEditMode] = useState(true);
+  const [iconSet, setIconSet] = useState<VesselIconSet>("generic");
   const [isLoadingGPS, setIsLoadingGPS] = useState(false);
-
-  const parseNumberInput = (event: Event, fallback: number) => {
-    const rawValue = (event.target as { value?: string }).value ?? "";
-    const parsedValue = Number.parseFloat(rawValue);
-    return Number.isNaN(parsedValue) ? fallback : parsedValue;
-  };
 
   const { features, isStreaming, error } = useFetchAISGeographicalData(
     shouldStream,
@@ -60,112 +48,36 @@ export const AISGeographicalDataDisplay: React.FC = () => {
     );
   };
 
+  // Bundle panel settings into a single object for easier passing to the panel component
+  const panelSettings: AISMapParameterSettings = {
+    shipLat,
+    shipLon,
+    heading,
+    offsetMeters,
+    fovDegrees,
+    shapeMode,
+    rectLength,
+    rectWidth,
+    editMode,
+    iconSet,
+  };
+
+  // Helper to handle settings changes from the panel and update corresponding state variables
+  const handlePanelSettingsChange = (updates: Partial<AISMapParameterSettings>) => {
+    if (updates.shipLat !== undefined) setShipLat(updates.shipLat);
+    if (updates.shipLon !== undefined) setShipLon(updates.shipLon);
+    if (updates.heading !== undefined) setHeading(updates.heading);
+    if (updates.offsetMeters !== undefined) setOffsetMeters(updates.offsetMeters);
+    if (updates.fovDegrees !== undefined) setFovDegrees(updates.fovDegrees);
+    if (updates.shapeMode !== undefined) setShapeMode(updates.shapeMode);
+    if (updates.rectLength !== undefined) setRectLength(updates.rectLength);
+    if (updates.rectWidth !== undefined) setRectWidth(updates.rectWidth);
+    if (updates.editMode !== undefined) setEditMode(updates.editMode);
+    if (updates.iconSet !== undefined) setIconSet(updates.iconSet);
+  };
+
   return (
-    <div className="ais-stream-container">
-      <div className="ais-stream-header">
-        <div className="ais-stream-title">
-          <h2>Live AIS Data Stream</h2>
-          <div className="ais-stream-meta">
-            <ObcStatusIndicator
-              status={isStreaming ? StatusIndicatorStatus.running : StatusIndicatorStatus.inactive}
-            >
-              {isStreaming ? "Streaming" : "Idle"}
-            </ObcStatusIndicator>
-            {error && (
-              <ObcStatusIndicator status={StatusIndicatorStatus.alarm}>
-                Error: {error}
-              </ObcStatusIndicator>
-            )}
-            <ObcTag label={`Vessels received: ${features.length}`} color={TagColor.blue} />
-          </div>
-        </div>
-
-        <div className="ais-stream-controls">
-          <ObcButton
-            variant={ButtonVariant.raised}
-            onClick={() => setShouldStream(true)}
-            disabled={isStreaming}
-          >
-            Start Stream
-          </ObcButton>
-          <ObcButton
-            variant={ButtonVariant.flat}
-            onClick={() => setShouldStream(false)}
-            disabled={!isStreaming}
-          >
-            Stop
-          </ObcButton>
-        </div>
-      </div>
-
-      <div className="ais-stream-params">
-        <div className="param-group">
-          <span className="param-label">Ship Latitude</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
-            value={String(shipLat)}
-            placeholder="63.4365"
-            disabled={isStreaming}
-            aria-label="Ship latitude"
-            onInput={(e) => setShipLat(parseNumberInput(e, shipLat))}
-          />
-        </div>
-        <div className="param-group">
-          <span className="param-label">Ship Longitude</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
-            value={String(shipLon)}
-            placeholder="10.3835"
-            disabled={isStreaming}
-            aria-label="Ship longitude"
-            onInput={(e) => setShipLon(parseNumberInput(e, shipLon))}
-          />
-        </div>
-        <div className="param-group">
-          <span className="param-label">Heading (°)</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
-            value={String(heading)}
-            placeholder="0"
-            disabled={isStreaming}
-            aria-label="Heading in degrees"
-            onInput={(e) => setHeading(parseNumberInput(e, heading))}
-          />
-        </div>
-        <div className="param-group">
-          <span className="param-label">Range (m)</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
-            value={String(offsetMeters)}
-            placeholder="1000"
-            disabled={isStreaming}
-            aria-label="Range in meters"
-            onInput={(e) => setOffsetMeters(parseNumberInput(e, offsetMeters))}
-          />
-        </div>
-        <div className="param-group">
-          <span className="param-label">FOV (°)</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
-            value={String(fovDegrees)}
-            placeholder="60"
-            disabled={isStreaming}
-            aria-label="Field of view in degrees"
-            onInput={(e) => setFovDegrees(parseNumberInput(e, fovDegrees))}
-          />
-        </div>
-        <div className="param-group">
-          <span className="param-label">Autofill GPS coordinates</span>
-          <ObcButton
-            variant={ButtonVariant.normal}
-            onClick={handleUseGPSLocation}
-            disabled={isStreaming || isLoadingGPS}
-          >
-            {isLoadingGPS ? "Fetching..." : "Current position"}
-          </ObcButton>
-        </div>
-      </div>
-
+    <div className="ais-live-view">
       <AISGeoJsonMap
         shipLat={shipLat}
         shipLon={shipLon}
@@ -175,6 +87,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         shapeMode={shapeMode}
         rectLength={rectLength}
         rectWidth={rectWidth}
+        editMode={editMode}
+        iconSet={iconSet}
         vessels={features}
         onChange={(updates) => {
           if (updates.shipLat !== undefined) setShipLat(updates.shipLat);
@@ -188,74 +102,19 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         }}
       />
 
-      <div className="ais-stream-list">
-        {features.length === 0 ? (
-          <div className="empty-state">
-            <p>No AIS data yet. Configure parameters and click Start Stream.</p>
-          </div>
-        ) : (
-          <div className="features-grid">
-            {features.map((feature: AISData) => (
-              <ObcElevatedCard
-                key={`${feature.mmsi}-${feature.msgtime}`}
-                className="feature-card"
-                size={ObcElevatedCardSize.MultiLine}
-                notClickable
-              >
-                <div slot="label" className="feature-label">
-                  <span className="feature-name">
-                    {feature?.name || feature?.mmsi || "Unknown Vessel"}
-                  </span>
-                  <ObcTag
-                    label={feature?.mmsi ? `MMSI ${feature.mmsi}` : "MMSI N/A"}
-                    color={TagColor.blue}
-                  />
-                </div>
-                <div slot="description" className="feature-details">
-                  {feature?.latitude !== undefined && feature?.longitude !== undefined && (
-                    <div className="feature-detail">
-                      <span className="feature-detail-label">Position</span>
-                      <span className="feature-detail-value">
-                        {Number(feature.latitude).toFixed(4)},{" "}
-                        {Number(feature.longitude).toFixed(4)}
-                      </span>
-                    </div>
-                  )}
-                  {feature?.navigationalStatus !== undefined && (
-                    <div className="feature-detail">
-                      <span className="feature-detail-label">Status</span>
-                      <span className="feature-detail-value">{feature.navigationalStatus}</span>
-                    </div>
-                  )}
-                  {feature?.speedOverGround !== undefined && (
-                    <div className="feature-detail">
-                      <span className="feature-detail-label">Speed</span>
-                      <span className="feature-detail-value">{feature.speedOverGround} knots</span>
-                    </div>
-                  )}
-                  {feature?.courseOverGround !== undefined && (
-                    <div className="feature-detail">
-                      <span className="feature-detail-label">Course</span>
-                      <span className="feature-detail-value">{feature.courseOverGround}°</span>
-                    </div>
-                  )}
-                  {feature?.trueHeading !== undefined && (
-                    <div className="feature-detail">
-                      <span className="feature-detail-label">Heading</span>
-                      <span className="feature-detail-value">{feature.trueHeading}°</span>
-                    </div>
-                  )}
-                  {feature?.msgtime && (
-                    <div className="feature-detail">
-                      <span className="feature-detail-label">Last Update</span>
-                      <span className="feature-detail-value">{feature.msgtime}</span>
-                    </div>
-                  )}
-                </div>
-              </ObcElevatedCard>
-            ))}
-          </div>
-        )}
+      <div className="ais-live-view__panel-wrap">
+        <AISMapParameterPanel
+          streamState={{
+            isStreaming,
+            isLoadingGPS,
+            error: error ?? undefined,
+            vesselCount: features.length,
+          }}
+          settings={panelSettings}
+          onSetShouldStream={setShouldStream}
+          onUseGPSLocation={handleUseGPSLocation}
+          onSettingsChange={handlePanelSettingsChange}
+        />
       </div>
     </div>
   );

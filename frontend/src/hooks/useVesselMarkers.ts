@@ -7,6 +7,7 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { AISData } from "../types/aisData";
+import type { VesselIconSet } from "../utils/vesselIconMapper";
 import {
   createVesselMarker,
   getVesselMarkerRotation,
@@ -15,9 +16,11 @@ import {
 export function useVesselMarkers(
   map: maplibregl.Map | null,
   vessels: AISData[] | undefined,
-  onVesselClick: (vessel: AISData) => void
+  onVesselClick: (vessel: AISData) => void,
+  iconSet: VesselIconSet = "generic"
 ): void {
   const markersMapRef = useRef<Map<number, maplibregl.Marker>>(new Map());
+  const lastIconSetRef = useRef<VesselIconSet>(iconSet);
 
   useEffect(() => {
     if (!map || !vessels) {
@@ -27,6 +30,14 @@ export function useVesselMarkers(
       });
       markersMapRef.current.clear();
       return;
+    }
+
+    if (lastIconSetRef.current !== iconSet) {
+      markersMapRef.current.forEach((marker) => {
+        marker.remove();
+      });
+      markersMapRef.current.clear();
+      lastIconSetRef.current = iconSet;
     }
 
     const currentVesselIds = new Set<number>();
@@ -44,16 +55,21 @@ export function useVesselMarkers(
         existing.setRotation(getVesselMarkerRotation(vessel));
       } else {
         // Create new marker
-        const marker = createVesselMarker(map, vessel, (v) => {
-          // Search for latest vessel data in vessels array
-          const latestVessel = vessels.find((vessel) => vessel.mmsi === v.mmsi);
-          if (latestVessel) {
-            onVesselClick(latestVessel);
-            if (latestVessel.longitude && latestVessel.latitude) {
-              map.panTo([latestVessel.longitude, latestVessel.latitude], { duration: 500 });
+        const marker = createVesselMarker(
+          map,
+          vessel,
+          (v) => {
+            // Search for latest vessel data in vessels array
+            const latestVessel = vessels.find((vessel) => vessel.mmsi === v.mmsi);
+            if (latestVessel) {
+              onVesselClick(latestVessel);
+              if (latestVessel.longitude && latestVessel.latitude) {
+                map.panTo([latestVessel.longitude, latestVessel.latitude], { duration: 500 });
+              }
             }
-          }
-        });
+          },
+          iconSet
+        );
         markersMapRef.current.set(vessel.mmsi, marker);
       }
     }
@@ -65,5 +81,5 @@ export function useVesselMarkers(
         markersMapRef.current.delete(mmsi);
       }
     }
-  }, [map, vessels, onVesselClick]);
+  }, [map, vessels, iconSet, onVesselClick]);
 }

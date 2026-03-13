@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { AISData } from "../../types/aisData";
-import getVesselIcon from "../../utils/vesselIconMapper";
+import getVesselIcon, { type VesselIconSet } from "../../utils/vesselIconMapper";
 import "./AISDataPanel.css";
 import { distanceTo } from "../../utils/geometryMath";
 import { DirectionalVesselIcon } from "../DirectionalVesselIcon/DirectionalVesselIcon";
@@ -20,6 +20,7 @@ interface AISDataPanelProps {
   originVessel: OriginVesselData;
   onClose: () => void;
   useAISData?: boolean;
+  iconSet?: VesselIconSet;
 }
 
 const formatMetric = (value: number | null | undefined, digits = 1): string => {
@@ -62,6 +63,7 @@ export const AISDataPanel: React.FC<AISDataPanelProps> = ({
   originVessel,
   onClose,
   useAISData,
+  iconSet = "generic",
 }) => {
   const cardRef = useRef<ObcPoiCardElement | null>(null);
 
@@ -110,7 +112,7 @@ export const AISDataPanel: React.FC<AISDataPanelProps> = ({
         headerVariant={ObcPoiCardHeaderVariant.Detailed}
         hasCloseButton
       >
-        <span slot="poi-icon">{getVesselIcon(vessel.shipType)}</span>
+        <span slot="poi-icon">{getVesselIcon(vessel, { iconSet, returnType: "icon" })}</span>
 
         {useAISData ? (
           <div className="ais-poi-body">
