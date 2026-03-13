@@ -24,6 +24,8 @@ import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
 import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
 import { apiFetchPublic } from "../lib/api-client";
+import { StreamAlarmPanel } from "../components/app/StreamAlarmPanel";
+import { buildStreamAlerts } from "../utils/streamAlerts";
 import "./AROverlay.css";
 
 const DETECTION_STALE_RECOVERY_MS = 10_000;
@@ -77,10 +79,18 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     warmStreamIds,
     refreshStreams,
     runningStreams,
+    streamError,
   } = useStreamTabs({ externalStreamId });
 
-  const { videoSession, imageLoaded, showVideoLoader, setControlError, handleVideoStatusChange } =
-    useVideoSessionRecovery({ streamKey: activeTabId });
+  const {
+    videoSession,
+    videoState,
+    imageLoaded,
+    showVideoLoader,
+    controlError,
+    setControlError,
+    handleVideoStatusChange,
+  } = useVideoSessionRecovery({ streamKey: activeTabId });
 
   const showingAuthGate = activeIsSetup && !auth.session;
   const mediaAuthLoading = Boolean(auth.session) && auth.authBridgeStatus === "loading";
@@ -102,12 +112,21 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   }, [showingAuthGate, onAuthGateVisibleChange]);
 
   const detectionWsUrl = useMemo(() => DETECTION_CONFIG.WS_URL(activeTabId), [activeTabId]);
-  const { vessels, videoInfo, lastMessageAtMs, connect, disconnect } = useDetectionsWebSocket({
+  const detectionsEnabled =
+    wsEnabled &&
+    !activeIsMockData &&
+    (activeTabId !== FUSION_TAB_ID || Boolean(fusionRunningStream));
+  const {
+    vessels,
+    videoInfo,
+    lastMessageAtMs,
+    error: detectionsError,
+    isConnected: detectionsConnected,
+    connect,
+    disconnect,
+  } = useDetectionsWebSocket({
     url: detectionWsUrl,
-    enabled:
-      wsEnabled &&
-      !activeIsMockData &&
-      (activeTabId !== FUSION_TAB_ID || Boolean(fusionRunningStream)),
+    enabled: detectionsEnabled,
   });
   const { vessels: mockDataVessels, videoInfo: mockDataVideoInfo } = useDetectionsWebSocket({
     url: MOCK_DATA_CONFIG.WS_URL,
@@ -117,6 +136,56 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
   const streamsById = useMemo(
     () => new Map(runningStreams.map((stream) => [stream.stream_id, stream] as const)),
     [runningStreams]
+  );
+  const detectionsStale = useMemo(() => {
+    if (
+      !detectionsEnabled ||
+      activeIsSetup ||
+      activeIsMockData ||
+      !mediaAuthReady ||
+      !effectiveActiveStream ||
+      !imageLoaded
+    ) {
+      return false;
+    }
+    const now = Date.now();
+    return lastMessageAtMs <= 0 || now - lastMessageAtMs > DETECTION_STALE_RECOVERY_MS;
+  }, [
+    activeIsMockData,
+    activeIsSetup,
+    detectionsEnabled,
+    effectiveActiveStream,
+    imageLoaded,
+    lastMessageAtMs,
+    mediaAuthReady,
+  ]);
+  const noStreamAvailable =
+    isTabsHydrated && !activeIsSetup && !activeIsMockData && !effectiveActiveStream;
+  const streamAlerts = useMemo(
+    () =>
+      buildStreamAlerts({
+        videoError: noStreamAvailable ? "Video stream not available" : videoState.error,
+        videoRecovery: controlError,
+        dataError: detectionsError,
+        dataRecovery: detectionsStale ? "Detection stream recovery in progress." : null,
+        dataConnected: noStreamAvailable ? false : detectionsConnected,
+        dataStale: detectionsStale,
+        systemError: mediaAuthError
+          ? auth.authBridgeError || "Media authentication failed."
+          : streamError,
+        systemRecovery: null,
+      }),
+    [
+      auth.authBridgeError,
+      controlError,
+      detectionsConnected,
+      detectionsError,
+      detectionsStale,
+      mediaAuthError,
+      noStreamAvailable,
+      streamError,
+      videoState.error,
+    ]
   );
 
   const handleActiveVideoReady = useCallback((videoEl: HTMLVideoElement) => {
@@ -381,15 +450,12 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
 
             {isTabsHydrated &&
               !activeIsSetup &&
-              !activeIsMockData &&
-              !effectiveActiveStream &&
-              activeTabId !== FUSION_TAB_ID &&
-              "No running streams. Join or create one from the sidebar."}
-
-            {isTabsHydrated &&
-              !activeIsSetup &&
               activeTabId === FUSION_TAB_ID &&
               !fusionRunningStream && <WorkspaceLoader label="Starting Fusion stream..." />}
+
+            {isTabsHydrated && !activeIsSetup && !activeIsMockData && streamAlerts.length > 0 && (
+              <StreamAlarmPanel alerts={streamAlerts} />
+            )}
 
             {isTabsHydrated && !activeIsSetup && !activeIsMockData && effectiveActiveStream && (
               <>
@@ -397,21 +463,6 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                   <WorkspaceLoader
                     label={mediaAuthLoading ? "Authorizing media..." : "Preparing media..."}
                   />
-                )}
-
-                {mediaAuthError && (
-                  <div className="stream-error">
-                    <div className="stream-error__message">
-                      {auth.authBridgeError || "Media authentication failed."}
-                    </div>
-                    <button
-                      type="button"
-                      className="stream-error__action"
-                      onClick={auth.retryAuthBridge}
-                    >
-                      Retry auth
-                    </button>
-                  </div>
                 )}
 
                 {mediaAuthReady &&
@@ -452,7 +503,6 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                     }
                   />
                 )}
-
                 {mediaAuthReady && arControls.detectionVisible && (
                   <PoiErrorBoundary>
                     <PoiOverlay

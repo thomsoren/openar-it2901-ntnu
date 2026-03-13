@@ -136,3 +136,27 @@
   padding: 6px 10px;
   cursor: pointer;
 }
+
+.stream-alarm-panel {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 31;
+  width: min(420px, calc(100% - 32px));
+  pointer-events: auto;
+}
+
+.stream-alarm-panel__item {
+  display: block;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .stream-alarm-panel {
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 24px);
+  }
+}
