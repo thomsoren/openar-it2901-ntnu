@@ -20,6 +20,7 @@ class StreamConfig(BaseModel):
     stream_id: str = Field(..., min_length=1, pattern=app_settings.stream_id_pattern.pattern)
     source_url: str = Field(..., min_length=1)
     loop: bool = True
+    owner_user_id: str | None = None
 
 
 @dataclass
@@ -63,6 +64,7 @@ class StreamHandle:
             "stream_id": self.config.stream_id,
             "source_url": self.config.source_url,
             "loop": self.config.loop,
+            "owner_user_id": self.config.owner_user_id,
             "status": "running" if self.is_alive else "stopped",
             "ffmpeg_pid": self.ffmpeg_process.pid if self.ffmpeg_process else None,
             "ffmpeg_alive": ffmpeg_alive,

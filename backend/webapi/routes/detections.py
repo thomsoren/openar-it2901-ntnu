@@ -6,6 +6,7 @@ from fastapi import APIRouter, WebSocket
 from redis.exceptions import RedisError
 from starlette.websockets import WebSocketDisconnect
 
+from auth.deps import authenticate_websocket
 from webapi import state
 from settings import app_settings
 from common.config import detections_channel
@@ -41,12 +42,19 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
         await websocket.close(code=1008, reason="invalid_stream_id")
         return
 
-    await websocket.accept()
+    user = await authenticate_websocket(websocket)
+    if user is None:
+        return
 
     if not state.orchestrator:
-        await _safe_ws_send_json(websocket, {"type": "error", "message": "Orchestrator unavailable"})
-        await websocket.close(code=1011)
+        await websocket.close(code=1011, reason="Orchestrator unavailable")
         return
+
+    if not user.is_admin and not state.orchestrator.is_stream_owner(stream_id, user.id):
+        await websocket.close(code=1008, reason="Access denied")
+        return
+
+    await websocket.accept()
 
     viewer_attached = False
     try:
@@ -92,7 +100,6 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
     except RuntimeError:
         logger.debug("WebSocket runtime error for channel '%s'", channel)
     except Exception as exc:
-        # Intentional API boundary catch-all to keep websocket failures from crashing the app.
         logger.exception("Detections websocket stream failed for channel '%s': %s", channel, exc)
     finally:
         try:

@@ -6,17 +6,20 @@ import logging
 import math
 import os
 import subprocess
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, Query, Response, UploadFile
 from pydantic import BaseModel
 
+from auth.deps import get_current_user
 from cv.publisher import get_fusion_publisher
+from db.models import AppUser
 from sensor_fusion import fusion_config
 from webapi.errors import (
     bad_gateway,
     bad_request,
     conflict,
+    forbidden,
     not_found,
     service_unavailable,
     wrap_internal,
@@ -42,13 +45,12 @@ from storage import s3
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# API boundary note: handlers intentionally catch broad exceptions and map
-# them to HTTP errors so failures are returned consistently.
-
 FUSION_STREAM_ID = "fusion"
 STREAM_UPLOAD_MAX_DURATION_S = float(os.getenv("STREAM_UPLOAD_MAX_DURATION_S", "300"))
 STREAM_UPLOAD_MAX_SIZE_MB = float(os.getenv("STREAM_UPLOAD_MAX_SIZE_MB", "300"))
 STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
+
+SYSTEM_STREAM_IDS = frozenset({FUSION_STREAM_ID, "mock-data", "default"})
 
 
 class StreamStartRequest(BaseModel):
@@ -65,6 +67,19 @@ def _require_orchestrator() -> WorkerOrchestrator:
 def _validate_stream_id(stream_id: str) -> None:
     if not app_settings.stream_id_pattern.fullmatch(stream_id):
         bad_request("Invalid stream_id")
+
+
+def _require_stream_access(
+    orchestrator: WorkerOrchestrator,
+    stream_id: str,
+    user: AppUser,
+) -> None:
+    if user.is_admin:
+        return
+    if stream_id in SYSTEM_STREAM_IDS:
+        return
+    if not orchestrator.is_stream_owner(stream_id, user.id):
+        forbidden("You do not have access to this stream")
 
 
 def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamConfig) -> StreamHandle:
@@ -147,7 +162,11 @@ async def _validate_s3_source_limits(original_source_url: str | None, resolved_s
 
 
 @router.post("/api/streams/{stream_id}/start", status_code=201)
-async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str, Any]:
+async def start_stream(
+    stream_id: str,
+    request: StreamStartRequest,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+) -> dict[str, Any]:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
 
@@ -159,6 +178,7 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
         existing_handle = None
 
     if existing_handle is not None:
+        _require_stream_access(orchestrator, stream_id, current_user)
         if stream_id == FUSION_STREAM_ID:
             try:
                 await asyncio.get_running_loop().run_in_executor(
@@ -176,6 +196,15 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
             "playback_urls": build_stream_playback_payload(stream_id),
         }
 
+    if (
+        stream_id not in SYSTEM_STREAM_IDS
+        and not current_user.is_admin
+        and orchestrator.count_user_streams(current_user.id) >= app_settings.max_streams_per_user
+    ):
+        service_unavailable(
+            f"You have reached the maximum of {app_settings.max_streams_per_user} concurrent streams"
+        )
+
     try:
         source_url = await asyncio.get_running_loop().run_in_executor(
             None, resolve_stream_source, request.source_url
@@ -186,7 +215,12 @@ async def start_stream(stream_id: str, request: StreamStartRequest) -> dict[str,
         bad_request("source_url is required for this stream")
     await _validate_s3_source_limits(request.source_url, source_url)
 
-    config = StreamConfig(stream_id=stream_id, source_url=request.source_url or source_url, loop=request.loop)
+    config = StreamConfig(
+        stream_id=stream_id,
+        source_url=request.source_url or source_url,
+        loop=request.loop,
+        owner_user_id=current_user.id,
+    )
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
     )
@@ -219,9 +253,13 @@ async def upload_and_start_stream(
 
 
 @router.delete("/api/streams/{stream_id}", status_code=204, response_class=Response)
-async def stop_stream(stream_id: str) -> Response:
+async def stop_stream(
+    stream_id: str,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+) -> Response:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
+    _require_stream_access(orchestrator, stream_id, current_user)
 
     try:
         orchestrator.stop_stream(stream_id)
@@ -231,20 +269,25 @@ async def stop_stream(stream_id: str) -> Response:
         try:
             get_fusion_publisher().fusion_svc.clear(stream_id)
         except Exception:
-            # Fusion enrichment may not be configured for this stream.
             pass
     return Response(status_code=204)
 
 
 @router.get("/api/streams")
-async def list_streams() -> dict[str, Any]:
+async def list_streams(
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+) -> dict[str, Any]:
     orchestrator = _require_orchestrator()
-    streams = [augment_stream_payload(stream) for stream in orchestrator.list_streams()]
+    owner_filter = None if current_user.is_admin else current_user.id
+    streams = [augment_stream_payload(stream) for stream in orchestrator.list_streams(owner_filter)]
     return {"streams": streams, "max_workers": app_settings.max_workers}
 
 
 @router.get("/api/streams/{stream_id}/playback")
-async def get_stream_playback(stream_id: str) -> dict[str, Any]:
+async def get_stream_playback(
+    stream_id: str,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+) -> dict[str, Any]:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
 
@@ -253,6 +296,7 @@ async def get_stream_playback(stream_id: str) -> dict[str, Any]:
     except StreamNotFoundError as exc:
         not_found(str(exc))
 
+    _require_stream_access(orchestrator, stream_id, current_user)
     return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id)}
 
 

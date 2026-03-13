@@ -11,14 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_default_source() -> str | None:
-    if VIDEO_PATH and VIDEO_PATH.exists():
+    # Prefer S3 when configured — use media_assets "video" asset
+    if s3.s3_enabled():
+        try:
+            key = s3.resolve_system_asset_key("video")
+            return f"s3://{key}"
+        except Exception:
+            pass
+    # Fall back to local file
+    if VIDEO_PATH and VIDEO_PATH.is_file():
         return str(VIDEO_PATH)
-    # Fall back to S3 system asset if local file not present
-    try:
-        key = s3.resolve_system_asset_key("video")
-        return f"s3://{key}"
-    except Exception:
-        return None
+    return None
 
 
 def _download_s3_to_cache(s3_key: str) -> str:

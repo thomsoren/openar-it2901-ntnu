@@ -4,6 +4,10 @@ Runs on an IDUN Slurm compute node. Receives JPEG frames from the
 Coolify backend, runs RT-DETR + ByteTrack inference on the GPU, and
 sends detection results back over the same WebSocket connection.
 
+Supports batched multi-stream inference: frames from multiple streams
+are accumulated and processed in a single GPU forward pass, matching
+the local InferenceThread's batching behavior.
+
 Usage:
     export COOLIFY_WS_URL=wss://api.demo.bridgable.ai/api/idun/ws
     export IDUN_API_KEY=your-shared-secret
@@ -38,6 +42,9 @@ HEARTBEAT_INTERVAL_S = 30.0
 RECONNECT_BASE_S = 1.0
 RECONNECT_MAX_S = 30.0
 STATUS_LOG_INTERVAL_S = 30.0
+
+MAX_BATCH_SIZE = int(os.environ.get("IDUN_MAX_BATCH_SIZE", "10"))
+BATCH_FILL_TIMEOUT_S = float(os.environ.get("IDUN_BATCH_FILL_TIMEOUT_S", "0.02"))
 
 shutdown_event = asyncio.Event()
 
@@ -117,24 +124,64 @@ async def _process_loop(
     ws: websockets.WebSocketClientProtocol,
     detector: RTDETRDetector,
 ) -> None:
-    """Receive frames and control messages, send back detections."""
-    is_paused = True
-    inference_count = 0
-    total_detections_sent = 0
-    last_inference_time = time.monotonic()
-    last_status_log = time.monotonic()
-    current_stream_id = ""
+    """Receive frames and control messages, batch inference, send back detections.
+
+    Two concurrent tasks:
+    - _receive_task: reads WebSocket messages, decodes frames into a buffer,
+      handles control messages (pause/resume/stream_added/stream_removed/ping)
+    - _inference_task: periodically collects a batch from the buffer, runs
+      batched predict + per-stream tracking, sends detection responses
+    """
+    state = _WorkerState(detector)
+
+    receive = asyncio.create_task(_receive_task(ws, state))
+    inference = asyncio.create_task(_inference_task(ws, state))
+
+    done, pending = await asyncio.wait(
+        [receive, inference],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    for task in done:
+        if task.exception() is not None:
+            raise task.exception()
+
+
+class _WorkerState:
+    """Shared mutable state between receive and inference tasks."""
+
+    def __init__(self, detector: RTDETRDetector) -> None:
+        self.detector = detector
+        self.is_paused = True
+        self.active_streams: set[str] = set()
+        self.pending_frames: dict[str, tuple[dict, np.ndarray]] = {}
+        self.frame_available = asyncio.Event()
+        self.per_stream_inference_count: dict[str, int] = {}
+        self.per_stream_last_inf_time: dict[str, float] = {}
+        self.total_detections_sent = 0
+        self.last_status_log = time.monotonic()
+
+
+async def _receive_task(
+    ws: websockets.WebSocketClientProtocol,
+    state: _WorkerState,
+) -> None:
+    """Read messages from WebSocket, decode frames into buffer, handle control."""
+    loop = asyncio.get_running_loop()
 
     async for message in ws:
         if shutdown_event.is_set():
             break
 
-        # Binary message = frame data
         if isinstance(message, bytes):
-            if is_paused:
+            if state.is_paused:
                 continue
 
-            # Parse binary frame: [4-byte header len][json header][jpeg data]
             if len(message) < 4:
                 continue
             header_len = struct.unpack(">I", message[:4])[0]
@@ -143,82 +190,74 @@ async def _process_loop(
 
             header = json.loads(message[4 : 4 + header_len])
             jpeg_data = message[4 + header_len :]
+            stream_id = header.get("stream_id", "")
 
-            # Decode JPEG
-            frame = cv2.imdecode(
-                np.frombuffer(jpeg_data, np.uint8), cv2.IMREAD_COLOR
-            )
-            if frame is None:
-                logger.warning("Failed to decode JPEG frame %d", header.get("frame_index", -1))
+            if stream_id not in state.active_streams:
                 continue
 
-            # Run inference
-            detections = detector.detect(frame, track=True)
-
-            # Calculate inference FPS
-            now = time.monotonic()
-            elapsed = now - last_inference_time
-            inf_fps = 1.0 / elapsed if elapsed > 0 else 0.0
-            last_inference_time = now
-            inference_count += 1
-
-            if inference_count == 1:
-                logger.info(
-                    "First frame processed (idx=%d, %dx%d)",
+            frame = await loop.run_in_executor(
+                None,
+                lambda data=jpeg_data: cv2.imdecode(
+                    np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR
+                ),
+            )
+            if frame is None:
+                logger.warning(
+                    "Failed to decode JPEG frame %d for stream '%s'",
                     header.get("frame_index", -1),
-                    frame.shape[1],
-                    frame.shape[0],
+                    stream_id,
                 )
+                continue
 
-            total_detections_sent += len(detections)
-
-            # Periodic status log
-            now_status = time.monotonic()
-            if now_status - last_status_log >= STATUS_LOG_INTERVAL_S:
-                logger.info(
-                    "Status: stream='%s' frames=%d detections_sent=%d inference_fps=%.1f paused=%s",
-                    current_stream_id, inference_count, total_detections_sent, inf_fps, is_paused,
-                )
-                last_status_log = now_status
-
-            # Build response (same format as InferenceThread payload)
-            vessels = [
-                {
-                    "detection": d.model_dump(),
-                    "vessel": None,
-                }
-                for d in detections
-            ]
-
-            response = json.dumps({
-                "type": "detections",
-                "stream_id": header.get("stream_id", ""),
-                "frame_index": header.get("frame_index", 0),
-                "timestamp_ms": header.get("timestamp_ms", 0.0),
-                "fps": header.get("fps", 0.0),
-                "inference_fps": round(inf_fps, 1),
-                "vessels": vessels,
-            })
-            await ws.send(response)
+            state.pending_frames[stream_id] = (header, frame)
+            state.frame_available.set()
             continue
 
-        # Text message = control
         msg = json.loads(message)
         msg_type = msg.get("type")
 
         if msg_type == "pause":
-            if not is_paused:
+            if not state.is_paused:
                 logger.info("Paused (no active viewers)")
-                is_paused = True
+                state.is_paused = True
 
         elif msg_type == "resume":
+            # Support both old single-stream and new multi-stream protocol
+            stream_ids = msg.get("stream_ids")
+            if stream_ids is not None:
+                state.active_streams = set(stream_ids)
+                logger.info("Resumed for streams: %s", stream_ids)
+            else:
+                stream_id = msg.get("stream_id", "")
+                if stream_id:
+                    state.active_streams.add(stream_id)
+                logger.info("Resumed for stream '%s'", stream_id)
+            state.is_paused = False
+
+        elif msg_type == "stream_added":
             stream_id = msg.get("stream_id", "")
-            logger.info("Resumed for stream '%s'", stream_id)
-            is_paused = False
-            current_stream_id = stream_id
-            inference_count = 0
+            logger.info(
+                "Stream added: '%s' (%dx%d @ %.1f FPS)",
+                stream_id,
+                msg.get("width", 0),
+                msg.get("height", 0),
+                msg.get("fps", 0.0),
+            )
+            state.active_streams.add(stream_id)
+            state.detector.reset_tracker_for_stream(stream_id)
+            state.per_stream_inference_count[stream_id] = 0
+
+        elif msg_type == "stream_removed":
+            stream_id = msg.get("stream_id", "")
+            logger.info("Stream removed: '%s'", stream_id)
+            state.active_streams.discard(stream_id)
+            state.pending_frames.pop(stream_id, None)
+            state.detector.reset_tracker_for_stream(stream_id)
+            state.per_stream_inference_count.pop(stream_id, None)
+            state.per_stream_last_inf_time.pop(stream_id, None)
 
         elif msg_type == "stream_changed":
+            # Backward compat: treat as remove-old + add-new
             stream_id = msg.get("stream_id", "")
             logger.info(
                 "Stream changed to '%s' (%dx%d @ %.1f FPS)",
@@ -227,9 +266,13 @@ async def _process_loop(
                 msg.get("height", 0),
                 msg.get("fps", 0.0),
             )
-            detector.reset_tracker()
-            current_stream_id = stream_id
-            inference_count = 0
+            # Reset all trackers and set this as the only active stream
+            for old_id in list(state.active_streams):
+                state.detector.reset_tracker_for_stream(old_id)
+            state.active_streams = {stream_id}
+            state.pending_frames.clear()
+            state.detector.reset_tracker_for_stream(stream_id)
+            state.per_stream_inference_count = {stream_id: 0}
 
         elif msg_type == "ping":
             await ws.send(json.dumps({"type": "pong"}))
@@ -239,6 +282,118 @@ async def _process_loop(
             logger.debug("Unknown message type: %s", msg_type)
 
 
+async def _inference_task(
+    ws: websockets.WebSocketClientProtocol,
+    state: _WorkerState,
+) -> None:
+    """Collect batches from the frame buffer and run batched inference."""
+    loop = asyncio.get_running_loop()
+
+    while not shutdown_event.is_set():
+        # Wait until at least one frame is available
+        try:
+            await asyncio.wait_for(state.frame_available.wait(), timeout=1.0)
+        except asyncio.TimeoutError:
+            continue
+        state.frame_available.clear()
+
+        if state.is_paused or not state.pending_frames:
+            continue
+
+        # Collect batch: wait up to BATCH_FILL_TIMEOUT_S for more frames
+        deadline = time.monotonic() + BATCH_FILL_TIMEOUT_S
+        while len(state.pending_frames) < min(MAX_BATCH_SIZE, len(state.active_streams)):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                await asyncio.wait_for(
+                    state.frame_available.wait(),
+                    timeout=remaining,
+                )
+                state.frame_available.clear()
+            except asyncio.TimeoutError:
+                break
+
+        # Snapshot and clear the buffer
+        batch_items: list[tuple[str, dict, np.ndarray]] = []
+        for stream_id in list(state.pending_frames):
+            if stream_id not in state.active_streams:
+                state.pending_frames.pop(stream_id, None)
+                continue
+            header, frame = state.pending_frames.pop(stream_id)
+            batch_items.append((stream_id, header, frame))
+            if len(batch_items) >= MAX_BATCH_SIZE:
+                break
+
+        if not batch_items:
+            continue
+
+        frames = [item[2] for item in batch_items]
+
+        # Run batched inference in executor to avoid blocking the event loop
+        results_list = await loop.run_in_executor(
+            None, state.detector.predict_batch, frames
+        )
+
+        now = time.monotonic()
+
+        # Per-stream: track + send response
+        for i, (stream_id, header, frame) in enumerate(batch_items):
+            tracked_detections = state.detector.update_tracker(
+                stream_id, results_list[i]
+            )
+
+            count = state.per_stream_inference_count.get(stream_id, 0)
+            last_time = state.per_stream_last_inf_time.get(stream_id, now)
+            elapsed = now - last_time
+            inf_fps = 1.0 / elapsed if elapsed > 0 and count > 0 else 0.0
+            state.per_stream_last_inf_time[stream_id] = now
+            count += 1
+            state.per_stream_inference_count[stream_id] = count
+
+            if count == 1:
+                logger.info(
+                    "First frame processed for '%s' (idx=%d, %dx%d)",
+                    stream_id,
+                    header.get("frame_index", -1),
+                    frame.shape[1],
+                    frame.shape[0],
+                )
+
+            state.total_detections_sent += len(tracked_detections)
+
+            vessels = [
+                {
+                    "detection": d.model_dump(),
+                    "vessel": None,
+                }
+                for d in tracked_detections
+            ]
+
+            response = json.dumps({
+                "type": "detections",
+                "stream_id": stream_id,
+                "frame_index": header.get("frame_index", 0),
+                "timestamp_ms": header.get("timestamp_ms", 0.0),
+                "fps": header.get("fps", 0.0),
+                "inference_fps": round(inf_fps, 1),
+                "vessels": vessels,
+            })
+            await ws.send(response)
+
+        # Periodic status log
+        if now - state.last_status_log >= STATUS_LOG_INTERVAL_S:
+            logger.info(
+                "Status: active_streams=%s batch_size=%d total_detections=%d paused=%s",
+                list(state.active_streams),
+                len(batch_items),
+                state.total_detections_sent,
+                state.is_paused,
+            )
+            state.last_status_log = now
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="IDUN inference worker")
     parser.add_argument("--model", default="best.pt", help="Path to RT-DETR model weights")
@@ -246,7 +401,11 @@ def main() -> None:
 
     logger.info("Loading model: %s", args.model)
     detector = RTDETRDetector(model_path=args.model)
-    logger.info("Model loaded, starting worker")
+    logger.info(
+        "Model loaded (max_batch=%d, fill_timeout=%.3fs), starting worker",
+        MAX_BATCH_SIZE,
+        BATCH_FILL_TIMEOUT_S,
+    )
 
     asyncio.run(run_worker(detector))
 

@@ -10,6 +10,23 @@ import type { ReactElement } from "react";
 import { AISData } from "../../types/aisData";
 import getVesselIcon from "../../utils/vesselIconMapper";
 
+// Utility functions
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function getVesselMarkerRotation(vessel: AISData): number {
+  if (isFiniteNumber(vessel.trueHeading)) {
+    return vessel.trueHeading;
+  }
+
+  if (isFiniteNumber(vessel.courseOverGround)) {
+    return vessel.courseOverGround;
+  }
+
+  return 0;
+}
+
 // GeoJSON helpers
 // ---------------------------------------------------------------------------
 
@@ -127,12 +144,12 @@ export function createVesselMarker(
     pitchAlignment: "map",
   })
     .setLngLat([vessel.longitude ?? 0, vessel.latitude ?? 0])
-    .setRotation(vessel.courseOverGround || 0)
+    .setRotation(getVesselMarkerRotation(vessel))
     .setPopup(popup)
     .addTo(map);
 
   element.addEventListener("click", () => {
-    if (vessel.longitude && vessel.latitude) {
+    if (isFiniteNumber(vessel.longitude) && isFiniteNumber(vessel.latitude)) {
       onClick(vessel);
     }
   });

@@ -49,7 +49,7 @@ def _load_sample(sample_id: str | None) -> SampleConfig | None:
 
 
 def _resolve_local_path(sample_path: Path | None, default_path: Path | None) -> Path | None:
-    if sample_path and sample_path.exists():
+    if sample_path and sample_path.is_file():
         return sample_path
     return default_path
 
