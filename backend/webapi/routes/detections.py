@@ -11,6 +11,7 @@ from webapi import state
 from settings import app_settings
 from common.config import detections_channel
 from orchestrator import ResourceLimitExceededError, StreamNotFoundError
+from webapi.routes.streams import SYSTEM_STREAM_IDS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,7 +51,7 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
         await websocket.close(code=1011, reason="Orchestrator unavailable")
         return
 
-    if not user.is_admin and not state.orchestrator.is_stream_owner(stream_id, user.id):
+    if not user.is_admin and stream_id not in SYSTEM_STREAM_IDS and not state.orchestrator.is_stream_owner(stream_id, user.id):
         await websocket.close(code=1008, reason="Access denied")
         return
 
