@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
@@ -12,7 +12,9 @@ import { useClock } from "./hooks/useClock";
 import { useNavigation } from "./hooks/useNavigation";
 import { AppTopBar } from "./components/app/AppTopBar";
 import { NavigationPanel } from "./components/app/NavigationPanel";
+import { StreamAlarmPanel } from "./components/app/StreamAlarmPanel";
 import { UserPanel } from "./components/app/UserPanel";
+import type { StreamAlert } from "./utils/streamAlerts";
 
 const handleBrillianceChange = (event: CustomEvent) => {
   document.documentElement.setAttribute("data-obc-theme", event.detail.value);
@@ -34,8 +36,17 @@ function App() {
   } = nav;
 
   const [isOnAuthGate, setIsOnAuthGate] = useState(false);
+  const [streamAlerts, setStreamAlerts] = useState<StreamAlert[]>([]);
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  const [showAlertPanel, setShowAlertPanel] = useState(false);
   const userPanelRef = useRef<HTMLDivElement>(null);
+  const alertPanelRef = useRef<HTMLDivElement>(null);
   const brillianceRef = useRef<HTMLDivElement>(null);
+  const visibleAlerts = useMemo(
+    () => streamAlerts.filter((alert) => !dismissedAlerts.has(alert.id)),
+    [dismissedAlerts, streamAlerts]
+  );
+  const isAlertPanelOpen = showAlertPanel && visibleAlerts.length > 0;
 
   const handleAuthGateVisibleChange = (visible: boolean) => {
     setIsOnAuthGate(visible);
@@ -52,6 +63,9 @@ function App() {
       const topbar = document.querySelector("obc-top-bar");
       if (topbar?.contains(target)) return;
 
+      if (isAlertPanelOpen && alertPanelRef.current && !alertPanelRef.current.contains(target)) {
+        setShowAlertPanel(false);
+      }
       if (showUserPanel && userPanelRef.current && !userPanelRef.current.contains(target)) {
         setShowUserPanel(false);
       }
@@ -62,21 +76,36 @@ function App() {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [setShowBrillianceMenu, setShowUserPanel, showBrillianceMenu, showUserPanel]);
+  }, [
+    setShowBrillianceMenu,
+    setShowUserPanel,
+    isAlertPanelOpen,
+    showBrillianceMenu,
+    showUserPanel,
+  ]);
 
   const handleNavigationMenuToggle = () => {
+    setShowAlertPanel(false);
     setShowNavigationMenu((previous) => !previous);
   };
 
   const handleBrillianceToggle = () => {
+    setShowAlertPanel(false);
     setShowUserPanel(false);
     setShowBrillianceMenu((previous) => !previous);
+  };
+
+  const handleAlertPanelToggle = () => {
+    setShowBrillianceMenu(false);
+    setShowUserPanel(false);
+    setShowAlertPanel((previous) => !previous);
   };
 
   const handleUserPanelToggle = () => {
     if (isOnAuthGate) {
       return;
     }
+    setShowAlertPanel(false);
     setShowBrillianceMenu(false);
     setShowUserPanel((previous) => !previous);
   };
@@ -85,18 +114,35 @@ function App() {
     setShowUserPanel(false);
   };
 
+  const handleDismissAlert = (id: string) => {
+    setDismissedAlerts((prev) => new Set(prev).add(id));
+  };
+
   return (
     <>
       <AppTopBar
         pageLabel={pageLabels[currentPage]}
         clockDate={clockDate}
         isOnAuthGate={isOnAuthGate}
+        alertCount={visibleAlerts.length}
+        showAlertPanel={isAlertPanelOpen}
         showNavigationMenu={showNavigationMenu}
         showUserPanel={showUserPanel}
+        onToggleAlertPanel={handleAlertPanelToggle}
         onToggleNavigationMenu={handleNavigationMenuToggle}
         onToggleBrillianceMenu={handleBrillianceToggle}
         onToggleUserPanel={handleUserPanelToggle}
       />
+
+      {isAlertPanelOpen && (
+        <div ref={alertPanelRef} className="topbar-alert-panel">
+          <StreamAlarmPanel
+            alerts={streamAlerts}
+            dismissed={dismissedAlerts}
+            onDismiss={handleDismissAlert}
+          />
+        </div>
+      )}
 
       {showUserPanel && (
         <div ref={userPanelRef}>
@@ -122,7 +168,12 @@ function App() {
         <Routes>
           <Route
             path="/ar"
-            element={<AROverlay onAuthGateVisibleChange={handleAuthGateVisibleChange} />}
+            element={
+              <AROverlay
+                onAuthGateVisibleChange={handleAuthGateVisibleChange}
+                onAlertsChange={setStreamAlerts}
+              />
+            }
           />
           <Route path="/ais" element={<Ais />} />
           <Route path="/media-library" element={<MediaLibrary />} />

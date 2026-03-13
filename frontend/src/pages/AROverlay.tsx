@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import {
@@ -24,8 +24,7 @@ import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
 import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
 import { apiFetchPublic } from "../lib/api-client";
-import { StreamAlarmPanel } from "../components/app/StreamAlarmPanel";
-import { buildStreamAlerts } from "../utils/streamAlerts";
+import { buildStreamAlerts, type StreamAlert } from "../utils/streamAlerts";
 import "./AROverlay.css";
 
 const DETECTION_STALE_RECOVERY_MS = 10_000;
@@ -34,6 +33,7 @@ const DETECTION_RECOVERY_COOLDOWN_MS = 8_000;
 interface AROverlayProps {
   externalStreamId?: string | null;
   onAuthGateVisibleChange?: (visible: boolean) => void;
+  onAlertsChange?: (alerts: StreamAlert[]) => void;
 }
 
 function WorkspaceLoader({ label }: { label: string }) {
@@ -52,7 +52,11 @@ function WorkspaceLoader({ label }: { label: string }) {
   );
 }
 
-function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlayProps = {}) {
+function AROverlayInner({
+  externalStreamId,
+  onAuthGateVisibleChange,
+  onAlertsChange,
+}: AROverlayProps = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mockDataVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -188,17 +192,10 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     ]
   );
 
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
   useEffect(() => {
-    const activeIds = new Set(streamAlerts.map((a) => a.id));
-    setDismissedAlerts((prev) => {
-      const pruned = new Set([...prev].filter((id) => activeIds.has(id)));
-      return pruned.size === prev.size ? prev : pruned;
-    });
-  }, [streamAlerts]);
-  const handleDismissAlert = useCallback((id: string) => {
-    setDismissedAlerts((prev) => new Set(prev).add(id));
-  }, []);
+    onAlertsChange?.(streamAlerts);
+    return () => onAlertsChange?.([]);
+  }, [onAlertsChange, streamAlerts]);
 
   const handleActiveVideoReady = useCallback((videoEl: HTMLVideoElement) => {
     videoRef.current = videoEl;
@@ -464,14 +461,6 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
               !activeIsSetup &&
               activeTabId === FUSION_TAB_ID &&
               !fusionRunningStream && <WorkspaceLoader label="Starting Fusion stream..." />}
-
-            {isTabsHydrated && !activeIsSetup && !activeIsMockData && streamAlerts.length > 0 && (
-              <StreamAlarmPanel
-                alerts={streamAlerts}
-                dismissed={dismissedAlerts}
-                onDismiss={handleDismissAlert}
-              />
-            )}
 
             {isTabsHydrated && !activeIsSetup && !activeIsMockData && effectiveActiveStream && (
               <>

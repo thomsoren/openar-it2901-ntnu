@@ -1,10 +1,10 @@
-import { useCallback } from "react";
+import { ObcAlertMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/alert-menu/alert-menu";
 import { ObcAlertMenuItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/alert-menu-item/alert-menu-item";
 import { ObcAlertMenuItemStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/alert-menu-item/alert-menu-item";
 import { ObcMessageMenuItemSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/message-menu-item/message-menu-item";
-import { ObcAlertIcon } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/alert-icon/alert-icon";
-import { AlertType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/types";
-import { ObiAlarmNoackIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-alarm-noack-iec";
+import { ObiAlarmUnacknowledgedIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-alarm-unacknowledged-iec";
+import { ObiCautionColorIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-caution-color-iec";
+import { ObiWarningUnacknowledgedIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-warning-unacknowledged-iec";
 import type { StreamAlert } from "../../utils/streamAlerts";
 
 interface StreamAlarmPanelProps {
@@ -14,8 +14,6 @@ interface StreamAlarmPanelProps {
 }
 
 export function StreamAlarmPanel({ alerts, dismissed, onDismiss }: StreamAlarmPanelProps) {
-  const handleAck = useCallback((id: string) => onDismiss(id), [onDismiss]);
-
   const visible = alerts.filter((a) => !dismissed.has(a.id));
   if (visible.length === 0) {
     return null;
@@ -23,21 +21,29 @@ export function StreamAlarmPanel({ alerts, dismissed, onDismiss }: StreamAlarmPa
 
   return (
     <aside className="stream-alarm-panel" aria-live="polite" aria-label="Stream alarms">
-      {visible.map((alert) => (
-        <ObcAlertMenuItem
-          key={alert.id}
-          className="stream-alarm-panel__item"
-          title={alert.title}
-          description={alert.recovery ? `${alert.detail} ${alert.recovery}` : alert.detail}
-          status={ObcAlertMenuItemStatus.Unacknowledged}
-          size={ObcMessageMenuItemSize.DoubleLine}
-          onAckClick={() => handleAck(alert.id)}
-          open
-        >
-          <ObcAlertIcon slot="alert-icon" type={AlertType.Alarm} active acknowledged={false} />
-          <ObiAlarmNoackIec slot="icon" useCssColor />
-        </ObcAlertMenuItem>
-      ))}
+      <ObcAlertMenu>
+        {visible.map((alert) => (
+          <ObcAlertMenuItem
+            key={alert.id}
+            title={alert.title}
+            description={alert.recovery ? `${alert.detail} ${alert.recovery}` : alert.detail}
+            time={new Date().toISOString()}
+            status={ObcAlertMenuItemStatus.Unacknowledged}
+            size={ObcMessageMenuItemSize.DoubleLine}
+            hasIcon
+            open
+            onAckClick={() => onDismiss(alert.id)}
+          >
+            {alert.source === "data" ? (
+              <ObiWarningUnacknowledgedIec slot="icon" useCssColor />
+            ) : alert.source === "system" ? (
+              <ObiCautionColorIec slot="icon" useCssColor />
+            ) : (
+              <ObiAlarmUnacknowledgedIec slot="icon" useCssColor />
+            )}
+          </ObcAlertMenuItem>
+        ))}
+      </ObcAlertMenu>
     </aside>
   );
 }
