@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Response, UploadFile
 from pydantic import BaseModel
 
-from auth.deps import get_optional_current_user
+from auth.deps import get_current_user
 from cv.publisher import get_fusion_publisher
 from db.models import AppUser
 from sensor_fusion.ais_store import AISStore
@@ -74,10 +74,8 @@ def _validate_stream_id(stream_id: str) -> None:
 def _require_stream_access(
     orchestrator: WorkerOrchestrator,
     stream_id: str,
-    user: AppUser | None,
+    user: AppUser,
 ) -> None:
-    if user is None:
-        return
     if user.is_admin:
         return
     if stream_id in SYSTEM_STREAM_IDS:
@@ -204,7 +202,7 @@ async def _validate_s3_source_limits(original_source_url: str | None, resolved_s
 async def start_stream(
     stream_id: str,
     request: StreamStartRequest,
-    current_user: Annotated[AppUser | None, Depends(get_optional_current_user)],
+    current_user: Annotated[AppUser, Depends(get_current_user)],
 ) -> dict[str, Any]:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
@@ -236,8 +234,6 @@ async def start_stream(
         }
 
     if (
-        current_user is not None
-        and
         stream_id not in SYSTEM_STREAM_IDS
         and not current_user.is_admin
         and orchestrator.count_user_streams(current_user.id) >= app_settings.max_streams_per_user
@@ -260,7 +256,7 @@ async def start_stream(
         stream_id=stream_id,
         source_url=request.source_url or source_url,
         loop=request.loop,
-        owner_user_id=current_user.id if current_user is not None else None,
+        owner_user_id=current_user.id,
     )
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
@@ -296,7 +292,7 @@ async def upload_and_start_stream(
 @router.delete("/api/streams/{stream_id}", status_code=204, response_class=Response)
 async def stop_stream(
     stream_id: str,
-    current_user: Annotated[AppUser | None, Depends(get_optional_current_user)],
+    current_user: Annotated[AppUser, Depends(get_current_user)],
 ) -> Response:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
@@ -316,10 +312,10 @@ async def stop_stream(
 
 @router.get("/api/streams")
 async def list_streams(
-    current_user: Annotated[AppUser | None, Depends(get_optional_current_user)],
+    current_user: Annotated[AppUser, Depends(get_current_user)],
 ) -> dict[str, Any]:
     orchestrator = _require_orchestrator()
-    owner_filter = None if current_user is None or current_user.is_admin else current_user.id
+    owner_filter = None if current_user.is_admin else current_user.id
     streams = [augment_stream_payload(stream) for stream in orchestrator.list_streams(owner_filter)]
     return {"streams": streams, "max_workers": app_settings.max_workers}
 
@@ -327,7 +323,7 @@ async def list_streams(
 @router.get("/api/streams/{stream_id}/playback")
 async def get_stream_playback(
     stream_id: str,
-    current_user: Annotated[AppUser | None, Depends(get_optional_current_user)],
+    current_user: Annotated[AppUser, Depends(get_current_user)],
 ) -> dict[str, Any]:
     _validate_stream_id(stream_id)
     orchestrator = _require_orchestrator()
