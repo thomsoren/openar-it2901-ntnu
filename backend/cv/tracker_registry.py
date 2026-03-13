@@ -54,6 +54,12 @@ class TrackerRegistry:
     def _create_tracker(self) -> BYTETracker:
         return BYTETracker(_TrackerArgs(), frame_rate=_DEFAULT_FRAME_RATE)
 
+    @staticmethod
+    def _boxes_for_tracking(boxes: object) -> object:
+        """Normalize tracker input to host memory when detections live on an accelerator."""
+        cpu = getattr(boxes, "cpu", None)
+        return cpu() if callable(cpu) else boxes
+
     def update(self, stream_id: str, results: object) -> list[Detection]:
         """Run ByteTrack on a single ultralytics Results object for a stream.
 
@@ -81,7 +87,7 @@ class TrackerRegistry:
 
         # BYTETracker.update() expects an object with .conf, .xyxy, .xywh, .cls
         # and supports indexing — ultralytics Boxes satisfies this interface
-        tracked = tracker.update(boxes, None)
+        tracked = tracker.update(self._boxes_for_tracking(boxes), None)
         # tracked: np.ndarray shape (N, 8): [x1, y1, x2, y2, track_id, score, cls, idx]
         if len(tracked) == 0:
             return []
