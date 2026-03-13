@@ -62,7 +62,11 @@ def resolve_stream_source(source_url: str | None) -> str | None:
     raw = source_url.strip()
     s3_key = s3.coerce_s3_key(raw)
     if s3_key:
-        return _presign_s3_for_ffmpeg(s3_key)
+        transcoded_key = s3.get_transcoded_key(s3_key)
+        effective_key = transcoded_key or s3_key
+        if transcoded_key:
+            logger.info("[stream] Using transcoded version: s3://%s", transcoded_key)
+        return _presign_s3_for_ffmpeg(effective_key)
 
     if is_remote_url(raw):
         return raw

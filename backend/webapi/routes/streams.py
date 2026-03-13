@@ -40,6 +40,7 @@ from services.stream_service import (
     build_stream_playback_payload,
     resolve_stream_source,
 )
+from services.transcode_service import run_transcode_task
 from storage import s3
 
 router = APIRouter()
@@ -252,11 +253,26 @@ async def start_stream(
         bad_request("source_url is required for this stream")
     await _validate_s3_source_limits(request.source_url, source_url)
 
+    # Trigger background transcode for S3 uploads that haven't been transcoded yet
+    original_s3_key = s3.coerce_s3_key(request.source_url) if request.source_url else None
+    is_pretranscoded = False
+    if original_s3_key and original_s3_key.startswith("videos/"):
+        transcoded = s3.get_transcoded_key(original_s3_key)
+        is_pretranscoded = transcoded is not None
+        if not transcoded:
+            import threading
+            threading.Thread(
+                target=run_transcode_task,
+                args=(original_s3_key,),
+                daemon=True,
+            ).start()
+
     config = StreamConfig(
         stream_id=stream_id,
         source_url=request.source_url or source_url,
         loop=request.loop,
         owner_user_id=current_user.id,
+        pretranscoded=is_pretranscoded,
     )
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config

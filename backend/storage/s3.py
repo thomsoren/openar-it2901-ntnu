@@ -140,6 +140,33 @@ def download_to_path(raw_key: str, destination: Path) -> Path:
     return destination
 
 
+def upload_from_path(local_path: Path, raw_key: str, content_type: str = "video/mp4") -> str:
+    """Upload a local file to S3. Returns the normalized key."""
+    full_key, short_key = _normalize_key(raw_key)
+    _client().upload_file(
+        str(local_path),
+        S3_BUCKET,
+        full_key,
+        ExtraArgs={"ContentType": content_type},
+    )
+    return short_key
+
+
+def get_transcoded_key(s3_key: str) -> str | None:
+    """Return the transcoded S3 key for an asset if transcode is complete.
+
+    If the original was already H.264, returns the original key itself
+    (transcode verified it's suitable, no separate file needed).
+    """
+    with SessionLocal() as db:
+        row = db.execute(
+            select(MediaAsset).where(MediaAsset.s3_key == s3_key)
+        ).scalar_one_or_none()
+        if row and row.transcode_status == "complete":
+            return row.transcoded_s3_key or s3_key
+    return None
+
+
 # ── Streaming response ──────────────────────────────────────────────────────
 
 def _stream_body(body, chunk_size: int = 1024 * 1024):

@@ -30,6 +30,8 @@ from orchestrator import (
     WorkerOrchestrator,
 )
 from services.stream_service import resolve_default_source
+from services.transcode_service import retry_interrupted_transcodes
+from storage import s3
 from cv.idun.config import IDUN_ENABLED
 
 logger = logging.getLogger(__name__)
@@ -108,15 +110,24 @@ async def lifespan(_: FastAPI):
     if app_settings.skip_default_stream:
         logger.info("SKIP_DEFAULT_STREAM=true; not auto-starting default stream")
     if source_url:
+        s3_key = s3.coerce_s3_key(source_url)
+        pretranscoded = bool(s3_key and s3.get_transcoded_key(s3_key))
         try:
             state.orchestrator.start_stream(
-                StreamConfig(stream_id=app_settings.default_stream_id, source_url=source_url, loop=True)
+                StreamConfig(
+                    stream_id=app_settings.default_stream_id,
+                    source_url=source_url,
+                    loop=True,
+                    pretranscoded=pretranscoded,
+                )
             )
             logger.info("Default stream '%s' started from %s", app_settings.default_stream_id, source_url)
         except (StreamAlreadyRunningError, ResourceLimitExceededError) as exc:
             logger.warning("Default stream '%s' could not start: %s", app_settings.default_stream_id, exc)
     else:
         logger.warning("No default video source found; skipping default stream")
+
+    retry_interrupted_transcodes()
 
     yield
 
