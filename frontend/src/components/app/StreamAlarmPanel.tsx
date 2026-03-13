@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { ObcAlertMenuItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/alert-menu-item/alert-menu-item";
 import { ObcAlertMenuItemStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/alert-menu-item/alert-menu-item";
 import { ObcMessageMenuItemSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/message-menu-item/message-menu-item";
@@ -7,25 +7,14 @@ import { AlertType } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObiAlarmNoackIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-alarm-noack-iec";
 import type { StreamAlert } from "../../utils/streamAlerts";
 
-const hideChevron = (el: HTMLElement | null) => {
-  if (!el) return;
-  requestAnimationFrame(() => {
-    const menuItem = el.shadowRoot?.querySelector("obc-message-menu-item");
-    const chevron = menuItem?.shadowRoot?.querySelector<HTMLElement>(".chevron");
-    if (chevron) chevron.style.display = "none";
-  });
-};
-
 interface StreamAlarmPanelProps {
   alerts: StreamAlert[];
+  dismissed: Set<string>;
+  onDismiss: (id: string) => void;
 }
 
-export function StreamAlarmPanel({ alerts }: StreamAlarmPanelProps) {
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-
-  const handleAck = useCallback((id: string) => {
-    setDismissed((prev) => new Set(prev).add(id));
-  }, []);
+export function StreamAlarmPanel({ alerts, dismissed, onDismiss }: StreamAlarmPanelProps) {
+  const handleAck = useCallback((id: string) => onDismiss(id), [onDismiss]);
 
   const visible = alerts.filter((a) => !dismissed.has(a.id));
   if (visible.length === 0) {
@@ -37,7 +26,6 @@ export function StreamAlarmPanel({ alerts }: StreamAlarmPanelProps) {
       {visible.map((alert) => (
         <ObcAlertMenuItem
           key={alert.id}
-          ref={hideChevron}
           className="stream-alarm-panel__item"
           title={alert.title}
           description={alert.recovery ? `${alert.detail} ${alert.recovery}` : alert.detail}

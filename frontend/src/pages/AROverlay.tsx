@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ObcProgressBar } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/progress-bar/progress-bar";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import {
@@ -187,6 +187,18 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
       videoState.error,
     ]
   );
+
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const activeIds = new Set(streamAlerts.map((a) => a.id));
+    setDismissedAlerts((prev) => {
+      const pruned = new Set([...prev].filter((id) => activeIds.has(id)));
+      return pruned.size === prev.size ? prev : pruned;
+    });
+  }, [streamAlerts]);
+  const handleDismissAlert = useCallback((id: string) => {
+    setDismissedAlerts((prev) => new Set(prev).add(id));
+  }, []);
 
   const handleActiveVideoReady = useCallback((videoEl: HTMLVideoElement) => {
     videoRef.current = videoEl;
@@ -454,7 +466,11 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
               !fusionRunningStream && <WorkspaceLoader label="Starting Fusion stream..." />}
 
             {isTabsHydrated && !activeIsSetup && !activeIsMockData && streamAlerts.length > 0 && (
-              <StreamAlarmPanel alerts={streamAlerts} />
+              <StreamAlarmPanel
+                alerts={streamAlerts}
+                dismissed={dismissedAlerts}
+                onDismiss={handleDismissAlert}
+              />
             )}
 
             {isTabsHydrated && !activeIsSetup && !activeIsMockData && effectiveActiveStream && (
