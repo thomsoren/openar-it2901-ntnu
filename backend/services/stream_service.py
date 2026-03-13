@@ -55,6 +55,26 @@ def _presign_s3_for_ffmpeg(s3_key: str, expires: int = 7200) -> str:
         return _download_s3_to_cache(s3_key)
 
 
+def resolve_asset_video_source(asset_name: str) -> str | None:
+    """Look up a media asset by name in the DB and return a presigned FFmpeg-ready URL.
+
+    Returns None if the asset is not found.
+    """
+    from db.database import SessionLocal  # lazy — avoids circular import at module level
+    from db.models import MediaAsset
+    from sqlalchemy import select
+
+    try:
+        with SessionLocal() as db:
+            asset = db.scalar(select(MediaAsset).where(MediaAsset.asset_name == asset_name))
+    except Exception as exc:
+        raise RuntimeError(f"DB lookup failed for asset '{asset_name}': {exc}") from exc
+
+    if asset is None:
+        return None
+    return _presign_s3_for_ffmpeg(asset.s3_key)
+
+
 def resolve_stream_source(source_url: str | None) -> str | None:
     if not source_url or not source_url.strip():
         return resolve_default_source()

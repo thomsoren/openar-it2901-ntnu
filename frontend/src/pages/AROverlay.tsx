@@ -16,7 +16,7 @@ import { useVideoTransform } from "../hooks/useVideoTransform";
 import { useVideoSessionRecovery } from "../hooks/useVideoSessionRecovery";
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useAuth } from "../hooks/useAuth";
-import { DETECTION_CONFIG, FUSION_PIRBADET_CONFIG, MOCK_DATA_CONFIG } from "../config/video";
+import { DETECTION_CONFIG, MOCK_DATA_CONFIG } from "../config/video";
 import AuthGate from "../components/auth/AuthGate";
 import StreamSetup from "../components/stream-setup/StreamSetup";
 import { startStream, stopStream, toStreamError } from "../services/streams";
@@ -212,7 +212,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     const ensureFusionStreamRunning = async () => {
       try {
         await startStream(FUSION_TAB_ID, {
-          sourceUrl: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
+          assetName: "fusion_video_gunnerus",
           loop: true,
           allowExisting: true,
         });

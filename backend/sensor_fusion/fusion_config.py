@@ -24,11 +24,6 @@ from storage import s3
 
 logger = logging.getLogger(__name__)
 
-# Maps stream_id -> video asset_name in media_assets (must have fusion=true + ais_data_path set).
-_FUSION_STREAM_VIDEO_ASSETS: dict[str, str] = {
-    "fusion": "fusion_video_gunnerus",
-}
-
 
 def _extract_first_msgtime(ndjson_text: str) -> datetime | None:
     """Return the earliest msgtime across all non-session NDJSON rows as UTC datetime."""
@@ -60,24 +55,24 @@ def _extract_first_msgtime(ndjson_text: str) -> datetime | None:
     return earliest
 
 
-def maybe_configure(stream_id: str, fusion_svc: SensorFusionService) -> None:
-    """Auto-configure fusion for *stream_id* from the video asset's ais_data_path in DB.
+def configure_from_db_asset(
+    stream_id: str,
+    asset_name: str,
+    fusion_svc: SensorFusionService,
+) -> None:
+    """Configure AIS fusion for *stream_id* using the named media asset from the DB.
 
-    Called on the first detection frame for the stream.
-    The epoch is derived from the earliest msgtime in the NDJSON, so no separate
-    video_epoch_utc column is needed.
+    Looks up *asset_name* in media_assets. If the asset has fusion=True and an
+    ais_data_path, loads the NDJSON and configures the SensorFusionService.
+    The epoch is derived from the earliest msgtime in the NDJSON.
     """
-    video_asset_name = _FUSION_STREAM_VIDEO_ASSETS.get(stream_id)
-    if not video_asset_name:
-        return
     if fusion_svc.is_configured(stream_id):
         return
 
-    # Look up the asset row to get ais_data_path.
     try:
         with SessionLocal() as db:
             asset = db.scalar(
-                select(MediaAsset).where(MediaAsset.asset_name == video_asset_name)
+                select(MediaAsset).where(MediaAsset.asset_name == asset_name)
             )
             ais_data_path = asset.ais_data_path if (asset and asset.fusion) else None
     except Exception as exc:
@@ -87,7 +82,7 @@ def maybe_configure(stream_id: str, fusion_svc: SensorFusionService) -> None:
     if not ais_data_path:
         logger.warning(
             "[fusion-config:%s] Asset '%s' has no ais_data_path set; skipping",
-            stream_id, video_asset_name,
+            stream_id, asset_name,
         )
         return
 
@@ -115,11 +110,11 @@ def maybe_configure(stream_id: str, fusion_svc: SensorFusionService) -> None:
             video_epoch_utc=epoch,
         )
         logger.info(
-            "[fusion-config:%s] Auto-configured from DB asset '%s' (epoch=%s, %d AIS records)",
-            stream_id, video_asset_name, epoch.isoformat(), store.record_count,
+            "[fusion-config:%s] Configured from DB asset '%s' (epoch=%s, %d AIS records)",
+            stream_id, asset_name, epoch.isoformat(), store.record_count,
         )
     except Exception as exc:
-        logger.warning("[fusion-config:%s] Failed to auto-configure: %s", stream_id, exc)
+        logger.warning("[fusion-config:%s] Failed to configure: %s", stream_id, exc)
 
 
 def configure_from_ndjson(

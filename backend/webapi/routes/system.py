@@ -9,7 +9,7 @@ from webapi.errors import bad_request, wrap_internal
 from auth.deps import get_current_user
 from common.config import load_samples
 from db.models import AppUser
-from fusion import fusion
+from mock_stream import mock_stream
 from storage import s3
 
 router = APIRouter()
@@ -57,13 +57,14 @@ def list_samples() -> dict[str, Any]:
         wrap_internal("Error loading samples", exc)
 
 
-@router.post("/api/fusion/reset")
-def reset_fusion_timer(profile: str = "mock") -> dict[str, Any]:
+@router.post("/api/mock_stream/reset")
+def reset_mock_stream_timer(profile: str = "mock") -> dict[str, Any]:
+    """profile param accepted for API compatibility but ignored."""
     try:
-        start = fusion.reset_sample_timer(profile=profile)
-        return {"status": "ok", "profile": profile, "start_mono": start}
+        start = mock_stream.reset_sample_timer()
+        return {"status": "ok", "start_mono": start}
     except Exception as exc:
-        wrap_internal("Error resetting fusion timer", exc)
+        wrap_internal("Error resetting mock stream timer", exc)
 
 
 @router.post("/api/storage/presign")

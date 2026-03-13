@@ -38,6 +38,7 @@ from orchestrator import (
 from services.stream_service import (
     augment_stream_payload,
     build_stream_playback_payload,
+    resolve_asset_video_source,
     resolve_stream_source,
 )
 from storage import s3
@@ -55,6 +56,7 @@ SYSTEM_STREAM_IDS = frozenset({FUSION_STREAM_ID, "mock-data", "default"})
 
 class StreamStartRequest(BaseModel):
     source_url: str | None = None
+    asset_name: str | None = None
     loop: bool = True
 
 
@@ -91,10 +93,11 @@ def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamC
         service_unavailable(str(exc))
 
 
-def _configure_fusion_stream_ais(stream_id: str) -> None:
-    if stream_id != FUSION_STREAM_ID:
-        return
-    fusion_config.maybe_configure(stream_id, get_fusion_publisher().fusion_svc)
+def _configure_stream_fusion(stream_id: str, asset_name: str) -> None:
+    """Eagerly configure AIS fusion for a stream using the named media asset."""
+    fusion_config.configure_from_db_asset(
+        stream_id, asset_name, get_fusion_publisher().fusion_svc
+    )
 
 
 def _probe_video_duration_seconds(source: str) -> float | None:
@@ -179,10 +182,10 @@ async def start_stream(
 
     if existing_handle is not None:
         _require_stream_access(orchestrator, stream_id, current_user)
-        if stream_id == FUSION_STREAM_ID:
+        if request.asset_name:
             try:
                 await asyncio.get_running_loop().run_in_executor(
-                    None, _configure_fusion_stream_ais, stream_id
+                    None, _configure_stream_fusion, stream_id, request.asset_name
                 )
             except Exception as exc:
                 logger.warning(
@@ -206,27 +209,36 @@ async def start_stream(
         )
 
     try:
-        source_url = await asyncio.get_running_loop().run_in_executor(
-            None, resolve_stream_source, request.source_url
-        )
+        if request.asset_name:
+            source_url = await asyncio.get_running_loop().run_in_executor(
+                None, resolve_asset_video_source, request.asset_name
+            )
+            if not source_url:
+                bad_request(f"Asset '{request.asset_name}' not found in media_assets")
+        else:
+            source_url = await asyncio.get_running_loop().run_in_executor(
+                None, resolve_stream_source, request.source_url
+            )
     except RuntimeError as exc:
         bad_gateway(str(exc))
     if not source_url:
-        bad_request("source_url is required for this stream")
+        bad_request("source_url or asset_name is required for this stream")
     await _validate_s3_source_limits(request.source_url, source_url)
 
     config = StreamConfig(
         stream_id=stream_id,
-        source_url=request.source_url or source_url,
+        source_url=source_url,
         loop=request.loop,
         owner_user_id=current_user.id,
     )
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
     )
-    if stream_id == FUSION_STREAM_ID:
+    if request.asset_name:
         try:
-            await asyncio.get_running_loop().run_in_executor(None, _configure_fusion_stream_ais, stream_id)
+            await asyncio.get_running_loop().run_in_executor(
+                None, _configure_stream_fusion, stream_id, request.asset_name
+            )
         except Exception as exc:
             logger.warning("[fusion:%s] Failed to configure AIS enrichment: %s", stream_id, exc)
 

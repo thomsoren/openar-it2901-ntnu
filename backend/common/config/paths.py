@@ -9,7 +9,7 @@ load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 # Directories
 MODELS_DIR = BASE_DIR / "models"
-SAMPLES_CONFIG_PATH = BASE_DIR / "fusion" / "samples.json"
+SAMPLES_CONFIG_PATH = BASE_DIR / "mock_stream" / "samples.json"
 
 # Default video paths (local fallback)
 _default_video_filename = get_str("DEFAULT_VIDEO_FILENAME", "recording.mp4")

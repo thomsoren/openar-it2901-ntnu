@@ -4,7 +4,7 @@ import { ARControlProvider } from "../components/ar-control-panel/ARControlProvi
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import { useDetectionsWebSocket } from "../hooks/useDetectionsWebSocket";
 import { useVideoTransform } from "../hooks/useVideoTransform";
-import { MOCK_DATA_CONFIG, FUSION_PIRBADET_CONFIG } from "../config/video";
+import { MOCK_DATA_CONFIG } from "../config/video";
 import { apiFetchPublic } from "../lib/api-client";
 
 interface FusionViewConfig {
@@ -101,20 +101,6 @@ export function MockDataView() {
         videoSource: MOCK_DATA_CONFIG.VIDEO_SOURCE,
         wsUrl: MOCK_DATA_CONFIG.WS_URL,
         resetUrl: MOCK_DATA_CONFIG.RESET_URL,
-      }}
-    />
-  );
-}
-
-export function FusionPirbadetView() {
-  return (
-    <FusionView
-      config={{
-        width: FUSION_PIRBADET_CONFIG.WIDTH,
-        height: FUSION_PIRBADET_CONFIG.HEIGHT,
-        videoSource: FUSION_PIRBADET_CONFIG.VIDEO_SOURCE,
-        wsUrl: FUSION_PIRBADET_CONFIG.WS_URL,
-        resetUrl: FUSION_PIRBADET_CONFIG.RESET_URL,
       }}
     />
   );
