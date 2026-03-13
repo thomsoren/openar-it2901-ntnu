@@ -310,7 +310,12 @@ function PoiOverlay({
             <ObcPoiLayer label="Second Layer" className="poi-layer" is-selected>
               {/* Can add different POIs here */}
             </ObcPoiLayer>
-            <ObcPoiLayer ref={layerRefCallback} label="Vessel Layer" className="poi-layer">
+            <ObcPoiLayer
+              ref={layerRefCallback}
+              label="Vessel Layer"
+              className="poi-layer"
+              overlap-mode="grouping"
+            >
               {/* obc-poi-data elements are managed imperatively in useEffect above */}
             </ObcPoiLayer>
           </ObcPoiLayerStack>
