@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi import HTTPException
 
 from webapi.errors import bad_request, wrap_internal
@@ -10,6 +10,7 @@ from auth.deps import get_current_user
 from common.config import load_samples
 from db.models import AppUser
 from fusion import fusion
+from services.transcode_service import run_transcode_task
 from storage import s3
 
 router = APIRouter()
@@ -69,14 +70,24 @@ def reset_fusion_timer(profile: str = "mock") -> dict[str, Any]:
 @router.post("/api/storage/presign")
 def presign_storage(
     request: s3.PresignRequest,
+    background_tasks: BackgroundTasks,
     current_user: AppUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     try:
-        return s3.presign_storage(
+        result = s3.presign_storage(
             request,
             owner_user_id=current_user.id,
             is_admin=current_user.is_admin,
         )
+
+        key = result.get("key", "")
+        is_video_key = key.startswith("videos/")
+        is_completed_upload = result.get("completed") and is_video_key
+        is_put_upload = result.get("method") == "PUT" and is_video_key
+        if is_completed_upload or is_put_upload:
+            background_tasks.add_task(run_transcode_task, key)
+
+        return result
     except ValueError as exc:
         bad_request(str(exc))
     except HTTPException:

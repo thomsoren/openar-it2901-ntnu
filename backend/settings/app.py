@@ -28,6 +28,12 @@ class AppSettings:
     stream_id_pattern: Pattern[str] = field(
         default_factory=lambda: re.compile(r"^[A-Za-z0-9_-]{1,64}$")
     )
+    transcode_timeout_s: int = field(
+        default_factory=lambda: get_int("TRANSCODE_TIMEOUT_S", 1800, minimum=60)
+    )
+    transcode_max_file_bytes: int = field(
+        default_factory=lambda: get_int("TRANSCODE_MAX_FILE_BYTES", 2 * 1024 * 1024 * 1024, minimum=1)
+    )
 
 
 app_settings = AppSettings()

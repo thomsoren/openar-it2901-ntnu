@@ -234,7 +234,7 @@ def stream_app_client(fake_decode_thread, fake_ffmpeg, monkeypatch, _test_admin_
     """
     from tests.fakes import FakeInferenceThread
 
-    from auth.deps import get_current_user
+    from auth.deps import get_current_user, get_optional_user
     import api
 
     monkeypatch.setattr(
@@ -248,16 +248,15 @@ def stream_app_client(fake_decode_thread, fake_ffmpeg, monkeypatch, _test_admin_
 
     # Override auth for both HTTP (dependency) and WebSocket (direct function call)
     api.app.dependency_overrides[get_current_user] = lambda: _test_admin_user
-
-    async def _fake_authenticate_websocket(websocket):
-        return _test_admin_user
+    api.app.dependency_overrides[get_optional_user] = lambda: _test_admin_user
 
     monkeypatch.setattr(
-        "webapi.routes.detections.authenticate_websocket",
-        _fake_authenticate_websocket,
+        "webapi.routes.detections._try_authenticate_websocket",
+        lambda ws: _test_admin_user,
     )
 
     with TestClient(api.app) as c:
         yield c
 
     api.app.dependency_overrides.pop(get_current_user, None)
+    api.app.dependency_overrides.pop(get_optional_user, None)

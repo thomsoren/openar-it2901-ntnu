@@ -67,6 +67,7 @@ class WorkerOrchestrator:
             source_url=resolve_stream_source(config.source_url) or config.source_url,
             stream_id=config.stream_id,
             loop=config.loop,
+            force_copy=config.pretranscoded,
         )
         if pub.start():
             return pub.process

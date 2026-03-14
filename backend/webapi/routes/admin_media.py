@@ -29,6 +29,8 @@ class MediaAssetResponse(BaseModel):
     group_id: str | None
     is_system: bool
     created_at: str
+    transcode_status: str | None
+    transcoded_s3_key: str | None
 
     @classmethod
     def from_orm(cls, asset: MediaAsset) -> "MediaAssetResponse":
@@ -42,6 +44,8 @@ class MediaAssetResponse(BaseModel):
             group_id=asset.group_id,
             is_system=asset.is_system,
             created_at=asset.created_at.isoformat(),
+            transcode_status=asset.transcode_status,
+            transcoded_s3_key=asset.transcoded_s3_key,
         )
 
 

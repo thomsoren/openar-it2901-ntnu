@@ -140,6 +140,18 @@ def download_to_path(raw_key: str, destination: Path) -> Path:
     return destination
 
 
+def upload_from_path(local_path: Path, raw_key: str, content_type: str = "video/mp4") -> str:
+    """Upload a local file to S3. Returns the normalized key."""
+    full_key, short_key = _normalize_key(raw_key)
+    _client().upload_file(
+        str(local_path),
+        S3_BUCKET,
+        full_key,
+        ExtraArgs={"ContentType": content_type},
+    )
+    return short_key
+
+
 # ── Streaming response ──────────────────────────────────────────────────────
 
 def _stream_body(body, chunk_size: int = 1024 * 1024):
@@ -228,6 +240,8 @@ def _upsert_uploaded_asset(*, s3_key: str, owner_user_id: str, visibility: str, 
             row.group_id = group_id or row.group_id
             row.media_type = media_type
             row.is_system = False
+            if media_type == "video" and not row.transcode_status:
+                row.transcode_status = "pending"
         else:
             db.add(MediaAsset(
                 s3_key=s3_key,
@@ -236,6 +250,7 @@ def _upsert_uploaded_asset(*, s3_key: str, owner_user_id: str, visibility: str, 
                 group_id=group_id,
                 media_type=media_type,
                 is_system=False,
+                transcode_status="pending" if media_type == "video" else None,
             ))
         db.commit()
 
