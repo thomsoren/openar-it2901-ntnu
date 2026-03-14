@@ -142,7 +142,7 @@ export default function MediaLibrary() {
     if (!previewUrls[rowId]) {
       const row = mediaRows.find((r) => r.id === rowId);
       if (row && row.type === "video") {
-        void presignDownload(row.asset.s3_key)
+        void presignDownload(row.asset.transcoded_s3_key ?? row.asset.s3_key)
           .then(({ url }) => {
             setPreviewUrls((prev) => ({ ...prev, [rowId]: url }));
           })
