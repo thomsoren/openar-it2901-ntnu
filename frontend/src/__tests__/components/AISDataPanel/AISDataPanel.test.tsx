@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AISData } from "../../../types/aisData";
 
 const distanceToMock = vi.hoisted(() => vi.fn(() => 1234.4));
-const getVesselIconMock = vi.hoisted(() => vi.fn((shipType: number) => `Icon ${shipType}`));
+const getVesselIconMock = vi.hoisted(() => vi.fn(() => "Icon 70"));
 
 vi.mock("../../../utils/geometryMath", () => ({
   distanceTo: distanceToMock,
@@ -14,11 +14,14 @@ vi.mock("../../../utils/vesselIconMapper", () => ({
   default: getVesselIconMock,
 }));
 
-vi.mock("../../../components/DirectionalVesselIcon/DirectionalVesselIcon", () => ({
-  DirectionalVesselIcon: ({ vessel }: { vessel: AISData }) => (
-    <div data-testid="directional-vessel-icon">Directional icon {vessel.mmsi}</div>
-  ),
-}));
+vi.mock(
+  "@ocean-industries-concept-lab/openbridge-webcomponents-react/navigation-instruments/bearing-indicator/bearing-indicator",
+  () => ({
+    ObcBearingIndicator: ({ bearingDeg }: { bearingDeg: number }) => (
+      <div data-testid="obc-bearing-indicator">Bearing {bearingDeg}</div>
+    ),
+  })
+);
 
 vi.mock(
   "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-card/poi-card",
@@ -106,7 +109,7 @@ describe("AISDataPanel", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-12T12:00:00.000Z"));
     distanceToMock.mockReturnValue(1234.4);
-    getVesselIconMock.mockImplementation((shipType: number) => `Icon ${shipType}`);
+    getVesselIconMock.mockImplementation(() => "Icon 70");
   });
 
   afterEach(() => {
@@ -131,14 +134,17 @@ describe("AISDataPanel", () => {
     expect(screen.getByText("MMSI 257123456")).toBeDefined();
     expect(screen.getByText("30 min ago")).toBeDefined();
     expect(screen.getByText("Icon 70")).toBeDefined();
-    expect(screen.getByTestId("directional-vessel-icon").textContent).toContain("257123456");
+    expect(screen.getByTestId("obc-bearing-indicator").textContent).toContain("Bearing 87");
     expect(container.textContent).toContain("87");
     expect(container.textContent).toContain("1234");
     expect(container.textContent).toContain("-4.2");
     expect(container.textContent).toContain("91");
     expect(container.textContent).toContain("12.3");
     expect(distanceToMock).toHaveBeenCalledWith(63.4305, 10.3951, 63.44, 10.41);
-    expect(getVesselIconMock).toHaveBeenCalledWith(70);
+    expect(getVesselIconMock).toHaveBeenCalledWith(vessel, {
+      iconSet: "generic",
+      returnType: "icon",
+    });
   });
 
   it("uses fallback labels and metric placeholders when vessel data is incomplete", () => {
@@ -179,7 +185,7 @@ describe("AISDataPanel", () => {
 
     expect(screen.getByTestId("obc-poi-card").getAttribute("data-source")).toBe("SRC");
     expect(screen.getByText("No AIS data available for this vessel.")).toBeDefined();
-    expect(screen.queryByTestId("directional-vessel-icon")).toBeNull();
+    expect(screen.queryByTestId("obc-bearing-indicator")).toBeNull();
   });
 
   it("calls onClose when the OpenBridge card emits a close-click event", () => {

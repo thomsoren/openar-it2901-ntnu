@@ -57,6 +57,11 @@ class Marker {
     return this;
   }
 
+  setDraggable(draggable: boolean) {
+    void draggable;
+    return this;
+  }
+
   on(event: string, handler: () => void) {
     if (!this.eventHandlers[event]) {
       this.eventHandlers[event] = [];
@@ -82,6 +87,8 @@ const mapInstances: MapLibreMap[] = [];
 
 class MapLibreMap {
   private eventHandlers: { [key: string]: (() => void)[] } = {};
+  panTo = vi.fn(() => this);
+  setStyle = vi.fn(() => this);
 
   constructor() {
     mapInstances.push(this);
@@ -105,12 +112,6 @@ class MapLibreMap {
     return this;
   }
   remove() {
-    return this;
-  }
-  panTo() {
-    return this;
-  }
-  setStyle() {
     return this;
   }
   isStyleLoaded() {

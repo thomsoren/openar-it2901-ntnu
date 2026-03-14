@@ -3,8 +3,8 @@ import { AISData } from "../../types/aisData";
 import getVesselIcon, { type VesselIconSet } from "../../utils/vesselIconMapper";
 import "./AISDataPanel.css";
 import { distanceTo } from "../../utils/geometryMath";
-import { DirectionalVesselIcon } from "../DirectionalVesselIcon/DirectionalVesselIcon";
 import { ObcPoiCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/ar/poi-card/poi-card";
+import { ObcBearingIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/navigation-instruments/bearing-indicator/bearing-indicator";
 import {
   ObcPoiCard as ObcPoiCardElement,
   ObcPoiCardHeaderVariant,
@@ -98,6 +98,11 @@ export const AISDataPanel: React.FC<AISDataPanelProps> = ({
   const heading = formatMetric(vessel.trueHeading, 0);
   const speed = formatMetric(vessel.speedOverGround);
   const rot = formatMetric(vessel.rateOfTurn);
+  const bearingDeg = Number.isFinite(vessel.courseOverGround)
+    ? vessel.courseOverGround
+    : Number.isFinite(vessel.trueHeading)
+      ? vessel.trueHeading
+      : 0;
 
   return (
     <div className="ais-poi-panel">
@@ -118,7 +123,9 @@ export const AISDataPanel: React.FC<AISDataPanelProps> = ({
           <div className="ais-poi-body">
             <div className="ais-poi-primary-row">
               <div className="ais-poi-primary-direction">
-                <DirectionalVesselIcon vessel={vessel} />
+                <div className="obc-component-size-regular">
+                  <ObcBearingIndicator bearingDeg={bearingDeg} />
+                </div>
               </div>
 
               <div className="ais-poi-primary-metric">

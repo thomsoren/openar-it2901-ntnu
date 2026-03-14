@@ -114,7 +114,8 @@ describe("useVesselMarkers", () => {
     expect(mapHelpers.createVesselMarker).toHaveBeenCalledWith(
       mockMap,
       vessels[0],
-      expect.any(Function)
+      expect.any(Function),
+      "generic"
     );
   });
 
@@ -130,7 +131,8 @@ describe("useVesselMarkers", () => {
     expect(mapHelpers.createVesselMarker).toHaveBeenCalledWith(
       mockMap,
       vessels[1],
-      expect.any(Function)
+      expect.any(Function),
+      "generic"
     );
   });
 
@@ -301,7 +303,8 @@ describe("useVesselMarkers", () => {
     expect(mapHelpers.createVesselMarker).toHaveBeenCalledWith(
       mockMap,
       vessel,
-      expect.any(Function)
+      expect.any(Function),
+      "generic"
     );
 
     // Update to trigger setRotation

@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./AISGeoJsonMap.mocks";
-import { getButton, clearMarkers, simulateDragTest } from "./AISGeoJsonMap.test-utils";
+import { clearMarkers, getCreatedMarkers, simulateDragTest } from "./AISGeoJsonMap.test-utils";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -11,6 +11,35 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 import { AISGeoJsonMap } from "../../../components/AISGeoJsonMap/AISGeoJsonMap";
+
+type MockMapInstance = {
+  panTo: ReturnType<typeof vi.fn>;
+  setStyle: ReturnType<typeof vi.fn>;
+};
+
+const DEFAULT_PROPS = {
+  shipLat: 63.4305,
+  shipLon: 10.3951,
+  heading: 90,
+  offsetMeters: 1200,
+  fovDegrees: 60,
+  shapeMode: "wedge" as const,
+  rectLength: 1000,
+  rectWidth: 300,
+};
+
+async function getLatestMapInstance(): Promise<MockMapInstance | null> {
+  const maplibregl = (await import("maplibre-gl")) as {
+    default: { _getMapInstances?: () => MockMapInstance[] };
+  };
+  const instances = maplibregl.default._getMapInstances?.() ?? [];
+  return instances.length > 0 ? instances[instances.length - 1] : null;
+}
+
+function getLastOnChangePayload<TPayload>(onChange: ReturnType<typeof vi.fn>): TPayload {
+  const calls = onChange.mock.calls;
+  return calls[calls.length - 1]?.[0] as TPayload;
+}
 
 describe("AISGeoJsonMap", () => {
   let container: HTMLDivElement;
@@ -27,170 +56,21 @@ describe("AISGeoJsonMap", () => {
     }
   });
 
-  it("renders coordinate header and wedge info", async () => {
+  const renderMap = async (props?: Partial<React.ComponentProps<typeof AISGeoJsonMap>>) => {
+    await act(async () => {
+      root.render(<AISGeoJsonMap {...DEFAULT_PROPS} {...props} />);
+    });
+  };
+
+  it("renders map container and canvas", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
 
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    await renderMap();
 
-    expect(container.textContent).toContain("63.4305N");
-    expect(container.textContent).toContain("10.3951E");
-    expect(container.textContent).toContain("FOV 60°");
-    expect(container.textContent).toContain("Following");
-    expect(container.textContent).toContain("Editing");
-    expect(container.textContent).toContain("Wedge");
-  });
-
-  it("toggles follow and edit button labels when clicked", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
-
-    await act(async () => {
-      getButton(container, "Following").click();
-    });
-    expect(container.textContent).toContain("Follow");
-
-    await act(async () => {
-      getButton(container, "Editing").click();
-    });
-    expect(container.textContent).toContain("Edit");
-  });
-
-  it("calls onChange when toggling shape mode", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    const onChange = vi.fn();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
-
-    await act(async () => {
-      getButton(container, "Wedge").click();
-    });
-
-    expect(onChange).toHaveBeenCalledWith({ shapeMode: "rect" });
-  });
-
-  it("renders rect mode with length and width in header", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={45}
-          offsetMeters={800}
-          fovDegrees={30}
-          shapeMode="rect"
-          rectLength={1500}
-          rectWidth={400}
-        />
-      );
-    });
-
-    expect(container.textContent).toContain("1500m x 400m");
-    expect(container.textContent).toContain("Rect");
-    expect(container.textContent).not.toContain("FOV");
-  });
-
-  it("displays negative coordinates correctly with S and W labels", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={-33.8688}
-          shipLon={-151.2093}
-          heading={180}
-          offsetMeters={1000}
-          fovDegrees={90}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
-
-    expect(container.textContent).toContain("33.8688S");
-    expect(container.textContent).toContain("151.2093W");
-  });
-
-  it("toggles from rect back to wedge mode", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    const onChange = vi.fn();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="rect"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
-
-    await act(async () => {
-      getButton(container, "Rect").click();
-    });
-
-    expect(onChange).toHaveBeenCalledWith({ shapeMode: "wedge" });
+    expect(container.querySelector(".geojson-map-container")).not.toBeNull();
+    expect(container.querySelector(".geojson-map-canvas")).not.toBeNull();
   });
 
   it("does not render AISDataPanel when no vessel is selected", async () => {
@@ -198,263 +78,81 @@ describe("AISGeoJsonMap", () => {
     document.body.appendChild(container);
     root = createRoot(container);
 
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    await renderMap();
 
     expect(container.querySelector('[data-testid="ais-panel"]')).toBeNull();
   });
 
-  it("works without onChange callback provided", async () => {
+  it("creates all draggable anchor markers", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    clearMarkers();
 
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    await renderMap();
 
-    // Should not throw when clicking buttons without onChange
-    await act(async () => {
-      getButton(container, "Wedge").click();
-    });
-
-    expect(container.textContent).toContain("Wedge");
+    const classNames = getCreatedMarkers().map((marker) => marker.className);
+    expect(classNames).toEqual([
+      "geojson-map-origin-icon",
+      "geojson-map-range-icon",
+      "geojson-map-heading-icon",
+      "geojson-map-fov-icon",
+    ]);
   });
 
-  it("accepts and displays vessels prop", async () => {
+  it("toggles marker visibility from editMode prop", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    clearMarkers();
 
-    const mockVessels = [
-      {
-        mmsi: 123456789,
-        name: "Test Ship",
-        latitude: 63.44,
-        longitude: 10.4,
-        courseOverGround: 90,
-        speedOverGround: 10,
-        shipType: 70,
-        rateOfTurn: 0,
-        trueHeading: 90,
-        navigationalStatus: 0,
-        msgtime: "2026-03-04T08:00:00Z",
-        projection: {
-          x_px: 100,
-          y_px: 100,
-          distance_m: 500,
-          bearing_deg: 90,
-          rel_bearing_deg: 0,
-        },
-      },
-    ];
+    await renderMap({ editMode: false });
 
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-          vessels={mockVessels}
-        />
-      );
+    getCreatedMarkers().forEach((entry) => {
+      const element = (entry.marker as unknown as { getElement: () => HTMLElement }).getElement();
+      expect(element.style.display).toBe("none");
     });
 
-    // Vessel markers are created via useVesselMarkers hook (mocked)
-    expect(container).toBeTruthy();
+    await renderMap({ editMode: true });
+
+    getCreatedMarkers().forEach((entry) => {
+      const element = (entry.marker as unknown as { getElement: () => HTMLElement }).getElement();
+      expect(element.style.display).toBe("flex");
+    });
   });
 
-  it("updates position when props change and follow mode is active", async () => {
+  it("re-centers map when ship coordinates change", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
 
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    await renderMap();
+    const mapInstance = await getLatestMapInstance();
+    expect(mapInstance).not.toBeNull();
 
-    // Update coordinates while follow mode is active
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={64.0}
-          shipLon={11.0}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    await renderMap({ shipLat: 64.0, shipLon: 11.0 });
 
-    expect(container.textContent).toContain("64.0000N");
-    expect(container.textContent).toContain("11.0000E");
+    expect(mapInstance?.panTo).toHaveBeenLastCalledWith([11.0, 64.0], { duration: 350 });
   });
 
-  it("does not auto-center when follow mode is disabled", async () => {
+  it("re-applies style when theme changes", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
 
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    const { useObcPalette } = await import("../../../hooks/useOBCTheme");
+    const mockedPalette = vi.mocked(useObcPalette);
 
-    // Disable follow mode
-    await act(async () => {
-      getButton(container, "Following").click();
-    });
+    mockedPalette.mockReturnValue("dusk");
+    await renderMap();
 
-    // Update coordinates - should not trigger centering
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={64.0}
-          shipLon={11.0}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    const mapInstance = await getLatestMapInstance();
+    expect(mapInstance).not.toBeNull();
 
-    expect(container.textContent).toContain("Follow");
-  });
+    mockedPalette.mockReturnValue("day");
+    await renderMap();
 
-  it("updates all geometry parameters", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
-
-    // Update all geometry parameters
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={180}
-          offsetMeters={1500}
-          fovDegrees={90}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
-
-    expect(container.textContent).toContain("180°");
-    expect(container.textContent).toContain("1500m");
-    expect(container.textContent).toContain("FOV 90°");
-  });
-
-  it("updates rect dimensions when changing from wedge to rect", async () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
-
-    // Switch to rect mode with updated dimensions
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="rect"
-          rectLength={2000}
-          rectWidth={500}
-        />
-      );
-    });
-
-    expect(container.textContent).toContain("2000m x 500m");
-    expect(container.textContent).toContain("Rect");
+    expect(mapInstance?.setStyle).toHaveBeenCalled();
   });
 
   it("triggers onChange when origin marker is dragged", async () => {
@@ -464,227 +162,137 @@ describe("AISGeoJsonMap", () => {
     const onChange = vi.fn();
 
     clearMarkers();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
+    await renderMap({ onChange });
 
     await simulateDragTest({
       markerClassName: "geojson-map-origin-icon",
       newLngLat: [10.4, 63.44],
       onChange,
     });
+
+    const payload = getLastOnChangePayload<
+      Partial<{
+        shipLat: number;
+        shipLon: number;
+      }>
+    >(onChange);
+    expect(payload.shipLat).toBeDefined();
+    expect(payload.shipLon).toBeDefined();
   });
 
-  it("triggers onChange when range marker is dragged in wedge mode", async () => {
+  it("triggers onChange with offsetMeters when range marker is dragged in wedge mode", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     const onChange = vi.fn();
 
     clearMarkers();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
+    await renderMap({ shapeMode: "wedge", onChange });
 
     await simulateDragTest({
       markerClassName: "geojson-map-range-icon",
       newLngLat: [10.4, 63.45],
       onChange,
     });
+
+    const payload = getLastOnChangePayload<Partial<{ offsetMeters: number }>>(onChange);
+    expect(payload.offsetMeters).toBeDefined();
   });
 
-  it("triggers onChange when range marker is dragged in rect mode", async () => {
+  it("triggers onChange with rectLength when range marker is dragged in rect mode", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     const onChange = vi.fn();
 
     clearMarkers();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="rect"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
+    await renderMap({ shapeMode: "rect", onChange });
 
     await simulateDragTest({
       markerClassName: "geojson-map-range-icon",
       newLngLat: [10.4, 63.45],
       onChange,
     });
+
+    const payload = getLastOnChangePayload<Partial<{ rectLength: number }>>(onChange);
+    expect(payload.rectLength).toBeDefined();
   });
 
-  it("triggers onChange when heading marker is dragged", async () => {
+  it("triggers onChange with heading when heading marker is dragged", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     const onChange = vi.fn();
 
     clearMarkers();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
+    await renderMap({ onChange });
 
     await simulateDragTest({
       markerClassName: "geojson-map-heading-icon",
       newLngLat: [10.4, 63.45],
       onChange,
     });
+
+    const payload = getLastOnChangePayload<Partial<{ heading: number }>>(onChange);
+    expect(payload.heading).toBeDefined();
   });
 
-  it("triggers onChange when FOV marker is dragged in wedge mode", async () => {
+  it("triggers onChange with fovDegrees when fov marker is dragged in wedge mode", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     const onChange = vi.fn();
 
     clearMarkers();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
+    await renderMap({ shapeMode: "wedge", onChange });
 
     await simulateDragTest({
       markerClassName: "geojson-map-fov-icon",
       newLngLat: [10.5, 63.45],
       onChange,
     });
+
+    const payload = getLastOnChangePayload<Partial<{ fovDegrees: number }>>(onChange);
+    expect(payload.fovDegrees).toBeDefined();
   });
 
-  it("triggers onChange when FOV marker is dragged in rect mode", async () => {
+  it("triggers onChange with rectWidth when fov marker is dragged in rect mode", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     const onChange = vi.fn();
 
     clearMarkers();
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="rect"
-          rectLength={1000}
-          rectWidth={300}
-          onChange={onChange}
-        />
-      );
-    });
+    await renderMap({ shapeMode: "rect", onChange });
 
     await simulateDragTest({
       markerClassName: "geojson-map-fov-icon",
       newLngLat: [10.5, 63.45],
       onChange,
     });
+
+    const payload = getLastOnChangePayload<Partial<{ rectWidth: number }>>(onChange);
+    expect(payload.rectWidth).toBeDefined();
   });
 
-  it("updates theme and rebuilds layers", async () => {
+  it("handles marker drag interactions without onChange callback", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
-    const { useObcPalette } = await import("../../../hooks/useOBCTheme");
-    const mockPalette = vi.mocked(useObcPalette);
 
-    mockPalette.mockReturnValue("dusk");
+    clearMarkers();
+    await renderMap();
 
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
+    const originMarker = getCreatedMarkers().find(
+      (marker) => marker.className === "geojson-map-origin-icon"
+    );
+    expect(originMarker).toBeDefined();
 
-    // Change theme
-    mockPalette.mockReturnValue("day");
-
-    await act(async () => {
-      root.render(
-        <AISGeoJsonMap
-          shipLat={63.4305}
-          shipLon={10.3951}
-          heading={90}
-          offsetMeters={1200}
-          fovDegrees={60}
-          shapeMode="wedge"
-          rectLength={1000}
-          rectWidth={300}
-        />
-      );
-    });
-
-    expect(container).toBeTruthy();
+    expect(() => {
+      originMarker?.marker.setLngLat([10.4, 63.44]);
+      originMarker?.marker._trigger("dragstart");
+      originMarker?.marker._trigger("drag");
+      originMarker?.marker._trigger("dragend");
+    }).not.toThrow();
   });
 });
