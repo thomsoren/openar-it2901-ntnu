@@ -81,8 +81,10 @@ def presign_storage(
         )
 
         key = result.get("key", "")
-        is_completed_upload = result.get("completed") and key.startswith("videos/")
-        if is_completed_upload:
+        is_video_key = key.startswith("videos/")
+        is_completed_upload = result.get("completed") and is_video_key
+        is_put_upload = result.get("method") == "PUT" and is_video_key
+        if is_completed_upload or is_put_upload:
             background_tasks.add_task(run_transcode_task, key)
 
         return result

@@ -3,21 +3,23 @@ from __future__ import annotations
 
 import json
 import logging
+import struct
 import subprocess
 import tempfile
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from common.config.mediamtx import FFMPEG_BIN, FFPROBE_BIN
 from db.database import SessionLocal
 from db.models import MediaAsset
+from settings import app_settings
 from storage import s3
 
 logger = logging.getLogger(__name__)
 
-TRANSCODE_TIMEOUT_S = 120
+_TRANSCODE_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="transcode")
 
 
 def _transcoded_key_for(original_key: str) -> str:
@@ -61,14 +63,33 @@ def _probe_codec_and_faststart(source_path: str) -> tuple[str | None, bool]:
 
 
 def _check_moov_before_mdat(source_path: str) -> bool:
-    """Check if the moov atom appears before mdat (faststart layout)."""
+    """Check if the moov atom appears before mdat by parsing top-level MP4 box headers."""
     try:
         with open(source_path, "rb") as f:
-            header = f.read(128 * 1024)
-            moov_pos = header.find(b"moov")
-            mdat_pos = header.find(b"mdat")
-            if moov_pos >= 0 and mdat_pos >= 0:
-                return moov_pos < mdat_pos
+            while True:
+                header = f.read(8)
+                if len(header) < 8:
+                    break
+                size, box_type = struct.unpack(">I4s", header)
+                box_type_str = box_type.decode("ascii", errors="replace")
+                if box_type_str == "moov":
+                    return True
+                if box_type_str == "mdat":
+                    return False
+                if size == 1:
+                    ext = f.read(8)
+                    if len(ext) < 8:
+                        break
+                    size = struct.unpack(">Q", ext)[0]
+                    if size < 16:
+                        break
+                    f.seek(size - 16, 1)
+                elif size == 0:
+                    break
+                elif size < 8:
+                    break
+                else:
+                    f.seek(size - 8, 1)
     except OSError:
         pass
     return False
@@ -91,11 +112,37 @@ def _set_transcode_status(
             db.commit()
 
 
+def get_transcoded_key(s3_key: str) -> str | None:
+    """Return the transcoded S3 key for an asset if transcode is complete.
+
+    If the original was already H.264, returns the original key itself
+    (transcode verified it's suitable, no separate file needed).
+    """
+    with SessionLocal() as db:
+        row = db.execute(
+            select(MediaAsset).where(MediaAsset.s3_key == s3_key)
+        ).scalar_one_or_none()
+        if row and row.transcode_status == "complete":
+            return row.transcoded_s3_key or s3_key
+    return None
+
+
 def transcode_to_h264(s3_key: str) -> str | None:
     """Download from S3, transcode to H.264 MP4 with faststart, upload back.
 
     Returns the new S3 key, or None if the original is already suitable.
     """
+    meta = s3.head_object(s3_key)
+    if not meta:
+        raise RuntimeError(f"S3 object not found: {s3_key}")
+    file_size = int(meta.get("ContentLength", 0))
+    max_bytes = app_settings.transcode_max_file_bytes
+    if file_size > max_bytes:
+        raise RuntimeError(
+            f"File too large for transcoding: {file_size / (1024 * 1024):.1f} MB "
+            f"(max {max_bytes / (1024 * 1024):.0f} MB)"
+        )
+
     with tempfile.TemporaryDirectory(prefix="openar_transcode_") as tmpdir:
         tmp = Path(tmpdir)
         original_name = PurePosixPath(s3_key).name
@@ -120,6 +167,7 @@ def transcode_to_h264(s3_key: str) -> str | None:
                 FFMPEG_BIN,
                 "-i", str(input_path),
                 "-c:v", "copy",
+                # Surveillance video — audio not needed
                 "-an",
                 "-movflags", "+faststart",
                 "-y",
@@ -135,6 +183,7 @@ def transcode_to_h264(s3_key: str) -> str | None:
                 "-profile:v", "main",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
+                # Surveillance video — audio not needed
                 "-an",
                 "-y",
                 str(output_path),
@@ -145,7 +194,7 @@ def transcode_to_h264(s3_key: str) -> str | None:
             cmd,
             capture_output=True,
             text=True,
-            timeout=TRANSCODE_TIMEOUT_S,
+            timeout=app_settings.transcode_timeout_s,
         )
         if result.returncode != 0:
             logger.error(
@@ -164,20 +213,32 @@ def transcode_to_h264(s3_key: str) -> str | None:
 def run_transcode_task(s3_key: str) -> None:
     """Transcode a video and update its MediaAsset status.
 
-    Safe to call from background tasks or threads. Skips if already complete.
+    Safe to call from background tasks or threads. Uses an atomic UPDATE
+    to claim the row, preventing concurrent transcodes of the same file.
     """
     with SessionLocal() as db:
-        row = db.execute(
-            select(MediaAsset).where(MediaAsset.s3_key == s3_key)
-        ).scalar_one_or_none()
-        if not row:
-            logger.warning("[transcode] MediaAsset not found for key %s", s3_key)
-            return
-        if row.transcode_status == "complete" and row.transcoded_s3_key:
-            logger.info("[transcode] Already transcoded: %s", s3_key)
-            return
-        row.transcode_status = "processing"
+        result = db.execute(
+            update(MediaAsset)
+            .where(MediaAsset.s3_key == s3_key)
+            .where(MediaAsset.transcode_status.in_([None, "pending", "failed"]))
+            .values(transcode_status="processing")
+            .returning(MediaAsset.s3_key)
+        )
+        claimed = result.fetchone()
         db.commit()
+
+    if not claimed:
+        with SessionLocal() as db:
+            row = db.execute(
+                select(MediaAsset).where(MediaAsset.s3_key == s3_key)
+            ).scalar_one_or_none()
+            if row and row.transcode_status == "complete":
+                logger.info("[transcode] Already transcoded: %s", s3_key)
+            elif not row:
+                logger.warning("[transcode] MediaAsset not found for key %s", s3_key)
+            else:
+                logger.info("[transcode] Already being processed: %s", s3_key)
+        return
 
     try:
         transcoded_key = transcode_to_h264(s3_key)
@@ -187,7 +248,7 @@ def run_transcode_task(s3_key: str) -> None:
         return
 
     _set_transcode_status(s3_key, "complete", transcoded_key)
-    logger.info("[transcode] Done for %s → %s", s3_key, transcoded_key or "(original is fine)")
+    logger.info("[transcode] Done for %s -> %s", s3_key, transcoded_key or "(original is fine)")
 
 
 def retry_interrupted_transcodes() -> None:
@@ -203,4 +264,4 @@ def retry_interrupted_transcodes() -> None:
 
     logger.info("[transcode] Retrying %d interrupted transcode(s)", len(keys))
     for key in keys:
-        threading.Thread(target=run_transcode_task, args=(key,), daemon=True).start()
+        _TRANSCODE_POOL.submit(run_transcode_task, key)

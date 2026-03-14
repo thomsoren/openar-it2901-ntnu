@@ -152,21 +152,6 @@ def upload_from_path(local_path: Path, raw_key: str, content_type: str = "video/
     return short_key
 
 
-def get_transcoded_key(s3_key: str) -> str | None:
-    """Return the transcoded S3 key for an asset if transcode is complete.
-
-    If the original was already H.264, returns the original key itself
-    (transcode verified it's suitable, no separate file needed).
-    """
-    with SessionLocal() as db:
-        row = db.execute(
-            select(MediaAsset).where(MediaAsset.s3_key == s3_key)
-        ).scalar_one_or_none()
-        if row and row.transcode_status == "complete":
-            return row.transcoded_s3_key or s3_key
-    return None
-
-
 # ── Streaming response ──────────────────────────────────────────────────────
 
 def _stream_body(body, chunk_size: int = 1024 * 1024):
@@ -255,6 +240,8 @@ def _upsert_uploaded_asset(*, s3_key: str, owner_user_id: str, visibility: str, 
             row.group_id = group_id or row.group_id
             row.media_type = media_type
             row.is_system = False
+            if media_type == "video" and not row.transcode_status:
+                row.transcode_status = "pending"
         else:
             db.add(MediaAsset(
                 s3_key=s3_key,
@@ -263,6 +250,7 @@ def _upsert_uploaded_asset(*, s3_key: str, owner_user_id: str, visibility: str, 
                 group_id=group_id,
                 media_type=media_type,
                 is_system=False,
+                transcode_status="pending" if media_type == "video" else None,
             ))
         db.commit()
 

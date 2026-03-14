@@ -30,7 +30,7 @@ from orchestrator import (
     WorkerOrchestrator,
 )
 from services.stream_service import resolve_default_source
-from services.transcode_service import retry_interrupted_transcodes
+from services.transcode_service import get_transcoded_key, retry_interrupted_transcodes
 from storage import s3
 from cv.idun.config import IDUN_ENABLED
 
@@ -111,7 +111,7 @@ async def lifespan(_: FastAPI):
         logger.info("SKIP_DEFAULT_STREAM=true; not auto-starting default stream")
     if source_url:
         s3_key = s3.coerce_s3_key(source_url)
-        pretranscoded = bool(s3_key and s3.get_transcoded_key(s3_key))
+        pretranscoded = bool(s3_key and get_transcoded_key(s3_key))
         try:
             state.orchestrator.start_stream(
                 StreamConfig(
