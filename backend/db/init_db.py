@@ -24,7 +24,7 @@ def _add_missing_columns() -> None:
                 continue
             existing = {c["name"] for c in insp.get_columns(table)}
             if column not in existing:
-                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}'))
+                conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "{column}" {col_type}'))
                 logger.info("Added column %s.%s", table, column)
 
 
