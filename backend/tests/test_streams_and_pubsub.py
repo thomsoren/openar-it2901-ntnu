@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import api
-from auth.deps import get_current_user
+from auth.deps import get_current_user, get_optional_user
 from common.config import create_redis_client, detections_channel
 from db.models import AppUser
 from orchestrator import StreamConfig, WorkerOrchestrator
@@ -31,16 +31,15 @@ def _auth_override(monkeypatch):
     """Override auth for tests that create their own TestClient(api.app)."""
     test_user = AppUser(id="test-admin-1", username="test-admin", email="admin@test.local", is_admin=True)
     api.app.dependency_overrides[get_current_user] = lambda: test_user
-
-    async def _fake_authenticate_websocket(websocket):
-        return test_user
+    api.app.dependency_overrides[get_optional_user] = lambda: test_user
 
     monkeypatch.setattr(
-        "webapi.routes.detections.authenticate_websocket",
-        _fake_authenticate_websocket,
+        "webapi.routes.detections._try_authenticate_websocket",
+        lambda ws: test_user,
     )
     yield
     api.app.dependency_overrides.pop(get_current_user, None)
+    api.app.dependency_overrides.pop(get_optional_user, None)
 
 
 def test_concurrent_stream_starts(fake_decode_thread, fake_ffmpeg, fake_inference_thread):

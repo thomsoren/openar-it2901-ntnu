@@ -8,11 +8,12 @@ import os
 import subprocess
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel
 
-from auth.deps import get_current_user
+from auth.deps import get_current_user, get_optional_user
 from cv.publisher import get_fusion_publisher
+from cv.utils import is_http_url
 from db.models import AppUser
 from sensor_fusion.ais_store import AISStore
 from webapi.errors import (
@@ -36,24 +37,22 @@ from orchestrator import (
     WorkerOrchestrator,
 )
 from services.stream_service import (
+    _presign_s3_for_ffmpeg,
     augment_stream_payload,
     build_stream_playback_payload,
     resolve_stream_source,
 )
-from services.transcode_service import run_transcode_task
+from services.transcode_service import get_transcoded_key, run_transcode_task
 from storage import s3
+from webapi.constants import FUSION_STREAM_ID, SYSTEM_STREAM_IDS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-FUSION_STREAM_ID = "fusion"
 FUSION_AIS_ASSET_NAMES = ("fusion_ais_pirbadet",)
 FUSION_AIS_TIME_WINDOW_S = float(os.getenv("FUSION_STREAM_AIS_TIME_WINDOW_S", "900"))
 STREAM_UPLOAD_MAX_DURATION_S = float(os.getenv("STREAM_UPLOAD_MAX_DURATION_S", "300"))
 STREAM_UPLOAD_MAX_SIZE_MB = float(os.getenv("STREAM_UPLOAD_MAX_SIZE_MB", "300"))
 STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
-
-SYSTEM_STREAM_IDS = frozenset({FUSION_STREAM_ID, "mock-data", "default"})
 
 
 class StreamStartRequest(BaseModel):
@@ -203,9 +202,15 @@ async def _validate_s3_source_limits(original_source_url: str | None, resolved_s
 async def start_stream(
     stream_id: str,
     request: StreamStartRequest,
-    current_user: Annotated[AppUser, Depends(get_current_user)],
+    background_tasks: BackgroundTasks,
+    current_user: Annotated[AppUser | None, Depends(get_optional_user)],
 ) -> dict[str, Any]:
     _validate_stream_id(stream_id)
+    if current_user is None and stream_id not in SYSTEM_STREAM_IDS:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required for private streams",
+        )
     orchestrator = _require_orchestrator()
 
     try:
@@ -216,7 +221,8 @@ async def start_stream(
         existing_handle = None
 
     if existing_handle is not None:
-        _require_stream_access(orchestrator, stream_id, current_user)
+        if current_user is not None:
+            _require_stream_access(orchestrator, stream_id, current_user)
         if stream_id == FUSION_STREAM_ID:
             try:
                 await asyncio.get_running_loop().run_in_executor(
@@ -236,6 +242,7 @@ async def start_stream(
 
     if (
         stream_id not in SYSTEM_STREAM_IDS
+        and current_user is not None
         and not current_user.is_admin
         and orchestrator.count_user_streams(current_user.id) >= app_settings.max_streams_per_user
     ):
@@ -257,21 +264,26 @@ async def start_stream(
     original_s3_key = s3.coerce_s3_key(request.source_url) if request.source_url else None
     is_pretranscoded = False
     if original_s3_key and original_s3_key.startswith("videos/"):
-        transcoded = s3.get_transcoded_key(original_s3_key)
+        transcoded = get_transcoded_key(original_s3_key)
         is_pretranscoded = transcoded is not None
         if not transcoded:
-            import threading
-            threading.Thread(
-                target=run_transcode_task,
-                args=(original_s3_key,),
-                daemon=True,
-            ).start()
+            background_tasks.add_task(run_transcode_task, original_s3_key)
+
+    # Fusion stream: resolve S3 key directly so FFmpeg can use -c:v copy
+    # instead of live-transcoding the HTTP API endpoint.
+    if stream_id == FUSION_STREAM_ID and source_url and is_http_url(source_url):
+        try:
+            _, fusion_s3_key = s3.resolve_first_system_asset_key(("fusion_video_pirbadet",))
+            source_url = _presign_s3_for_ffmpeg(fusion_s3_key)
+            is_pretranscoded = True
+        except HTTPException:
+            pass
 
     config = StreamConfig(
         stream_id=stream_id,
-        source_url=request.source_url or source_url,
+        source_url=source_url or request.source_url,
         loop=request.loop,
-        owner_user_id=current_user.id,
+        owner_user_id=current_user.id if current_user else None,
         pretranscoded=is_pretranscoded,
     )
     handle = await asyncio.get_running_loop().run_in_executor(
@@ -328,11 +340,20 @@ async def stop_stream(
 
 @router.get("/api/streams")
 async def list_streams(
-    current_user: Annotated[AppUser, Depends(get_current_user)],
+    current_user: Annotated[AppUser | None, Depends(get_optional_user)],
 ) -> dict[str, Any]:
     orchestrator = _require_orchestrator()
-    owner_filter = None if current_user.is_admin else current_user.id
-    streams = [augment_stream_payload(stream) for stream in orchestrator.list_streams(owner_filter)]
+    if current_user is None:
+        all_streams = orchestrator.list_streams()
+        streams = [
+            augment_stream_payload(s)
+            for s in all_streams
+            if s.get("stream_id") in SYSTEM_STREAM_IDS
+        ]
+    elif current_user.is_admin:
+        streams = [augment_stream_payload(s) for s in orchestrator.list_streams()]
+    else:
+        streams = [augment_stream_payload(s) for s in orchestrator.list_streams(current_user.id)]
     return {"streams": streams, "max_workers": app_settings.max_workers}
 
 
