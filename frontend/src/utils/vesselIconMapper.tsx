@@ -4,23 +4,23 @@ import { ObiAisSarVesselIec } from "@ocean-industries-concept-lab/openbridge-web
 import { ObiAisTargetActivatedIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-target-activated-iec";
 import { ObiAisTargetDangerousIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-target-dangerous-iec";
 import { ObiAisTargetSleepingIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-target-sleeping-iec";
-import { ObiVesselTypeCargoFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-cargo-filled";
-import { ObiVesselTypeCruiseFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-cruise-filled";
-import { ObiVesselTypeFishingFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-fishing-filled";
-import { ObiVesselTypeGenericFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-generic-filled";
-import { ObiVesselTypePassengerFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-passenger-filled";
-import { ObiVesselTypePilotFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-pilot-filled";
-import { ObiVesselTypeSarFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-sar-filled";
-import { ObiVesselTypeSailingFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-sailing-filled";
-import { ObiVesselTypeSpeedCraftFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-speed-craft-filled";
-import { ObiVesselTypeTankerFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-tanker-filled";
-import { ObiVesselTypeTugFilled } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-tug-filled";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-anchored-filled.js";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-default-filled.js";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-fast-filled.js";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-medium-filled.js";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-slow-filled.js";
-import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-stopped-filled.js";
+import { ObiVesselTypeCargoOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-cargo-outlined";
+import { ObiVesselTypeCruiseOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-cruise-outlined";
+import { ObiVesselTypeFishingOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-fishing-outlined";
+import { ObiVesselTypeGenericOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-generic-outlined";
+import { ObiVesselTypePassengerOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-passenger-outlined";
+import { ObiVesselTypePilotOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-pilot-outlined";
+import { ObiVesselTypeSarOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-sar-outlined";
+import { ObiVesselTypeSailingOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-sailing-outlined";
+import { ObiVesselTypeSpeedCraftOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-speed-craft-outlined";
+import { ObiVesselTypeTankerOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-tanker-outlined";
+import { ObiVesselTypeTugOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-tug-outlined";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-anchored-outlined.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-default-outlined.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-fast-outlined.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-medium-outlined.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-slow-outlined.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-stopped-outlined.js";
 
 export type VesselIconSet = "generic" | "detailed" | "directional";
 
@@ -31,12 +31,12 @@ type VesselIconInput =
   | undefined;
 
 type VesselGenericIconTag =
-  | "obi-vessel-generic-default-filled"
-  | "obi-vessel-generic-slow-filled"
-  | "obi-vessel-generic-medium-filled"
-  | "obi-vessel-generic-fast-filled"
-  | "obi-vessel-generic-stopped-filled"
-  | "obi-vessel-generic-anchored-filled";
+  | "obi-vessel-generic-default-outlined"
+  | "obi-vessel-generic-slow-outlined"
+  | "obi-vessel-generic-medium-outlined"
+  | "obi-vessel-generic-fast-outlined"
+  | "obi-vessel-generic-stopped-outlined"
+  | "obi-vessel-generic-anchored-outlined";
 
 type VesselIconOptions = {
   iconSet?: VesselIconSet;
@@ -91,48 +91,48 @@ function getGenericIconDetails(shipType?: number): VesselIconDetails {
 
 function getDetailedIconDetails(shipType?: number): VesselIconDetails {
   if (!shipType) {
-    return { icon: ObiVesselTypeGenericFilled, name: "Unknown vessel" };
+    return { icon: ObiVesselTypeGenericOutlined, name: "Unknown vessel" };
   }
 
   if (shipType === 36 || shipType === 37) {
-    return { icon: ObiVesselTypeSailingFilled, name: "Sailing vessel" };
+    return { icon: ObiVesselTypeSailingOutlined, name: "Sailing vessel" };
   }
 
   if (shipType >= 30 && shipType <= 39) {
-    return { icon: ObiVesselTypeFishingFilled, name: "Fishing vessel" };
+    return { icon: ObiVesselTypeFishingOutlined, name: "Fishing vessel" };
   }
 
   if (shipType >= 40 && shipType <= 49) {
-    return { icon: ObiVesselTypeSpeedCraftFilled, name: "High-speed craft" };
+    return { icon: ObiVesselTypeSpeedCraftOutlined, name: "High-speed craft" };
   }
 
   if (shipType >= 50 && shipType <= 51) {
-    return { icon: ObiVesselTypePilotFilled, name: "Pilot vessel" };
+    return { icon: ObiVesselTypePilotOutlined, name: "Pilot vessel" };
   }
 
   if (shipType === 52) {
-    return { icon: ObiVesselTypeSarFilled, name: "Search and rescue vessel" };
+    return { icon: ObiVesselTypeSarOutlined, name: "Search and rescue vessel" };
   }
 
   if (shipType === 53 || shipType === 54) {
-    return { icon: ObiVesselTypeTugFilled, name: "Tug/Port tender" };
+    return { icon: ObiVesselTypeTugOutlined, name: "Tug/Port tender" };
   }
 
   if (shipType >= 60 && shipType <= 69) {
     return shipType === 69
-      ? { icon: ObiVesselTypeCruiseFilled, name: "Cruise ship" }
-      : { icon: ObiVesselTypePassengerFilled, name: "Passenger ship" };
+      ? { icon: ObiVesselTypeCruiseOutlined, name: "Cruise ship" }
+      : { icon: ObiVesselTypePassengerOutlined, name: "Passenger ship" };
   }
 
   if (shipType >= 70 && shipType <= 79) {
-    return { icon: ObiVesselTypeCargoFilled, name: "Cargo ship" };
+    return { icon: ObiVesselTypeCargoOutlined, name: "Cargo ship" };
   }
 
   if (shipType >= 80 && shipType <= 89) {
-    return { icon: ObiVesselTypeTankerFilled, name: "Tanker" };
+    return { icon: ObiVesselTypeTankerOutlined, name: "Tanker" };
   }
 
-  return { icon: ObiVesselTypeGenericFilled, name: "General vessel" };
+  return { icon: ObiVesselTypeGenericOutlined, name: "General vessel" };
 }
 
 function getDirectionalIconDetails(
@@ -141,7 +141,7 @@ function getDirectionalIconDetails(
 ): VesselIconDetails {
   if (navigationalStatus != null && ANCHORED_STATUSES.has(navigationalStatus)) {
     return {
-      icon: "obi-vessel-generic-anchored-filled",
+      icon: "obi-vessel-generic-anchored-outlined",
       name: "Anchored vessel",
       isCustomElementTag: true,
     };
@@ -149,7 +149,7 @@ function getDirectionalIconDetails(
 
   if (navigationalStatus != null && STOPPED_STATUSES.has(navigationalStatus)) {
     return {
-      icon: "obi-vessel-generic-stopped-filled",
+      icon: "obi-vessel-generic-stopped-outlined",
       name: "Stopped vessel",
       isCustomElementTag: true,
     };
@@ -157,7 +157,7 @@ function getDirectionalIconDetails(
 
   if (speedOverGround == null) {
     return {
-      icon: "obi-vessel-generic-default-filled",
+      icon: "obi-vessel-generic-default-outlined",
       name: "Vessel",
       isCustomElementTag: true,
     };
@@ -165,7 +165,7 @@ function getDirectionalIconDetails(
 
   if (speedOverGround < 0.5) {
     return {
-      icon: "obi-vessel-generic-stopped-filled",
+      icon: "obi-vessel-generic-stopped-outlined",
       name: "Stopped vessel",
       isCustomElementTag: true,
     };
@@ -173,7 +173,7 @@ function getDirectionalIconDetails(
 
   if (speedOverGround >= 15) {
     return {
-      icon: "obi-vessel-generic-fast-filled",
+      icon: "obi-vessel-generic-fast-outlined",
       name: "Fast vessel",
       isCustomElementTag: true,
     };
@@ -181,14 +181,14 @@ function getDirectionalIconDetails(
 
   if (speedOverGround >= 8) {
     return {
-      icon: "obi-vessel-generic-medium-filled",
+      icon: "obi-vessel-generic-medium-outlined",
       name: "Medium-speed vessel",
       isCustomElementTag: true,
     };
   }
 
   return {
-    icon: "obi-vessel-generic-slow-filled",
+    icon: "obi-vessel-generic-slow-outlined",
     name: "Slow vessel",
     isCustomElementTag: true,
   };

@@ -3,27 +3,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AISData } from "../../../types/aisData";
 
 vi.mock(
-  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-default-filled.js",
+  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-default-outlined.js",
   () => ({})
 );
 vi.mock(
-  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-slow-filled.js",
+  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-slow-outlined.js",
   () => ({})
 );
 vi.mock(
-  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-medium-filled.js",
+  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-medium-outlined.js",
   () => ({})
 );
 vi.mock(
-  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-fast-filled.js",
+  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-fast-outlined.js",
   () => ({})
 );
 vi.mock(
-  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-stopped-filled.js",
+  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-stopped-outlined.js",
   () => ({})
 );
 vi.mock(
-  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-anchored-filled.js",
+  "@ocean-industries-concept-lab/openbridge-webcomponents/dist/icons/icon-vessel-generic-anchored-outlined.js",
   () => ({})
 );
 
@@ -65,13 +65,13 @@ describe("DirectionalVesselIcon", () => {
     expect(root.style.getPropertyValue("--dvi-heading-angle")).toBe("90deg");
     expect(root.style.getPropertyValue("--dvi-course-angle")).toBe("45deg");
     expect(
-      container.querySelector("obi-vessel-generic-fast-filled.dvi-vessel-icon-glyph")
+      container.querySelector("obi-vessel-generic-fast-outlined.dvi-vessel-icon-glyph")
     ).not.toBeNull();
   });
 
   it.each([
-    { navigationalStatus: 1, expectedTag: "obi-vessel-generic-anchored-filled" },
-    { navigationalStatus: 5, expectedTag: "obi-vessel-generic-stopped-filled" },
+    { navigationalStatus: 1, expectedTag: "obi-vessel-generic-anchored-outlined" },
+    { navigationalStatus: 5, expectedTag: "obi-vessel-generic-stopped-outlined" },
   ])(
     "prioritizes status-based icon mapping for status $navigationalStatus",
     ({ navigationalStatus, expectedTag }) => {

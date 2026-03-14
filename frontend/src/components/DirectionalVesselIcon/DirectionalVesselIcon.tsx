@@ -48,7 +48,7 @@ export const DirectionalVesselIcon: React.FC<DirectionalVesselIconProps> = ({ ve
       <div className="dvi-turn-dot" />
 
       <div className="dvi-vessel-icon">
-        {React.createElement("obi-vessel-generic-default-filled")}
+        {React.createElement("obi-vessel-generic-default-outlined")}
       </div>
     </div>
   );

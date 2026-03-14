@@ -93,67 +93,76 @@ export const useFetchAISGeographicalData = (
     const controller = new AbortController();
     abortRef.current = controller;
 
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
     const runStream = async () => {
-      try {
-        const response = await apiFetch("/api/ais/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            coordinates: polygon,
-            ship_lat: shipLat,
-            ship_lon: shipLon,
-            heading,
-          }),
-          signal: controller.signal,
-        });
+      while (!controller.signal.aborted) {
+        try {
+          setError(null);
+          setIsStreaming(true);
 
-        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+          const response = await apiFetch("/api/ais/stream", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              coordinates: polygon,
+              ship_lat: shipLat,
+              ship_lon: shipLon,
+              heading,
+            }),
+            signal: controller.signal,
+          });
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+          if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop()!;
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const data: AISData = JSON.parse(line.slice(6));
-              if (!data.latitude || !data.longitude || !data.mmsi) continue;
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
 
-              vesselCacheRef.current.set(data.mmsi, data);
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop()!;
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const data: AISData = JSON.parse(line.slice(6));
+                if (!data.latitude || !data.longitude || !data.mmsi) continue;
 
-              const currentPolygon = buildScanPolygon(
-                shipLat,
-                shipLon,
-                heading,
-                offsetMeters,
-                fovDegrees,
-                shapeMode,
-                rectLength,
-                rectWidth
-              );
-              const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
-                isVesselInFov(vessel, currentPolygon)
-              );
-              setFeatures(inFov.slice(0, 50));
-            } catch {
-              // Ignore JSON parse errors or invalid data entries
+                vesselCacheRef.current.set(data.mmsi, data);
+
+                const currentPolygon = buildScanPolygon(
+                  shipLat,
+                  shipLon,
+                  heading,
+                  offsetMeters,
+                  fovDegrees,
+                  shapeMode,
+                  rectLength,
+                  rectWidth
+                );
+                const inFov = Array.from(vesselCacheRef.current.values()).filter((vessel) =>
+                  isVesselInFov(vessel, currentPolygon)
+                );
+                setFeatures(inFov.slice(0, 50));
+              } catch {
+                // Ignore JSON parse errors or invalid data entries
+              }
             }
           }
+        } catch (err) {
+          if ((err as Error).name === "AbortError") return;
+          setError("Connection lost");
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsStreaming(false);
+          }
         }
-      } catch (err) {
-        if ((err as Error).name === "AbortError") return;
-        setError("Connection lost");
-      } finally {
-        // Only clear streaming state if the stream ended naturally or errored out.
-        if (!controller.signal.aborted) {
-          setIsStreaming(false);
-        }
+
+        if (controller.signal.aborted) return;
+        await sleep(1500);
       }
     };
 
