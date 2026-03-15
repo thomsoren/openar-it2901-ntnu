@@ -1,0 +1,77 @@
+.configure-page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  padding: 48px 40px;
+  flex-direction: column;
+  background: var(--container-backdrop-color);
+  color: var(--element-active-color);
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.configure-page__pivot-row {
+  width: 100%;
+  max-width: 1600px;
+}
+
+.configure-page__pivot-row obc-pivot-item-group {
+  width: fit-content;
+}
+
+.configure-page__pivot-row obc-pivot-item {
+  width: 170px !important;
+  flex: 0 0 170px !important;
+}
+
+.configure-page__content {
+  width: 100%;
+  max-width: 1600px;
+  flex: 1 0 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.configure-page__header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: stretch;
+}
+
+.configure-page__title {
+  margin: 0;
+  @mixin font-subtitle;
+  color: var(--element-active-color);
+}
+
+.configure-page__subtitle {
+  margin: 0;
+  @mixin font-body;
+  color: var(--element-neutral-color);
+}
+
+@media (max-width: 960px) {
+  .configure-page {
+    padding: 48px 24px;
+  }
+}
+
+@media (max-width: 720px) {
+  .configure-page {
+    padding: 48px 16px;
+  }
+}
+
+@media (max-height: 800px) {
+  .configure-page {
+    padding: 8px;
+  }
+}

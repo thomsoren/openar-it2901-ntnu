@@ -220,6 +220,7 @@ function PoiOverlay({
       if (!el) {
         el = document.createElement("obc-poi-data") as PoiDataElement;
         el.style.position = "absolute";
+        el.value = PoiDataValue.Unchecked;
         poiElementsRef.current.set(trackId, el);
         layer.appendChild(el);
       }
@@ -228,7 +229,6 @@ function PoiOverlay({
       el.y = lineLength;
       el.boxWidth = scaledWidth;
       el.boxHeight = scaledHeight;
-      el.value = PoiDataValue.Unchecked;
       el.data = vesselData;
       el.relativeDirection = item.displayDirectionDeg ?? 0;
     }
@@ -307,16 +307,21 @@ function PoiOverlay({
               height: "auto",
             }}
           >
-            <ObcPoiLayer label="Second Layer" className="poi-layer" is-selected>
-              {/* Can add different POIs here */}
-            </ObcPoiLayer>
             <ObcPoiLayer
-              ref={layerRefCallback}
               label="Vessel Layer"
               className="poi-layer"
               overlap-mode="grouping"
+              is-selected
             >
               {/* obc-poi-data elements are managed imperatively in useEffect above */}
+            </ObcPoiLayer>
+            <ObcPoiLayer
+              ref={layerRefCallback}
+              label="Background Layer"
+              className="poi-layer"
+              data-controller-layer="background"
+            >
+              {/* Background layer for controller-managed detections */}
             </ObcPoiLayer>
           </ObcPoiLayerStack>
         </div>

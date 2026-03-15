@@ -2,17 +2,21 @@ import React, { useState } from "react";
 import { useFetchAISGeographicalData } from "../hooks/useFetchAISGeographicalData";
 import "./AISGeographicalDataDisplay.css";
 import { AISData } from "../types/aisData";
-import { ObcInput } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/input/input";
+import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
 import { AISGeoJsonMap } from "./AISGeoJsonMap/AISGeoJsonMap";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
-import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/input/input";
+import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/text-input-field/text-input-field";
 import { StatusIndicatorStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/status-indicator/status-indicator";
 import { TagColor } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/tag/tag";
-import { ObcElevatedCardSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
+import {
+  ObcElevatedCardSize,
+  ObcElevatedCardTag,
+} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
+import { parseNumberInput } from "../utils/dom-input";
 
 export const AISGeographicalDataDisplay: React.FC = () => {
   const [shouldStream, setShouldStream] = useState(false);
@@ -25,12 +29,6 @@ export const AISGeographicalDataDisplay: React.FC = () => {
   const [rectLength, setRectLength] = useState(1000);
   const [rectWidth, setRectWidth] = useState(600);
   const [isLoadingGPS, setIsLoadingGPS] = useState(false);
-
-  const parseNumberInput = (event: Event, fallback: number) => {
-    const rawValue = (event.target as { value?: string }).value ?? "";
-    const parsedValue = Number.parseFloat(rawValue);
-    return Number.isNaN(parsedValue) ? fallback : parsedValue;
-  };
 
   const { features, isStreaming, error } = useFetchAISGeographicalData(
     shouldStream,
@@ -101,8 +99,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
       <div className="ais-stream-params">
         <div className="param-group">
           <span className="param-label">Ship Latitude</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(shipLat)}
             placeholder="63.4365"
             disabled={isStreaming}
@@ -112,8 +110,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Ship Longitude</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(shipLon)}
             placeholder="10.3835"
             disabled={isStreaming}
@@ -123,8 +121,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Heading (°)</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(heading)}
             placeholder="0"
             disabled={isStreaming}
@@ -134,8 +132,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Range (m)</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(offsetMeters)}
             placeholder="1000"
             disabled={isStreaming}
@@ -145,8 +143,8 @@ export const AISGeographicalDataDisplay: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">FOV (°)</span>
-          <ObcInput
-            type={HTMLInputTypeAttribute.Number}
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(fovDegrees)}
             placeholder="60"
             disabled={isStreaming}
@@ -200,7 +198,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
                 key={`${feature.mmsi}-${feature.msgtime}`}
                 className="feature-card"
                 size={ObcElevatedCardSize.MultiLine}
-                notClickable
+                overrideTag={ObcElevatedCardTag.Article}
               >
                 <div slot="label" className="feature-label">
                   <span className="feature-name">

@@ -15,7 +15,7 @@ from auth.deps import get_current_user, get_optional_user
 from cv.publisher import get_fusion_publisher
 from cv.utils import is_http_url
 from db.models import AppUser
-from sensor_fusion.ais_store import AISStore
+from sensor_fusion import fusion_config
 from webapi.errors import (
     bad_gateway,
     bad_request,
@@ -40,6 +40,7 @@ from services.stream_service import (
     _presign_s3_for_ffmpeg,
     augment_stream_payload,
     build_stream_playback_payload,
+    resolve_asset_video_source,
     resolve_stream_source,
 )
 from services.transcode_service import get_transcoded_key, run_transcode_task
@@ -48,8 +49,8 @@ from webapi.constants import FUSION_STREAM_ID, SYSTEM_STREAM_IDS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-FUSION_AIS_ASSET_NAMES = ("fusion_ais_pirbadet",)
-FUSION_AIS_TIME_WINDOW_S = float(os.getenv("FUSION_STREAM_AIS_TIME_WINDOW_S", "900"))
+
+FUSION_STREAM_ID = "fusion"
 STREAM_UPLOAD_MAX_DURATION_S = float(os.getenv("STREAM_UPLOAD_MAX_DURATION_S", "300"))
 STREAM_UPLOAD_MAX_SIZE_MB = float(os.getenv("STREAM_UPLOAD_MAX_SIZE_MB", "300"))
 STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
@@ -57,6 +58,7 @@ STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
 
 class StreamStartRequest(BaseModel):
     source_url: str | None = None
+    asset_name: str | None = None
     loop: bool = True
 
 
@@ -93,44 +95,10 @@ def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamC
         service_unavailable(str(exc))
 
 
-def _load_fusion_ais_text() -> tuple[str | None, str | None]:
-    try:
-        asset_name, s3_key = s3.resolve_first_system_asset_key(FUSION_AIS_ASSET_NAMES)
-    except Exception:
-        return None, None
-
-    text = s3.read_text_from_sources(s3_key)
-    if text and text.strip():
-        return text, f"{asset_name} (s3://{s3_key})"
-    return None, f"{asset_name} (s3://{s3_key})"
-
-
-def _configure_fusion_stream_ais(stream_id: str) -> None:
-    if stream_id != FUSION_STREAM_ID:
-        return
-
-    text, source_label = _load_fusion_ais_text()
-    if not text:
-        logger.warning("[fusion:%s] No AIS NDJSON available; fusion enrichment disabled", stream_id)
-        return
-
-    store = AISStore(ndjson_text=text, time_window_s=FUSION_AIS_TIME_WINDOW_S)
-    time_range = store.time_range
-    if not time_range:
-        logger.warning("[fusion:%s] AIS NDJSON had no usable records", stream_id)
-        return
-
-    get_fusion_publisher().fusion_svc.configure(
-        stream_id=stream_id,
-        ais_store=store,
-        video_epoch_utc=time_range[0],
-    )
-    logger.info(
-        "[fusion:%s] Configured AIS enrichment from %s (%d records, time_window_s=%s)",
-        stream_id,
-        source_label or "unknown",
-        store.record_count,
-        FUSION_AIS_TIME_WINDOW_S,
+def _configure_stream_fusion(stream_id: str, asset_name: str) -> None:
+    """Eagerly configure AIS fusion for a stream using the named media asset."""
+    fusion_config.configure_from_db_asset(
+        stream_id, asset_name, get_fusion_publisher().fusion_svc
     )
 
 
@@ -223,10 +191,10 @@ async def start_stream(
     if existing_handle is not None:
         if current_user is not None:
             _require_stream_access(orchestrator, stream_id, current_user)
-        if stream_id == FUSION_STREAM_ID:
+        if request.asset_name:
             try:
                 await asyncio.get_running_loop().run_in_executor(
-                    None, _configure_fusion_stream_ais, stream_id
+                    None, _configure_stream_fusion, stream_id, request.asset_name
                 )
             except Exception as exc:
                 logger.warning(
@@ -251,13 +219,20 @@ async def start_stream(
         )
 
     try:
-        source_url = await asyncio.get_running_loop().run_in_executor(
-            None, resolve_stream_source, request.source_url
-        )
+        if request.asset_name:
+            source_url = await asyncio.get_running_loop().run_in_executor(
+                None, resolve_asset_video_source, request.asset_name
+            )
+            if not source_url:
+                bad_request(f"Asset '{request.asset_name}' not found in media_assets")
+        else:
+            source_url = await asyncio.get_running_loop().run_in_executor(
+                None, resolve_stream_source, request.source_url
+            )
     except RuntimeError as exc:
         bad_gateway(str(exc))
     if not source_url:
-        bad_request("source_url is required for this stream")
+        bad_request("source_url or asset_name is required for this stream")
     await _validate_s3_source_limits(request.source_url, source_url)
 
     # Trigger background transcode for S3 uploads that haven't been transcoded yet
@@ -269,16 +244,6 @@ async def start_stream(
         if not transcoded:
             background_tasks.add_task(run_transcode_task, original_s3_key)
 
-    # Fusion stream: resolve S3 key directly so FFmpeg can use -c:v copy
-    # instead of live-transcoding the HTTP API endpoint.
-    if stream_id == FUSION_STREAM_ID and source_url and is_http_url(source_url):
-        try:
-            _, fusion_s3_key = s3.resolve_first_system_asset_key(("fusion_video_pirbadet",))
-            source_url = _presign_s3_for_ffmpeg(fusion_s3_key)
-            is_pretranscoded = True
-        except HTTPException:
-            pass
-
     config = StreamConfig(
         stream_id=stream_id,
         source_url=source_url or request.source_url,
@@ -289,9 +254,11 @@ async def start_stream(
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
     )
-    if stream_id == FUSION_STREAM_ID:
+    if request.asset_name:
         try:
-            await asyncio.get_running_loop().run_in_executor(None, _configure_fusion_stream_ais, stream_id)
+            await asyncio.get_running_loop().run_in_executor(
+                None, _configure_stream_fusion, stream_id, request.asset_name
+            )
         except Exception as exc:
             logger.warning("[fusion:%s] Failed to configure AIS enrichment: %s", stream_id, exc)
 

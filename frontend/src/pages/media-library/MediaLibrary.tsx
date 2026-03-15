@@ -1,56 +1,58 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { html } from "lit";
+import { ref as litRef } from "lit/directives/ref.js";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcTable } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/table/table.js";
-import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
-import { DropdownButtonType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/dropdown-button/dropdown-button";
-import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
 import { ObcTableCellType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
-import type { ObcTableRow } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
-import { html } from "lit";
-import "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-arrow-top-right";
+import { CheckboxStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/checkbox/checkbox";
+import type { ObcTableRow, ObcTableCellDataRegular, ObcTableColumn, ObcTableCellData } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/tag/tag.js";
 import { ObiDelete } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-delete";
-import { ObiEditGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-edit-google";
+import { ObiFileDownloadGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-file-download-google";
 import { useAuth } from "../../hooks/useAuth";
 import {
   type MediaAsset,
-  type MediaVisibility,
   deleteMediaAsset,
   listMediaAssets,
   presignDownload,
-  renameMediaAsset,
-  updateVisibility,
   uploadFileToS3Multipart,
 } from "../../services/media";
+import { explainFetchError } from "../../utils/api-helpers";
 import { listStreams, stopStream } from "../../services/streams";
 import { removePersistedStreamIds } from "../../hooks/stream-tabs/storage";
 import { MediaLibraryModal } from "./MediaLibraryModal";
 import { MediaLibraryActions } from "./MediaLibraryActions";
 import { MediaLibraryPreview } from "./MediaLibraryPreview";
 import { assetToRow } from "./helpers";
-import { VISIBILITY_OPTIONS } from "./types";
-import type { MediaLibraryModalMode } from "./types";
 import "./MediaLibrary.css";
 
-export default function MediaLibrary() {
-  const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge, isAdmin } =
+const MAX_FILE_SIZE_BYTES = 300 * 1024 * 1024; // 300 MB
+const UPLOAD_ROW_ID = "__uploading__";
+
+export default function MediaLibrary({ embedded = false }: { embedded?: boolean }) {
+  const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge } =
     useAuth();
   const storageScope = session?.user?.id ?? "anon";
+  const pageClassName = embedded ? "media-library-page media-library-page--embedded" : "media-library-page";
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState("");
-  const [activeModal, setActiveModal] = useState<MediaLibraryModalMode>(null);
-  const [editedFileName, setEditedFileName] = useState("");
+  const [activeModal, setActiveModal] = useState<"delete" | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadFileName, setUploadFileName] = useState("");
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortUploadRef = useRef<(() => void) | null>(null);
+  const uploadProgressRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -64,22 +66,21 @@ export default function MediaLibrary() {
     return () => window.clearTimeout(id);
   }, [actionError]);
 
-  const visibilityOptions = isAdmin
-    ? VISIBILITY_OPTIONS
-    : VISIBILITY_OPTIONS.filter((o) => o.value !== "public");
-  const mediaRows = assets.map((a) => assetToRow(a, previewUrls[a.id]));
+  const mediaRows = useMemo(() => assets.map((a) => assetToRow(a, previewUrls[a.id])), [assets, previewUrls]);
   const selectedRow = mediaRows.find((r) => r.id === selectedRowId) ?? mediaRows[0] ?? null;
 
   const loadAssets = useCallback(async () => {
     try {
       const data = await listMediaAssets();
       setAssets(data);
+      setLoading(false);
       setLoadError(null);
       if (data.length > 0) {
         setSelectedRowId((current) => current || data[0].id);
       }
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load assets");
+      setLoading(false);
+      setLoadError(explainFetchError(err, "Failed to load assets"));
     }
   }, []);
 
@@ -93,42 +94,132 @@ export default function MediaLibrary() {
     };
   }, [session, authBridgeStatus, loadAssets]);
 
+  const columns = useMemo((): ObcTableColumn[] => {
+    const textCompare = (a: ObcTableCellData, b: ObcTableCellData) =>
+      ((a as ObcTableCellDataRegular).text?.toString() ?? "").localeCompare(
+        (b as ObcTableCellDataRegular).text?.toString() ?? ""
+      );
+    return [
+      {
+        label: "File name",
+        key: "fileName",
+        sortable: true as const,
+        compareFunction: textCompare,
+        renderCell: (value: ObcTableCellData, row: ObcTableRow) => {
+          const text = (value as ObcTableCellDataRegular).text ?? "";
+          if (row.isSystem) {
+            return html`<span style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px"><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag></span>`;
+          }
+          return html`<span>${text}</span>`;
+        },
+      },
+      {
+        label: "Type",
+        key: "type",
+        sortable: true as const,
+        compareFunction: textCompare,
+        renderCell: (_value: ObcTableCellData, row: ObcTableRow) => {
+          if (row.id !== UPLOAD_ROW_ID) return html`<span>${(_value as ObcTableCellDataRegular).text}</span>`;
+          return html`<obc-progress-bar
+            ${litRef((el) => {
+              if (!el) return;
+              const cell = el.closest(".grid-cell");
+              const row = cell?.parentElement;
+              if (!cell || !row) return;
+              const rowRect = row.getBoundingClientRect();
+              const cellRect = cell.getBoundingClientRect();
+              const width = rowRect.right - cellRect.left;
+              (el as HTMLElement).style.width = `${width}px`;
+              (el as HTMLElement).style.position = "absolute";
+              (el as HTMLElement).style.left = "0";
+            })}
+            type="linear"
+            mode="determinate"
+            .value=${uploadProgressRef.current}
+            showValue
+            showUnit
+          ></obc-progress-bar>`;
+        },
+      },
+      { label: "Live detection", key: "liveDetection" },
+      { label: "Has AIS data", key: "hasAisData" },
+      { label: "Uploaded", key: "uploaded", sortable: true as const, compareFunction: textCompare },
+      { label: "In toolbar", key: "inToolbar" },
+    ];
+  }, []);
+
+  const tableData: ObcTableRow[] = useMemo(() => {
+    const rows: ObcTableRow[] = mediaRows.map((row) => ({
+      id: row.id,
+      selected: row.id === selectedRowId,
+      isSystem: row.asset.is_system,
+      fileName: { type: ObcTableCellType.Regular, text: row.fileName, noWrap: true },
+      type: { type: ObcTableCellType.Regular, text: row.type },
+      liveDetection: { type: ObcTableCellType.Regular, align: "center" as const },
+      hasAisData: { type: ObcTableCellType.Regular, align: "center" as const },
+      uploaded: { type: ObcTableCellType.Regular, text: row.uploaded },
+      inToolbar: { type: ObcTableCellType.Checkbox, status: CheckboxStatus.checked },
+    }));
+    if (uploadStatus === "uploading") {
+      rows.unshift({
+        id: UPLOAD_ROW_ID,
+        selected: false,
+        fileName: { type: ObcTableCellType.Regular, text: `${uploadFileName} (${uploadProgress}%)`, noWrap: true },
+        type: { type: ObcTableCellType.Regular, text: "", cssPart: "upload-progress-cell" },
+      });
+    }
+    return rows;
+  }, [mediaRows, selectedRowId, uploadStatus, uploadFileName, uploadProgress]);
+
   // ── Loading / auth states ──────────────────────────────────────────────────
 
   if (isSessionPending || authBridgeStatus === "loading") {
     return (
-      <section className="media-library-page">
-        <div className="media-library-page__header">
-          <h1 className="media-library-page__title">Media library</h1>
-          <p className="media-library-page__subtitle">Loading…</p>
-        </div>
+      <section className={pageClassName}>
+        {!embedded && (
+          <div className="media-library-page__header">
+            <h1 className="media-library-page__title">Media library</h1>
+            <p className="media-library-page__subtitle">Loading…</p>
+          </div>
+        )}
+        {embedded && <p className="media-library-page__subtitle">Loading…</p>}
       </section>
     );
   }
 
   if (!session) {
     return (
-      <section className="media-library-page">
-        <div className="media-library-page__header">
-          <h1 className="media-library-page__title">Media library</h1>
-          <p className="media-library-page__subtitle">Sign in to view your media library.</p>
-        </div>
+      <section className={pageClassName}>
+        {!embedded && (
+          <div className="media-library-page__header">
+            <h1 className="media-library-page__title">Media library</h1>
+            <p className="media-library-page__subtitle">Sign in to view your media library.</p>
+          </div>
+        )}
+        {embedded && <p className="media-library-page__subtitle">Sign in to view your media library.</p>}
       </section>
     );
   }
 
   if (authBridgeStatus === "error") {
     return (
-      <section className="media-library-page">
-        <div className="media-library-page__header">
-          <h1 className="media-library-page__title">Media library</h1>
+      <section className={pageClassName}>
+        {!embedded && (
+          <div className="media-library-page__header">
+            <h1 className="media-library-page__title">Media library</h1>
+            <p className="media-library-page__subtitle">
+              {authBridgeError || "Authentication bridge failed."}
+            </p>
+          </div>
+        )}
+        {embedded && (
           <p className="media-library-page__subtitle">
             {authBridgeError || "Authentication bridge failed."}
           </p>
-          <ObcButton variant={ButtonVariant.normal} onClick={retryAuthBridge}>
-            Retry
-          </ObcButton>
-        </div>
+        )}
+        <ObcButton variant={ButtonVariant.normal} onClick={retryAuthBridge}>
+          Retry
+        </ObcButton>
       </section>
     );
   }
@@ -147,7 +238,7 @@ export default function MediaLibrary() {
             setPreviewUrls((prev) => ({ ...prev, [rowId]: url }));
           })
           .catch((err) => {
-            setActionError(err instanceof Error ? err.message : "Failed to load preview");
+            setActionError(explainFetchError(err, "Failed to load preview"));
           });
       }
     }
@@ -160,18 +251,7 @@ export default function MediaLibrary() {
       const { url } = await presignDownload(row.asset.s3_key);
       window.open(url, "_blank");
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to generate view URL");
-    }
-  };
-
-  const handleVisibilityChange = async (rowId: string, visibilityValue: string) => {
-    const row = mediaRows.find((r) => r.id === rowId);
-    if (!row) return;
-    try {
-      const updated = await updateVisibility(row.asset.id, visibilityValue as MediaVisibility);
-      setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to update visibility");
+      setActionError(explainFetchError(err, "Failed to generate view URL"));
     }
   };
 
@@ -213,37 +293,13 @@ export default function MediaLibrary() {
       setSelectedRowId(remaining[0]?.id ?? "");
       setActiveModal(null);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Delete failed");
+      setActionError(explainFetchError(err, "Delete failed"));
     }
-  };
-
-  const handleDeleteModalOpen = (rowId: string) => {
-    selectRow(rowId);
-    setActiveModal("delete");
-  };
-
-  const handleEditModalOpen = () => {
-    if (!selectedRow) return;
-    setEditedFileName(selectedRow.fileName);
-    setActiveModal("edit");
   };
 
   const handleModalClose = () => {
     setActiveModal(null);
   };
-
-  const handleEditSave = async () => {
-    if (!selectedRow || !editedFileName.trim()) return;
-    try {
-      const updated = await renameMediaAsset(selectedRow.asset.id, editedFileName.trim());
-      setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-      setActiveModal(null);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Rename failed");
-    }
-  };
-
-  const MAX_FILE_SIZE_BYTES = 300 * 1024 * 1024; // 300 MB
 
   const handleFileSelect = (file: File) => {
     if (!file.type.startsWith("video/")) return;
@@ -255,11 +311,15 @@ export default function MediaLibrary() {
     }
     setUploadStatus("uploading");
     setUploadProgress(0);
+    setUploadFileName(file.name);
 
     void uploadFileToS3Multipart(
       file,
       "private",
-      (pct) => setUploadProgress(pct),
+      (pct) => {
+        uploadProgressRef.current = pct;
+        setUploadProgress(pct);
+      },
       (abortFn) => {
         abortUploadRef.current = abortFn;
       }
@@ -267,12 +327,14 @@ export default function MediaLibrary() {
       .then(() => {
         abortUploadRef.current = null;
         setUploadStatus("done");
+        setUploadFileName("");
         void loadAssets();
       })
       .catch((err) => {
         abortUploadRef.current = null;
         setUploadStatus("error");
-        setActionError(err instanceof Error ? err.message : "Upload failed");
+        setUploadFileName("");
+        setActionError(explainFetchError(err, "Upload failed"));
       });
   };
 
@@ -291,66 +353,10 @@ export default function MediaLibrary() {
     if (e.target) e.target.value = "";
   };
 
-  // ── Table config ──────────────────────────────────────────────────────────
-
-  const columns = [
-    { label: "File name", key: "fileName", dividerRight: true },
-    { label: "Type", key: "type", dividerRight: true },
-    { label: "Uploaded", key: "uploaded", dividerRight: true },
-    {
-      label: "Visibility",
-      key: "visibility",
-      renderCell: (_value: unknown, _row: unknown, rowId: string) => {
-        const mediaRow = mediaRows.find((r) => r.id === rowId);
-        return html`<obc-dropdown-button
-          .options=${visibilityOptions}
-          .value=${mediaRow?.visibilityValue ?? "private"}
-          .type=${DropdownButtonType.label}
-          @click=${(e: Event) => e.stopPropagation()}
-          @change=${(e: CustomEvent<{ value: string }>) => {
-            e.stopPropagation();
-            void handleVisibilityChange(rowId, e.detail.value);
-          }}
-        ></obc-dropdown-button>`;
-      },
-    },
-    { label: "", key: "open" },
-    {
-      label: "",
-      key: "delete",
-      renderCell: (_value: unknown, _row: unknown, rowId: string) => {
-        return html`<obc-icon-button
-          variant=${IconButtonVariant.flat}
-          aria-label="Delete media item"
-          @click=${(e: Event) => {
-            e.stopPropagation();
-            handleDeleteModalOpen(rowId);
-          }}
-          ><obi-delete></obi-delete
-        ></obc-icon-button>`;
-      },
-    },
-  ];
-
-  const tableData: ObcTableRow[] = mediaRows.map((row) => ({
-    id: row.id,
-    selected: row.id === (selectedRow?.id ?? ""),
-    fileName: { type: ObcTableCellType.Regular, text: row.fileName, noWrap: true },
-    type: { type: ObcTableCellType.Regular, text: row.type },
-    uploaded: { type: ObcTableCellType.Regular, text: row.uploaded },
-    visibility: { type: ObcTableCellType.Regular, text: row.visibilityValue },
-    open: {
-      type: ObcTableCellType.Button,
-      text: "Open",
-      icon: html`<obi-arrow-top-right></obi-arrow-top-right>`,
-    },
-    delete: { type: ObcTableCellType.Regular },
-  }));
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <section className="media-library-page">
+    <section className={pageClassName}>
       <input
         ref={fileInputRef}
         type="file"
@@ -359,99 +365,71 @@ export default function MediaLibrary() {
         onChange={handleFileInputChange}
       />
 
-      <div className="media-library-page__header">
-        <h1 className="media-library-page__title">Media library</h1>
-        <p className="media-library-page__subtitle">
-          Manage your own uploads and who can see what.
-          {uploadStatus === "uploading" && ` — Uploading… ${uploadProgress}%`}
-          {uploadStatus === "done" && " — Upload complete!"}
-          {uploadStatus === "error" && " — Upload failed."}
-          {loadError && ` — ${loadError}`}
-          {actionError && ` — ${actionError}`}
-        </p>
-      </div>
+      {!embedded && (
+        <div className="media-library-page__header">
+          <h1 className="media-library-page__title">Media library</h1>
+          <p className="media-library-page__subtitle">
+            Manage your own uploads and who can see what.
+            {uploadStatus === "done" && " — Upload complete!"}
+            {uploadStatus === "error" && " — Upload failed."}
+            {loadError && ` — ${loadError}`}
+            {actionError && ` — ${actionError}`}
+          </p>
+        </div>
+      )}
 
-      <MediaLibraryActions
-        onBrowse={handleBrowse}
-        onDrop={handleDrop}
-        isDragActive={isDragActive}
-        setIsDragActive={setIsDragActive}
-      />
+      {embedded && (uploadStatus === "done" || uploadStatus === "error" || loadError || actionError) && (
+        <p className="media-library-page__subtitle">
+          {uploadStatus === "done" && "Upload complete!"}
+          {uploadStatus === "error" && "Upload failed."}
+          {loadError && loadError}
+          {actionError && actionError}
+        </p>
+      )}
 
       <div className="media-library-page__content">
         <div className="media-library-page__left-column">
-          <div className="media-library-page__table-panel">
-            {mediaRows.length === 0 ? (
-              <div className="media-library-page__table-empty">No media assets found.</div>
-            ) : (
+          <MediaLibraryActions
+            onBrowse={handleBrowse}
+            onDrop={handleDrop}
+            isDragActive={isDragActive}
+            setIsDragActive={setIsDragActive}
+          />
+
+          {!loading && mediaRows.length === 0 ? (
+            <div className="media-library-page__empty-state">
+              <div className="media-library-page__empty-icon">
+                <ObiFileDownloadGoogle />
+              </div>
+              <div className="media-library-page__empty-text">
+                <p className="media-library-page__empty-title">Library is empty</p>
+                <p className="media-library-page__empty-subtitle">Connect stream or upload file</p>
+              </div>
+            </div>
+          ) : (
+            <div className="media-library-page__table-panel">
               <ObcTable
                 data={tableData}
                 columns={columns}
-                onRowClick={(e: CustomEvent<{ row: ObcTableRow }>) => selectRow(e.detail.row.id)}
+                striped
+                onRowClick={(e: CustomEvent<{ row: ObcTableRow }>) => {
+                  if (e.detail.row.id !== UPLOAD_ROW_ID) selectRow(e.detail.row.id);
+                }}
                 onCellButtonClick={(e: CustomEvent<{ rowId: string; columnKey: string }>) => {
                   if (e.detail.columnKey === "open") void handleOpenRow(e.detail.rowId);
                 }}
               />
-            )}
-          </div>
-
-          <div className="media-library-page__action-container">
-            <ObcButton
-              variant={ButtonVariant.normal}
-              showLeadingIcon
-              disabled={!selectedRow}
-              onClick={handleEditModalOpen}
-            >
-              <span slot="leading-icon">
-                <ObiEditGoogle />
-              </span>
-              Edit file name
-            </ObcButton>
-          </div>
+            </div>
+          )}
         </div>
 
         <MediaLibraryPreview
           row={selectedRow}
           previewError={previewError}
           onPreviewError={() => setPreviewError(true)}
+          onDelete={() => selectedRow && setActiveModal("delete")}
         />
       </div>
-
-      {activeModal === "edit" ? (
-        <MediaLibraryModal
-          title="Edit file name"
-          labelledBy="media-library-edit-title"
-          icon={<ObiEditGoogle />}
-          closeLabel="Close edit file name dialog"
-          onClose={handleModalClose}
-          actions={
-            <>
-              <ObcButton variant={ButtonVariant.normal} onClick={handleModalClose}>
-                Cancel
-              </ObcButton>
-              <ObcButton variant={ButtonVariant.raised} onClick={() => void handleEditSave()}>
-                Save
-              </ObcButton>
-            </>
-          }
-        >
-          <div
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleEditSave();
-            }}
-          >
-            <ObcTextInputField
-              label=""
-              placeholder="File name"
-              value={editedFileName}
-              onInput={(event) => {
-                const target = event.target as HTMLInputElement;
-                setEditedFileName(target.value);
-              }}
-            />
-          </div>
-        </MediaLibraryModal>
-      ) : null}
 
       {activeModal === "delete" && selectedRow ? (
         <MediaLibraryModal

@@ -35,7 +35,7 @@ export const listStreams = async (): Promise<StreamSummary[]> => {
 
 export const startStream = async (
   streamId: string,
-  options: { sourceUrl?: string; loop?: boolean; allowExisting?: boolean } = {}
+  options: { sourceUrl?: string; assetName?: string; loop?: boolean; allowExisting?: boolean } = {}
 ): Promise<void> => {
   const allowExisting = options.allowExisting ?? true;
   const response = await apiFetch(`/api/streams/${encodeURIComponent(streamId)}/start`, {
@@ -43,7 +43,8 @@ export const startStream = async (
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       loop: options.loop ?? true,
-      ...(options.sourceUrl ? { source_url: options.sourceUrl } : {}),
+      ...(options.assetName ? { asset_name: options.assetName } : {}),
+      ...(options.sourceUrl && !options.assetName ? { source_url: options.sourceUrl } : {}),
     }),
   });
 

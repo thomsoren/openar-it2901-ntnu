@@ -269,35 +269,6 @@ export const deleteMediaAsset = async (id: string): Promise<void> => {
   }
 };
 
-export const renameMediaAsset = async (id: string, assetName: string): Promise<MediaAsset> => {
-  const response = await apiFetch(`/api/admin/media/${encodeURIComponent(id)}/name`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ asset_name: assetName }),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Rename failed: ${text}`);
-  }
-  return response.json() as Promise<MediaAsset>;
-};
-
-export const updateVisibility = async (
-  id: string,
-  visibility: MediaVisibility
-): Promise<MediaAsset> => {
-  const response = await apiFetch(`/api/admin/media/${encodeURIComponent(id)}/visibility`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ visibility }),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Update visibility failed: ${text}`);
-  }
-  return response.json() as Promise<MediaAsset>;
-};
-
 export const presignDownload = async (key: string): Promise<PresignGetResult> => {
   const response = await apiFetch("/api/storage/presign", {
     method: "POST",
