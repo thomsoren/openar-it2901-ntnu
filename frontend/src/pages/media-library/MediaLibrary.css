@@ -313,3 +313,12 @@
   padding: 8px 24px;
   border-top: 1px solid var(--border-divider-color, #ddd);
 }
+
+/* ── Filename cell (lit template) ──────────────────────────────────────── */
+
+.media-library-page__filename-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}

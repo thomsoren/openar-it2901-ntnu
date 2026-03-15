@@ -107,9 +107,8 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
         compareFunction: textCompare,
         renderCell: (value: ObcTableCellData, row: ObcTableRow) => {
           const text = (value as ObcTableCellDataRegular).text ?? "";
-          const mediaRow = mediaRows.find((r) => r.id === row.id);
-          if (mediaRow?.asset.is_system) {
-            return html`<span style="display:flex;align-items:center;justify-content:space-between;width:100%"><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag></span>`;
+          if (row.isSystem) {
+            return html`<span class="media-library-page__filename-cell"><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag></span>`;
           }
           return html`<span>${text}</span>`;
         },
@@ -147,12 +146,13 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
       { label: "Uploaded", key: "uploaded", sortable: true as const, compareFunction: textCompare },
       { label: "In toolbar", key: "inToolbar" },
     ];
-  }, [mediaRows]);
+  }, []);
 
   const tableData: ObcTableRow[] = useMemo(() => {
     const rows: ObcTableRow[] = mediaRows.map((row) => ({
       id: row.id,
       selected: row.id === selectedRowId,
+      isSystem: row.asset.is_system,
       fileName: { type: ObcTableCellType.Regular, text: row.fileName, noWrap: true },
       type: { type: ObcTableCellType.Regular, text: row.type },
       liveDetection: { type: ObcTableCellType.Regular, align: "center" as const },

@@ -10,6 +10,7 @@ import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcom
 import { ObcElevatedCardTag } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
 import { useFetchHistoricalMmsiInArea } from "../hooks/useFetchHistoricalMmsiInArea";
 import { buildFovPolygon } from "../utils/geometryMath";
+import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/text-input-field/text-input-field";
 import { parseNumberInput } from "../utils/dom-input";
 
 /** Type guard: narrows AISData to ensure projection is non-null. */
@@ -107,8 +108,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Ship Latitude</span>
           <ObcTextInputField
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Text}
             value={String(shipLat)}
             placeholder="63.4365"
             disabled={isStreaming}
@@ -119,8 +119,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Ship Longitude</span>
           <ObcTextInputField
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Text}
             value={String(shipLon)}
             placeholder="10.3835"
             disabled={isStreaming}
@@ -131,8 +130,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Heading (°)</span>
           <ObcTextInputField
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Text}
             value={String(heading)}
             placeholder="90"
             disabled={isStreaming}
@@ -143,8 +141,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">Range (m)</span>
           <ObcTextInputField
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Text}
             value={String(offsetMeters)}
             placeholder="3000"
             disabled={isStreaming}
@@ -155,8 +152,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">FOV (°)</span>
           <ObcTextInputField
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+            type={HTMLInputTypeAttribute.Text}
             value={String(fovDegrees)}
             placeholder="120"
             disabled={isStreaming}
@@ -167,8 +163,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">From (UTC)</span>
           <ObcTextInputField
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="text"
+            type={HTMLInputTypeAttribute.Text}
             value={msgTimeFrom}
             placeholder="2026-01-01T08:00:00Z"
             aria-label="Historic query start time (ISO-8601 UTC)"
@@ -178,8 +173,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">To (UTC)</span>
           <ObcTextInputField
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="text"
+            type={HTMLInputTypeAttribute.Text}
             value={msgTimeTo}
             placeholder="2026-01-01T08:15:00Z"
             aria-label="Historic query end time (ISO-8601 UTC)"
