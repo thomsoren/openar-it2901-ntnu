@@ -94,7 +94,6 @@ function VideoPlayer({
     }
 
     let hls: Hls | null = null;
-    let cancelled = false;
     const sourceUrl = withCacheBust(withAccessToken(resolvedHlsUrl), sessionToken);
 
     const onLoadedData = () => setHlsState("playing");
@@ -112,13 +111,9 @@ function VideoPlayer({
     el.addEventListener("stalled", onStalled);
     el.addEventListener("error", onError);
 
-    // Defer state updates to avoid synchronous setState in effect body
-    queueMicrotask(() => {
-      if (!cancelled) {
-        setHlsState("connecting");
-        setHlsError(null);
-      }
-    });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial state before async HLS setup
+    setHlsState("connecting");
+    setHlsError(null);
 
     if (Hls.isSupported()) {
       const isS3Hls = !!hlsS3Url;
@@ -151,16 +146,11 @@ function VideoPlayer({
         // Autoplay can reject transiently while metadata is pending.
       });
     } else {
-      queueMicrotask(() => {
-        if (!cancelled) {
-          setHlsState("error");
-          setHlsError("HLS unsupported in this browser");
-        }
-      });
+      setHlsState("error");
+      setHlsError("HLS unsupported in this browser");
     }
 
     return () => {
-      cancelled = true;
       el.removeEventListener("loadeddata", onLoadedData);
       el.removeEventListener("playing", onPlaying);
       el.removeEventListener("waiting", onWaiting);

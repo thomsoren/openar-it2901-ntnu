@@ -12,7 +12,7 @@ from storage import s3
 
 logger = logging.getLogger(__name__)
 
-_HLS_PRESIGN_EXPIRES = 7200  # 2 hours, matches FFmpeg presign
+_HLS_PRESIGN_EXPIRES = 1800  # 30 minutes, aligned with session lifetime
 
 
 def rewrite_m3u8_with_presigned_urls(
@@ -51,29 +51,32 @@ def rewrite_m3u8_with_presigned_urls(
     return "\n".join(result) + "\n"
 
 
-def get_hls_playlist_for_asset(asset_id: str) -> tuple[str, str] | None:
-    """Return (content_type, rewritten_m3u8) for an asset, or None if not ready.
+def build_hls_playlist(hls_s3_prefix: str) -> tuple[str, str] | None:
+    """Read a .m3u8 from S3 and rewrite .ts paths with presigned URLs.
 
-    Reads the index.m3u8 from S3 and rewrites .ts paths with presigned URLs.
+    Returns (content_type, rewritten_m3u8), or None on failure.
     """
+    m3u8_key = hls_s3_prefix + "index.m3u8"
+    m3u8_text = s3.read_text_from_sources(m3u8_key)
+    if not m3u8_text:
+        logger.error("[hls] Failed to read m3u8 from s3://%s", m3u8_key)
+        return None
+
+    rewritten = rewrite_m3u8_with_presigned_urls(m3u8_text, hls_s3_prefix)
+    if rewritten is None:
+        return None
+    return "application/vnd.apple.mpegurl", rewritten
+
+
+def get_hls_playlist_for_asset(asset_id: str) -> tuple[str, str] | None:
+    """Return (content_type, rewritten_m3u8) for an asset, or None if not ready."""
     with SessionLocal() as db:
         asset = db.execute(
             select(MediaAsset).where(MediaAsset.id == asset_id)
         ).scalar_one_or_none()
         if not asset or asset.hls_status != "complete" or not asset.hls_s3_prefix:
             return None
-        hls_prefix = asset.hls_s3_prefix
-
-    m3u8_key = hls_prefix + "index.m3u8"
-    m3u8_text = s3.read_text_from_sources(m3u8_key)
-    if not m3u8_text:
-        logger.error("[hls] Failed to read m3u8 from s3://%s", m3u8_key)
-        return None
-
-    rewritten = rewrite_m3u8_with_presigned_urls(m3u8_text, hls_prefix)
-    if rewritten is None:
-        return None
-    return "application/vnd.apple.mpegurl", rewritten
+    return build_hls_playlist(asset.hls_s3_prefix)
 
 
 def get_hls_playback_url(s3_key: str) -> str | None:

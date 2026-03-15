@@ -10,7 +10,7 @@ from sqlalchemy import select
 from auth.deps import get_optional_user_with_query_token
 from db.database import SessionLocal
 from db.models import AppUser, MediaAsset
-from services.hls_service import get_hls_playlist_for_asset
+from services.hls_service import build_hls_playlist
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,13 +32,16 @@ async def get_hls_playlist(
         ).scalar_one_or_none()
         if asset is None:
             raise HTTPException(status_code=404, detail="Asset not found")
-        if asset.visibility != "public":
+        if not asset.is_system and asset.visibility != "public":
             if current_user is None:
                 raise HTTPException(status_code=403, detail="Authentication required for private assets")
             elif not current_user.is_admin and asset.owner_user_id != current_user.id:
                 raise HTTPException(status_code=403, detail="You do not have access to this asset")
+        if asset.hls_status != "complete" or not asset.hls_s3_prefix:
+            raise HTTPException(status_code=404, detail="HLS playlist not available for this asset")
+        hls_s3_prefix = asset.hls_s3_prefix
 
-    result = get_hls_playlist_for_asset(asset_id)
+    result = build_hls_playlist(hls_s3_prefix)
     if result is None:
         raise HTTPException(status_code=404, detail="HLS playlist not available for this asset")
 

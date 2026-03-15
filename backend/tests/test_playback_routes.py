@@ -118,6 +118,7 @@ def _create_asset(
     owner_user_id: str | None = None,
     hls_status: str = "complete",
     hls_s3_prefix: str = "videos/test_hls/",
+    is_system: bool = False,
 ) -> MediaAsset:
     asset = MediaAsset(
         id=asset_id,
@@ -127,6 +128,7 @@ def _create_asset(
         owner_user_id=owner_user_id,
         hls_status=hls_status,
         hls_s3_prefix=hls_s3_prefix,
+        is_system=is_system,
     )
     db_session.add(asset)
     db_session.commit()
@@ -144,15 +146,15 @@ _FAKE_BODY = "#EXTM3U\n#EXT-X-ENDLIST\n"
 class TestPlaybackPublicAsset:
     """Public assets should be accessible without authentication."""
 
-    @patch("webapi.routes.playback.get_hls_playlist_for_asset", return_value=(_FAKE_M3U8, _FAKE_BODY))
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=(_FAKE_M3U8, _FAKE_BODY))
     def test_public_asset_no_auth(self, mock_hls, client, db_session):
         _create_asset(db_session, visibility="public")
         resp = client.get("/api/playback/asset-1/hls")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == _FAKE_M3U8
-        mock_hls.assert_called_once_with("asset-1")
+        mock_hls.assert_called_once_with("videos/test_hls/")
 
-    @patch("webapi.routes.playback.get_hls_playlist_for_asset", return_value=(_FAKE_M3U8, _FAKE_BODY))
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=(_FAKE_M3U8, _FAKE_BODY))
     def test_public_asset_with_auth(self, mock_hls, client, db_session, owner_user):
         _create_asset(db_session, visibility="public", owner_user_id=owner_user.id)
         resp = client.get("/api/playback/asset-1/hls", headers=_auth_header(owner_user.id))
@@ -167,7 +169,7 @@ class TestPlaybackPrivateAsset:
         resp = client.get("/api/playback/asset-1/hls")
         assert resp.status_code == 403
 
-    @patch("webapi.routes.playback.get_hls_playlist_for_asset", return_value=(_FAKE_M3U8, _FAKE_BODY))
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=(_FAKE_M3U8, _FAKE_BODY))
     def test_private_asset_owner_allowed(self, mock_hls, client, db_session, owner_user):
         _create_asset(db_session, visibility="private", owner_user_id=owner_user.id)
         resp = client.get("/api/playback/asset-1/hls", headers=_auth_header(owner_user.id))
@@ -178,7 +180,7 @@ class TestPlaybackPrivateAsset:
         resp = client.get("/api/playback/asset-1/hls", headers=_auth_header(other_user.id))
         assert resp.status_code == 403
 
-    @patch("webapi.routes.playback.get_hls_playlist_for_asset", return_value=(_FAKE_M3U8, _FAKE_BODY))
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=(_FAKE_M3U8, _FAKE_BODY))
     def test_private_asset_admin_allowed(self, mock_hls, client, db_session, owner_user, admin_user):
         _create_asset(db_session, visibility="private", owner_user_id=owner_user.id)
         resp = client.get("/api/playback/asset-1/hls", headers=_auth_header(admin_user.id))
@@ -192,17 +194,38 @@ class TestPlaybackNotFound:
         resp = client.get("/api/playback/nonexistent/hls")
         assert resp.status_code == 404
 
-    @patch("webapi.routes.playback.get_hls_playlist_for_asset", return_value=None)
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=None)
     def test_hls_not_ready_returns_404(self, mock_hls, client, db_session):
         _create_asset(db_session, visibility="public")
         resp = client.get("/api/playback/asset-1/hls")
         assert resp.status_code == 404
 
+    def test_hls_status_not_complete_returns_404(self, client, db_session):
+        _create_asset(db_session, visibility="public", hls_status="processing")
+        resp = client.get("/api/playback/asset-1/hls")
+        assert resp.status_code == 404
+
+
+class TestPlaybackSystemAsset:
+    """System assets (is_system=True) are accessible without authentication."""
+
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=(_FAKE_M3U8, _FAKE_BODY))
+    def test_system_asset_no_auth(self, mock_hls, client, db_session):
+        _create_asset(db_session, visibility="private", is_system=True)
+        resp = client.get("/api/playback/asset-1/hls")
+        assert resp.status_code == 200
+
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=(_FAKE_M3U8, _FAKE_BODY))
+    def test_system_asset_with_auth(self, mock_hls, client, db_session, owner_user):
+        _create_asset(db_session, visibility="private", is_system=True, owner_user_id=owner_user.id)
+        resp = client.get("/api/playback/asset-1/hls", headers=_auth_header(owner_user.id))
+        assert resp.status_code == 200
+
 
 class TestPlaybackQueryToken:
     """The ?access_token= query param should work for HLS playback."""
 
-    @patch("webapi.routes.playback.get_hls_playlist_for_asset", return_value=(_FAKE_M3U8, _FAKE_BODY))
+    @patch("webapi.routes.playback.build_hls_playlist", return_value=(_FAKE_M3U8, _FAKE_BODY))
     def test_query_param_token_works(self, mock_hls, client, db_session, owner_user):
         _create_asset(db_session, visibility="private", owner_user_id=owner_user.id)
         token = create_access_token(subject=owner_user.id)
