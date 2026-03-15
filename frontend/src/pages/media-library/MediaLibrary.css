@@ -136,8 +136,8 @@
   flex: 1 1 auto;
   min-height: 0;
   border-radius: 6px;
-  background: var(--Color-Container-Background-color, #F7F7F7);
-  box-shadow: var(--Shadow-Flat-x, 0) var(--Shadow-Flat-y, 1px) var(--Shadow-Flat-blur, 2px) var(--Shadow-Flat-spread, 0) var(--Shadow-Flat-color, rgba(0, 0, 0, 0.23));
+  background: var(--container-background-color);
+  box-shadow: var(--shadow-flat-x, 0) var(--shadow-flat-y, 1px) var(--shadow-flat-blur, 2px) 0 var(--shadow-flat-color, rgba(0, 0, 0, 0.23));
 }
 
 .media-library-page__table-panel obc-table {
