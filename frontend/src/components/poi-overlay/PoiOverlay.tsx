@@ -290,36 +290,24 @@ function PoiOverlay({
             <source src={videoSource} type="video/mp4" />
           </video>
         )}
-        <div
+        <ObcPoiLayerStack
           slot="stack"
-          style={{
-            height: "100%",
-            display: "flex",
-            flexDirection: "column-reverse",
-          }}
+          selection-mode="multi"
+          className="poi-layer-stack"
         >
-          <div style={{ height: "60%" }} />
-          <ObcPoiLayerStack
-            selection-mode="multi"
-            className="poi-layer-stack"
-            style={{
-              transform: "none",
-              height: "auto",
-            }}
+          <ObcPoiLayer
+            ref={layerRefCallback}
+            label="Vessel Layer"
+            className="poi-layer"
+            overlap-mode="grouping"
+            is-selected
           >
-            <ObcPoiLayer label="Second Layer" className="poi-layer" is-selected>
-              {/* Can add different POIs here */}
-            </ObcPoiLayer>
-            <ObcPoiLayer
-              ref={layerRefCallback}
-              label="Vessel Layer"
-              className="poi-layer"
-              overlap-mode="grouping"
-            >
-              {/* obc-poi-data elements are managed imperatively in useEffect above */}
-            </ObcPoiLayer>
-          </ObcPoiLayerStack>
-        </div>
+            {/* obc-poi-data elements are managed imperatively in useEffect above */}
+          </ObcPoiLayer>
+          <ObcPoiLayer label="Background Layer" className="poi-layer" data-controller-layer="background">
+            {/* Background layer for controller-managed detections */}
+          </ObcPoiLayer>
+        </ObcPoiLayerStack>
       </ObcPoiController>
     </div>
   );
