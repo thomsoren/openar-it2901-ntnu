@@ -150,7 +150,7 @@
 
 .media-library-page__table-panel obc-table::part(body) {
   padding: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 .media-library-page__table-empty {
   padding: 24px;

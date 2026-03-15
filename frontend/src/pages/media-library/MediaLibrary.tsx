@@ -8,6 +8,7 @@ import { ObcTableCellType } from "@ocean-industries-concept-lab/openbridge-webco
 import { CheckboxStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/checkbox/checkbox";
 import type { ObcTableRow, ObcTableCellDataRegular, ObcTableColumn, ObcTableCellData } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
+import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/tag/tag.js";
 import { ObiDelete } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-delete";
 import { ObiFileDownloadGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-file-download-google";
 import { useAuth } from "../../hooks/useAuth";
@@ -99,7 +100,20 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
         (b as ObcTableCellDataRegular).text?.toString() ?? ""
       );
     return [
-      { label: "File name", key: "fileName", sortable: true as const, compareFunction: textCompare },
+      {
+        label: "File name",
+        key: "fileName",
+        sortable: true as const,
+        compareFunction: textCompare,
+        renderCell: (value: ObcTableCellData, row: ObcTableRow) => {
+          const text = (value as ObcTableCellDataRegular).text ?? "";
+          const mediaRow = mediaRows.find((r) => r.id === row.id);
+          if (mediaRow?.asset.is_system) {
+            return html`<span style="display:flex;align-items:center;justify-content:space-between;width:100%"><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag></span>`;
+          }
+          return html`<span>${text}</span>`;
+        },
+      },
       {
         label: "Type",
         key: "type",
@@ -133,7 +147,7 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
       { label: "Uploaded", key: "uploaded", sortable: true as const, compareFunction: textCompare },
       { label: "In toolbar", key: "inToolbar" },
     ];
-  }, []);
+  }, [mediaRows]);
 
   const tableData: ObcTableRow[] = useMemo(() => {
     const rows: ObcTableRow[] = mediaRows.map((row) => ({
@@ -409,14 +423,12 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
           )}
         </div>
 
-        {mediaRows.length > 0 && (
-          <MediaLibraryPreview
-            row={selectedRow}
-            previewError={previewError}
-            onPreviewError={() => setPreviewError(true)}
-            onDelete={() => selectedRow && setActiveModal("delete")}
-          />
-        )}
+        <MediaLibraryPreview
+          row={selectedRow}
+          previewError={previewError}
+          onPreviewError={() => setPreviewError(true)}
+          onDelete={() => selectedRow && setActiveModal("delete")}
+        />
       </div>
 
       {activeModal === "delete" && selectedRow ? (

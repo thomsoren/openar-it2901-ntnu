@@ -43,44 +43,44 @@ export function MediaLibraryPreview({
           </div>
         </div>
 
-        {row && (
-          <div className="media-preview-card__body">
-            <p className="media-preview-card__title">{row.fileName}</p>
+        <div className="media-preview-card__body">
+          <p className="media-preview-card__title">{row?.fileName ?? "No file selected"}</p>
 
-            <div className="media-preview-card__metadata">
-              <div className="media-preview-card__metadata-row">
+          <div className="media-preview-card__metadata">
+            <div className="media-preview-card__metadata-row">
+              <div className="media-preview-card__metadata-item">
+                <p className="media-preview-card__metadata-label">Type</p>
+                <p className="media-preview-card__metadata-value">
+                  {row ? (row.asset.media_type === "video" ? "Video file" : row.asset.media_type) : "\u2013"}
+                </p>
+              </div>
+              <div className="media-preview-card__metadata-item">
+                <p className="media-preview-card__metadata-label">Status</p>
+                <p className="media-preview-card__metadata-value">
+                  {row ? (row.asset.transcode_status === "completed" ? "Ready" : (row.asset.transcode_status ?? "Unknown")) : "\u2013"}
+                </p>
+              </div>
+            </div>
+
+            <div className="media-preview-card__metadata-row">
+              <div className="media-preview-card__metadata-item">
+                <p className="media-preview-card__metadata-label">Visibility</p>
+                <p className="media-preview-card__metadata-value">{row?.asset.visibility ?? "\u2013"}</p>
+              </div>
+              <div className="media-preview-card__metadata-item">
+                <p className="media-preview-card__metadata-label">Uploaded</p>
+                <p className="media-preview-card__metadata-value">{row?.uploaded ?? "\u2013"}</p>
+              </div>
+            </div>
+
+            <div className="media-preview-card__source-row">
+              <div className="media-preview-card__source-text">
                 <div className="media-preview-card__metadata-item">
-                  <p className="media-preview-card__metadata-label">Type</p>
-                  <p className="media-preview-card__metadata-value">
-                    {row.asset.media_type === "video" ? "Video file" : row.asset.media_type}
-                  </p>
-                </div>
-                <div className="media-preview-card__metadata-item">
-                  <p className="media-preview-card__metadata-label">Status</p>
-                  <p className="media-preview-card__metadata-value">
-                    {row.asset.transcode_status === "completed" ? "Ready" : (row.asset.transcode_status ?? "Unknown")}
-                  </p>
+                  <p className="media-preview-card__metadata-label">Source</p>
+                  <p className="media-preview-card__metadata-value">{row?.asset.s3_key ?? "\u2013"}</p>
                 </div>
               </div>
-
-              <div className="media-preview-card__metadata-row">
-                <div className="media-preview-card__metadata-item">
-                  <p className="media-preview-card__metadata-label">Visibility</p>
-                  <p className="media-preview-card__metadata-value">{row.asset.visibility}</p>
-                </div>
-                <div className="media-preview-card__metadata-item">
-                  <p className="media-preview-card__metadata-label">Uploaded</p>
-                  <p className="media-preview-card__metadata-value">{row.uploaded}</p>
-                </div>
-              </div>
-
-              <div className="media-preview-card__source-row">
-                <div className="media-preview-card__source-text">
-                  <div className="media-preview-card__metadata-item">
-                    <p className="media-preview-card__metadata-label">Source</p>
-                    <p className="media-preview-card__metadata-value">{row.asset.s3_key}</p>
-                  </div>
-                </div>
+              {row && (
                 <ObcIconButton
                   variant={IconButtonVariant.flat}
                   onClick={handleCopySource}
@@ -88,9 +88,11 @@ export function MediaLibraryPreview({
                 >
                   <ObiContentCopyGoogle />
                 </ObcIconButton>
-              </div>
+              )}
             </div>
+          </div>
 
+          {row && !row.asset.is_system && (
             <div className="media-preview-card__actions">
               <ObcButton
                 variant={ButtonVariant.normal}
@@ -103,8 +105,8 @@ export function MediaLibraryPreview({
                 Remove
               </ObcButton>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </aside>
   );
