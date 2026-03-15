@@ -108,7 +108,7 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
         renderCell: (value: ObcTableCellData, row: ObcTableRow) => {
           const text = (value as ObcTableCellDataRegular).text ?? "";
           if (row.isSystem) {
-            return html`<span class="media-library-page__filename-cell"><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag></span>`;
+            return html`<span style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px"><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag></span>`;
           }
           return html`<span>${text}</span>`;
         },
