@@ -1,11 +1,24 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, WebSocket
-from fastapi.responses import Response
+from typing import Annotated, Any
 
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy.orm import Session
+
+from auth.deps import get_current_user
+from db.database import get_db
+from db.models import AppUser, MediaAsset
 from webapi.errors import not_found, wrap_internal
 from common.types import DetectedVessel
 from fusion import fusion
+from services.uploaded_video_analysis_service import (
+    ANALYSIS_STATUS_COMPLETED,
+    build_placeholder_payload,
+    build_summary,
+    read_analysis_payload,
+    write_analysis_payload,
+)
 from storage import s3
 
 router = APIRouter()
@@ -23,6 +36,19 @@ def _stream_pirbadet_video(request: Request) -> Response:
         raise
     except Exception:
         not_found("Pirbadet fusion video file not found in media_assets/S3")
+
+
+def _get_owned_media_asset(
+    db: Session,
+    asset_id: str,
+    current_user: AppUser,
+) -> MediaAsset:
+    asset = db.get(MediaAsset, asset_id)
+    if asset is None:
+        not_found("Media asset not found")
+    if not current_user.is_admin and asset.owner_user_id != current_user.id:
+        not_found("Media asset not found")
+    return asset
 
 
 @router.get("/api/detections", response_model=list[DetectedVessel])
@@ -104,6 +130,72 @@ async def stream_video(request: Request) -> Response:
         raise
     except Exception as exc:
         wrap_internal("Error in video stream", exc)
+
+
+@router.get("/api/media/{asset_id}/analysis")
+def get_uploaded_video_analysis(
+    asset_id: str,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    try:
+        asset = _get_owned_media_asset(db, asset_id, current_user)
+        if asset.media_type != "video":
+            not_found("Uploaded video analysis is only available for video assets")
+        analysis = build_summary(asset)
+        if analysis is None:
+            not_found("Uploaded video analysis not found")
+        return {
+            "asset_id": asset.id,
+            "analysis": analysis,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        wrap_internal("Error fetching uploaded video analysis", exc)
+
+
+@router.post("/api/media/{asset_id}/analysis/retry")
+def retry_uploaded_video_analysis(
+    asset_id: str,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    try:
+        asset = _get_owned_media_asset(db, asset_id, current_user)
+        if asset.media_type != "video":
+            not_found("Uploaded video analysis is only available for video assets")
+        write_analysis_payload(asset, build_placeholder_payload(asset))
+        return {
+            "asset_id": asset.id,
+            "analysis": build_summary(asset),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        wrap_internal("Error retrying uploaded video analysis", exc)
+
+
+@router.get("/api/media/{asset_id}/analysis/result")
+def get_uploaded_video_analysis_result(
+    asset_id: str,
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> JSONResponse:
+    try:
+        asset = _get_owned_media_asset(db, asset_id, current_user)
+        if asset.media_type != "video":
+            not_found("Uploaded video analysis is only available for video assets")
+        payload = read_analysis_payload(asset)
+        if payload is None:
+            not_found("Uploaded video analysis not found")
+        if str(payload.get("status") or "").strip().lower() != ANALYSIS_STATUS_COMPLETED:
+            raise HTTPException(status_code=409, detail="Uploaded video analysis is not complete")
+        return JSONResponse(payload)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        wrap_internal("Error fetching uploaded video analysis result", exc)
 
 
 @router.websocket("/api/fusion/ws")

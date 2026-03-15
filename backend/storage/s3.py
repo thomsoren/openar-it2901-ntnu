@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
@@ -46,6 +47,7 @@ class PresignRequest(BaseModel):
     part_count: int | None = None
     upload_id: str | None = None
     completed_parts: list[dict] | None = None
+    upload_purpose: str | None = None
 
 
 def s3_enabled() -> bool:
@@ -114,6 +116,30 @@ def read_text_from_sources(s3_key: str | None) -> str | None:
         full_key, _ = _normalize_key(s3_key)
         return _client().get_object(Bucket=S3_BUCKET, Key=full_key)["Body"].read().decode("utf-8", errors="ignore")
     except Exception:
+        return None
+
+
+def write_text(raw_key: str, text: str, content_type: str = "text/plain; charset=utf-8") -> None:
+    full_key, _ = _normalize_key(raw_key)
+    _client().put_object(
+        Bucket=S3_BUCKET,
+        Key=full_key,
+        Body=text.encode("utf-8"),
+        ContentType=content_type,
+    )
+
+
+def write_json(raw_key: str, payload: dict) -> None:
+    write_text(raw_key, json.dumps(payload), content_type="application/json")
+
+
+def read_json(raw_key: str) -> dict | None:
+    text = read_text_from_sources(raw_key)
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
         return None
 
 
@@ -414,6 +440,16 @@ def presign_storage(request: PresignRequest, *, owner_user_id: str, is_admin: bo
         _upsert_uploaded_asset(s3_key=key, owner_user_id=owner, visibility=visibility,
                                group_id=_sanitize_segment(request.group_id, "default-group") if request.group_id else None,
                                media_type=_media_type_from_content_type(request.content_type))
+        if (request.upload_purpose or "").strip().lower() == "analysis":
+            from services.uploaded_video_analysis_service import (
+                build_placeholder_payload,
+                write_analysis_payload,
+            )
+
+            asset = _find_asset_by_key(key)
+            if asset is None:
+                raise HTTPException(status_code=500, detail="Uploaded media asset was not persisted")
+            write_analysis_payload(asset, build_placeholder_payload(asset))
         return {"method": "MULTIPART_COMPLETE", "key": key, "completed": True}
 
     if method == "MULTIPART_ABORT":

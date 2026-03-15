@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from auth.deps import get_current_user
 from db.database import get_db
 from db.models import AppUser, MediaAsset
+from services.uploaded_video_analysis_service import build_summary
 from webapi import state
 from webapi.errors import conflict
 from storage.s3 import S3_BUCKET, _client, _normalize_key, s3_enabled
@@ -29,9 +30,10 @@ class MediaAssetResponse(BaseModel):
     group_id: str | None
     is_system: bool
     created_at: str
+    analysis: dict | None = None
 
     @classmethod
-    def from_orm(cls, asset: MediaAsset) -> "MediaAssetResponse":
+    def from_orm(cls, asset: MediaAsset, analysis: dict | None = None) -> "MediaAssetResponse":
         return cls(
             id=asset.id,
             asset_name=asset.asset_name,
@@ -42,6 +44,7 @@ class MediaAssetResponse(BaseModel):
             group_id=asset.group_id,
             is_system=asset.is_system,
             created_at=asset.created_at.isoformat(),
+            analysis=analysis,
         )
 
 
@@ -93,7 +96,13 @@ def list_media_assets(
         query = query.filter(MediaAsset.owner_user_id == current_user.id)
     assets = query.order_by(MediaAsset.created_at.desc()).all()
     s3_assets = [asset for asset in assets if _asset_exists_on_s3(asset)]
-    return [MediaAssetResponse.from_orm(a) for a in s3_assets]
+    return [
+        MediaAssetResponse.from_orm(
+            a,
+            analysis=build_summary(a) if a.media_type == "video" else None,
+        )
+        for a in s3_assets
+    ]
 
 
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -160,7 +169,10 @@ def update_visibility(
     db.add(asset)
     db.commit()
     db.refresh(asset)
-    return MediaAssetResponse.from_orm(asset)
+    return MediaAssetResponse.from_orm(
+        asset,
+        analysis=build_summary(asset) if asset.media_type == "video" else None,
+    )
 
 
 @router.patch("/{asset_id}/name", response_model=MediaAssetResponse)
@@ -191,4 +203,7 @@ def rename_asset(
         db.rollback()
         conflict(f"An asset named '{name}' already exists", cause=exc)
     db.refresh(asset)
-    return MediaAssetResponse.from_orm(asset)
+    return MediaAssetResponse.from_orm(
+        asset,
+        analysis=build_summary(asset) if asset.media_type == "video" else None,
+    )
