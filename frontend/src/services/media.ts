@@ -96,8 +96,7 @@ const presignMultipartInit = async (
   contentType: string,
   visibility: MediaVisibility,
   partCount: number,
-  groupId?: string,
-  uploadPurpose?: UploadPurpose
+  groupId?: string
 ): Promise<MultipartInitResult> => {
   return postStoragePresign<MultipartInitResult>(
     {
@@ -105,7 +104,6 @@ const presignMultipartInit = async (
       filename,
       content_type: contentType,
       visibility,
-      ...(uploadPurpose ? { upload_purpose: uploadPurpose } : {}),
       part_count: partCount,
       ...(groupId ? { group_id: groupId } : {}),
     },
@@ -203,14 +201,7 @@ export const uploadFileToS3Multipart = async (
   uploadPurpose?: UploadPurpose
 ): Promise<{ key: string }> => {
   const partCount = Math.max(1, Math.ceil(file.size / MULTIPART_CHUNK_SIZE_BYTES));
-  const init = await presignMultipartInit(
-    file.name,
-    file.type,
-    visibility,
-    partCount,
-    groupId,
-    uploadPurpose
-  );
+  const init = await presignMultipartInit(file.name, file.type, visibility, partCount, groupId);
   const partByNumber = new Map(init.part_urls.map((part) => [part.part_number, part] as const));
 
   if (!init.upload_id || !init.key || partByNumber.size !== partCount) {

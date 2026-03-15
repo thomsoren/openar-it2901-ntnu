@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
-import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { useVideoTransform } from "../../hooks/useVideoTransform";
 import type { DetectedVessel } from "../../types/detection";
 import type { MediaAnalysisResult } from "../../services/media";
@@ -126,24 +124,13 @@ function AnalysisOverlay({
   );
 }
 
-const ANALYSIS_STATUS_LABELS: Record<string, string> = {
-  queued: "Queued for processing",
-  processing: "Processing in IDUN",
-  completed: "Analysis complete",
-  failed: "Analysis failed",
-};
-
 export function MediaLibraryPreview({
   row,
   previewError,
   onPreviewError,
-  analysis,
   analysisResult,
-  isRetrying,
-  onRetry,
 }: MediaLibraryPreviewProps) {
-  const showCompletedPreview =
-    row?.previewUrl && analysis?.status === "completed" && analysisResult && !previewError;
+  const showCompletedPreview = row?.previewUrl && analysisResult && !previewError;
 
   return (
     <aside className="media-library-page__preview-panel" aria-label="Selected media preview">
@@ -172,29 +159,6 @@ export function MediaLibraryPreview({
           </div>
         )}
       </div>
-
-      {row?.asset.media_type === "video" && analysis ? (
-        <div className="media-library-preview__status-panel">
-          <div
-            className={`media-library-status-badge media-library-status-badge--${analysis.status}`}
-          >
-            {ANALYSIS_STATUS_LABELS[analysis.status] ?? analysis.status}
-          </div>
-          {analysis.error_message ? (
-            <p className="media-library-preview__status-text">{analysis.error_message}</p>
-          ) : null}
-          {analysis.status === "failed" ? (
-            <ObcButton variant={ButtonVariant.normal} disabled={isRetrying} onClick={onRetry}>
-              {isRetrying ? "Retrying..." : "Retry analysis"}
-            </ObcButton>
-          ) : null}
-          {analysis.status !== "completed" ? (
-            <p className="media-library-preview__status-text">
-              Detections will be shown here when processing completes.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
     </aside>
   );
 }

@@ -21,7 +21,6 @@ import {
   listMediaAssets,
   presignDownload,
   renameMediaAsset,
-  retryMediaAnalysis,
   updateVisibility,
   uploadFileToS3Multipart,
 } from "../../services/media";
@@ -54,7 +53,6 @@ export default function MediaLibrary() {
   const [analysisResults, setAnalysisResults] = useState<
     Record<string, MediaAnalysisResult | null>
   >({});
-  const [retryingAssetId, setRetryingAssetId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortUploadRef = useRef<(() => void) | null>(null);
@@ -78,9 +76,8 @@ export default function MediaLibrary() {
   const selectedRow = mediaRows.find((r) => r.id === selectedRowId) ?? mediaRows[0] ?? null;
   const selectedAsset =
     assets.find((asset) => asset.id === selectedRow?.id) ?? selectedRow?.asset ?? null;
-  const selectedAnalysis = selectedAsset?.analysis ?? null;
   const selectedAnalysisResult =
-    selectedAsset && selectedAnalysis?.status === "completed"
+    selectedAsset && selectedAsset.analysis?.status === "completed"
       ? (analysisResults[selectedAsset.id] ?? null)
       : null;
 
@@ -141,6 +138,17 @@ export default function MediaLibrary() {
       cancelled = true;
     };
   }, [selectedAsset?.analysis?.completed_at, selectedAsset?.analysis?.status, selectedAsset?.id]);
+
+  useEffect(() => {
+    if (!selectedAsset?.analysis) {
+      return;
+    }
+    console.info("Uploaded video analysis status", {
+      assetId: selectedAsset.id,
+      status: selectedAsset.analysis.status,
+      error: selectedAsset.analysis.error_message,
+    });
+  }, [selectedAsset?.analysis?.error_message, selectedAsset?.analysis?.status, selectedAsset?.id]);
 
   // ── Loading / auth states ──────────────────────────────────────────────────
 
@@ -347,46 +355,12 @@ export default function MediaLibrary() {
     if (e.target) e.target.value = "";
   };
 
-  const handleRetryAnalysis = async () => {
-    if (!selectedAsset) return;
-    try {
-      setRetryingAssetId(selectedAsset.id);
-      const payload = await retryMediaAnalysis(selectedAsset.id);
-      setAssets((prev) =>
-        prev.map((asset) =>
-          asset.id === selectedAsset.id ? { ...asset, analysis: payload.analysis } : asset
-        )
-      );
-      setAnalysisResults((prev) => ({ ...prev, [selectedAsset.id]: null }));
-      setPreviewError(false);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Retry failed");
-    } finally {
-      setRetryingAssetId(null);
-    }
-  };
-
   // ── Table config ──────────────────────────────────────────────────────────
 
   const columns = [
     { label: "File name", key: "fileName", dividerRight: true },
     { label: "Type", key: "type", dividerRight: true },
     { label: "Uploaded", key: "uploaded", dividerRight: true },
-    {
-      label: "Analysis",
-      key: "analysis",
-      dividerRight: true,
-      renderCell: (_value: unknown, _row: unknown, rowId: string) => {
-        const mediaRow = mediaRows.find((r) => r.id === rowId);
-        const status = mediaRow?.analysisStatus;
-        if (!status) {
-          return html`<span>-</span>`;
-        }
-        return html`<span class="media-library-status-badge media-library-status-badge--${status}"
-          >${status}</span
-        >`;
-      },
-    },
     {
       label: "Visibility",
       key: "visibility",
@@ -428,7 +402,6 @@ export default function MediaLibrary() {
     fileName: { type: ObcTableCellType.Regular, text: row.fileName, noWrap: true },
     type: { type: ObcTableCellType.Regular, text: row.type },
     uploaded: { type: ObcTableCellType.Regular, text: row.uploaded },
-    analysis: { type: ObcTableCellType.Regular, text: row.analysisStatus ?? "-" },
     visibility: { type: ObcTableCellType.Regular, text: row.visibilityValue },
     open: {
       type: ObcTableCellType.Button,
@@ -505,10 +478,7 @@ export default function MediaLibrary() {
           row={selectedRow}
           previewError={previewError}
           onPreviewError={() => setPreviewError(true)}
-          analysis={selectedAnalysis}
           analysisResult={selectedAnalysisResult}
-          isRetrying={retryingAssetId === selectedAsset?.id}
-          onRetry={() => void handleRetryAnalysis()}
         />
       </div>
 

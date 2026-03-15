@@ -204,55 +204,6 @@
   box-shadow: 0 0 0 1px rgba(20, 20, 20, 0.4);
 }
 
-.media-library-preview__status-panel {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px 0;
-}
-
-.media-library-preview__status-text {
-  margin: 0;
-  color: var(--element-neutral-color, #535353);
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.media-library-status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 84px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 16px;
-  text-transform: capitalize;
-  border: 1px solid currentColor;
-}
-
-.media-library-status-badge--queued {
-  color: #7a5800;
-  background: #fff3d1;
-}
-
-.media-library-status-badge--processing {
-  color: #005f7a;
-  background: #d7f4ff;
-}
-
-.media-library-status-badge--completed {
-  color: #0f5c2c;
-  background: #daf5df;
-}
-
-.media-library-status-badge--failed {
-  color: #8a1f11;
-  background: #ffe0db;
-}
-
 /* ── Modal ────────────────────────────────────────────────────────────────── */
 
 .media-library-page__modal-layer {
