@@ -7,6 +7,7 @@ import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponent
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
+import { ObcElevatedCardTag } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
 import { useFetchHistoricalMmsiInArea } from "../hooks/useFetchHistoricalMmsiInArea";
 import { buildFovPolygon } from "../utils/geometryMath";
 
@@ -305,7 +306,7 @@ export const AISProjectedCoordinates: React.FC = () => {
                   className="data-card"
                   /* @ts-expect-error - OpenBridge component type mismatch */
                   size="multi-line"
-                  notClickable
+                  overrideTag={ObcElevatedCardTag.Article}
                 >
                   <div slot="label" className="data-label">
                     <span className="data-name">{feature.name || `MMSI ${feature.mmsi}`}</span>
