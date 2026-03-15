@@ -12,7 +12,10 @@ import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcompo
 import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/input/input";
 import { StatusIndicatorStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/status-indicator/status-indicator";
 import { TagColor } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/tag/tag";
-import { ObcElevatedCardSize } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
+import {
+  ObcElevatedCardSize,
+  ObcElevatedCardTag,
+} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
 
 export const AISGeographicalDataDisplay: React.FC = () => {
   const [shouldStream, setShouldStream] = useState(false);
@@ -200,7 +203,7 @@ export const AISGeographicalDataDisplay: React.FC = () => {
                 key={`${feature.mmsi}-${feature.msgtime}`}
                 className="feature-card"
                 size={ObcElevatedCardSize.MultiLine}
-                notClickable
+                overrideTag={ObcElevatedCardTag.Article}
               >
                 <div slot="label" className="feature-label">
                   <span className="feature-name">
