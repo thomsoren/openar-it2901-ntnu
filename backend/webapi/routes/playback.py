@@ -4,14 +4,13 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 
-from auth.deps import get_optional_user
+from auth.deps import get_optional_user_with_query_token
 from db.database import SessionLocal
 from db.models import AppUser, MediaAsset
 from services.hls_service import get_hls_playlist_for_asset
-from webapi.errors import forbidden, not_found
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 @router.get("/api/playback/{asset_id}/hls")
 async def get_hls_playlist(
     asset_id: str,
-    current_user: Annotated[AppUser | None, Depends(get_optional_user)],
+    current_user: Annotated[AppUser | None, Depends(get_optional_user_with_query_token)],
 ) -> Response:
     """Return the .m3u8 playlist with presigned .ts URLs for direct S3 playback.
 
@@ -32,16 +31,16 @@ async def get_hls_playlist(
             select(MediaAsset).where(MediaAsset.id == asset_id)
         ).scalar_one_or_none()
         if asset is None:
-            not_found("Asset not found")
+            raise HTTPException(status_code=404, detail="Asset not found")
         if asset.visibility != "public":
             if current_user is None:
-                forbidden("Authentication required for private assets")
+                raise HTTPException(status_code=403, detail="Authentication required for private assets")
             elif not current_user.is_admin and asset.owner_user_id != current_user.id:
-                forbidden("You do not have access to this asset")
+                raise HTTPException(status_code=403, detail="You do not have access to this asset")
 
     result = get_hls_playlist_for_asset(asset_id)
     if result is None:
-        not_found("HLS playlist not available for this asset")
+        raise HTTPException(status_code=404, detail="HLS playlist not available for this asset")
 
     content_type, body = result
     return Response(content=body, media_type=content_type)

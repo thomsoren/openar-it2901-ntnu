@@ -103,10 +103,26 @@ def _configure_stream_fusion(stream_id: str, asset_name: str) -> None:
     )
 
 
+def _resolve_asset_s3_key(asset_name: str) -> str | None:
+    """Look up a media asset's raw S3 key by name."""
+    from db.database import SessionLocal
+    from db.models import MediaAsset
+    from sqlalchemy import select
+
+    try:
+        with SessionLocal() as db:
+            asset = db.scalar(select(MediaAsset).where(MediaAsset.asset_name == asset_name))
+    except Exception:
+        logger.exception("Failed to resolve S3 key for asset %s", asset_name)
+        return None
+    return asset.s3_key if asset else None
+
+
 def _load_fusion_ais_text() -> tuple[str | None, str | None]:
     try:
         asset_name, s3_key = s3.resolve_first_system_asset_key(FUSION_AIS_ASSET_NAMES)
     except Exception:
+        logger.exception("Failed to resolve fusion AIS asset")
         return None, None
 
     text = s3.read_text_from_sources(s3_key)
@@ -278,20 +294,12 @@ async def start_stream(
         if not transcoded:
             background_tasks.add_task(run_transcode_task, original_s3_key)
 
-    # Fusion stream: resolve S3 key directly so FFmpeg can use -c:v copy
-    # instead of live-transcoding the HTTP API endpoint.
-    fusion_s3_key: str | None = None
-    if stream_id == FUSION_STREAM_ID and source_url and is_http_url(source_url):
-        try:
-            _, fusion_s3_key = s3.resolve_first_system_asset_key(("fusion_video_pirbadet",))
-            source_url = _presign_s3_for_ffmpeg(fusion_s3_key)
-            is_pretranscoded = True
-        except HTTPException:
-            pass
 
     # Resolve the canonical S3 key for this stream (used for HLS playback).
-    # Priority: explicit s3:// from request > fusion system asset > default system asset
-    source_s3_key = original_s3_key or fusion_s3_key
+    # Priority: explicit s3:// from request > asset DB lookup > default system asset
+    source_s3_key = original_s3_key
+    if not source_s3_key and request.asset_name:
+        source_s3_key = _resolve_asset_s3_key(request.asset_name)
     if not source_s3_key and not request.source_url:
         # Default stream — resolve the system "video" asset key
         try:

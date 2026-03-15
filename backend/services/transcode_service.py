@@ -9,7 +9,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 from common.config.mediamtx import FFMPEG_BIN, FFPROBE_BIN
 from db.database import SessionLocal
@@ -21,13 +21,15 @@ logger = logging.getLogger(__name__)
 
 _TRANSCODE_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="transcode")
 
+HLS_SEGMENT_DURATION_S = 4
+
 
 def _transcoded_key_for(original_key: str) -> str:
     p = PurePosixPath(original_key)
     return str(p.with_name(f"{p.stem}_h264.mp4"))
 
 
-def _hls_prefix_for(s3_key: str) -> str:
+def hls_prefix_for(s3_key: str) -> str:
     """Derive the HLS S3 prefix from a video S3 key.
 
     Example: 'videos/.../clip_h264.mp4' → 'videos/.../clip_h264_hls/'
@@ -104,7 +106,7 @@ def _check_moov_before_mdat(source_path: str) -> bool:
     return False
 
 
-def _set_transcode_status(
+def set_transcode_status(
     s3_key: str,
     status: str,
     transcoded_key: str | None = None,
@@ -121,7 +123,7 @@ def _set_transcode_status(
             db.commit()
 
 
-def _set_hls_status(
+def set_hls_status(
     s3_key: str,
     status: str,
     hls_prefix: str | None = None,
@@ -243,7 +245,7 @@ def segment_to_hls(s3_key: str) -> str:
     uploads all resulting files, and returns the HLS S3 prefix.
     Uses -c:v copy (no re-encode) so this is fast.
     """
-    hls_prefix = _hls_prefix_for(s3_key)
+    hls_prefix = hls_prefix_for(s3_key)
 
     with tempfile.TemporaryDirectory(prefix="openar_hls_") as tmpdir:
         tmp = Path(tmpdir)
@@ -262,7 +264,7 @@ def segment_to_hls(s3_key: str) -> str:
             "-i", str(input_path),
             "-c:v", "copy",
             "-an",
-            "-hls_time", "4",
+            "-hls_time", str(HLS_SEGMENT_DURATION_S),
             "-hls_playlist_type", "vod",
             "-hls_segment_filename", segment_pattern,
             "-y",
@@ -327,22 +329,22 @@ def run_transcode_task(s3_key: str) -> None:
         transcoded_key = transcode_to_h264(s3_key)
     except Exception as exc:
         logger.error("[transcode] Failed for %s: %s", s3_key, exc)
-        _set_transcode_status(s3_key, "failed")
+        set_transcode_status(s3_key, "failed")
         return
 
-    _set_transcode_status(s3_key, "complete", transcoded_key)
+    set_transcode_status(s3_key, "complete", transcoded_key)
     logger.info("[transcode] Done for %s -> %s", s3_key, transcoded_key or "(original is fine)")
 
     # Chain HLS segmentation after successful transcode
     effective_key = transcoded_key or s3_key
-    _set_hls_status(s3_key, "processing")
+    set_hls_status(s3_key, "processing")
     try:
         hls_prefix = segment_to_hls(effective_key)
-        _set_hls_status(s3_key, "complete", hls_prefix)
+        set_hls_status(s3_key, "complete", hls_prefix)
         logger.info("[hls] Done for %s -> %s", s3_key, hls_prefix)
     except Exception as exc:
         logger.error("[hls] Segmentation failed for %s: %s", s3_key, exc)
-        _set_hls_status(s3_key, "failed")
+        set_hls_status(s3_key, "failed")
 
 
 def run_hls_only_task(s3_key: str) -> None:
@@ -366,14 +368,14 @@ def run_hls_only_task(s3_key: str) -> None:
             return
         effective_key = row.transcoded_s3_key or s3_key
 
-    _set_hls_status(s3_key, "processing")
+    set_hls_status(s3_key, "processing")
     try:
         hls_prefix = segment_to_hls(effective_key)
-        _set_hls_status(s3_key, "complete", hls_prefix)
+        set_hls_status(s3_key, "complete", hls_prefix)
         logger.info("[hls-backfill] Done for %s -> %s", s3_key, hls_prefix)
     except Exception as exc:
         logger.error("[hls-backfill] Failed for %s: %s", s3_key, exc)
-        _set_hls_status(s3_key, "failed")
+        set_hls_status(s3_key, "failed")
 
 
 def backfill_hls_all() -> list[str]:
@@ -381,8 +383,6 @@ def backfill_hls_all() -> list[str]:
 
     Returns the list of s3_keys that were queued.
     """
-    from sqlalchemy import or_
-
     with SessionLocal() as db:
         rows = db.execute(
             select(MediaAsset).where(
@@ -408,8 +408,6 @@ def backfill_hls_all() -> list[str]:
 def retry_interrupted_transcodes() -> None:
     """Re-enqueue transcodes/HLS jobs that were interrupted by a server restart."""
     with SessionLocal() as db:
-        from sqlalchemy import or_
-
         rows = db.execute(
             select(MediaAsset).where(
                 or_(

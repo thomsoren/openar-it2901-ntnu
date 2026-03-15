@@ -26,9 +26,9 @@ from sqlalchemy import or_, select
 from db.database import SessionLocal
 from db.models import MediaAsset
 from services.transcode_service import (
-    _hls_prefix_for,
-    _set_hls_status,
-    _set_transcode_status,
+    hls_prefix_for,
+    set_hls_status,
+    set_transcode_status,
     segment_to_hls,
     transcode_to_h264,
 )
@@ -55,25 +55,25 @@ def main() -> None:
         logger.info("Phase 1: Transcoding %d video(s)", len(transcode_keys))
         for i, s3_key in enumerate(transcode_keys, 1):
             logger.info("[transcode %d/%d] %s", i, len(transcode_keys), s3_key)
-            _set_transcode_status(s3_key, "processing")
+            set_transcode_status(s3_key, "processing")
             try:
                 transcoded_key = transcode_to_h264(s3_key)
-                _set_transcode_status(s3_key, "complete", transcoded_key)
+                set_transcode_status(s3_key, "complete", transcoded_key)
                 logger.info("[transcode] Done: %s -> %s", s3_key, transcoded_key or "(original ok)")
 
                 # Chain HLS
                 effective_key = transcoded_key or s3_key
-                _set_hls_status(s3_key, "processing")
+                set_hls_status(s3_key, "processing")
                 try:
                     hls_prefix = segment_to_hls(effective_key)
-                    _set_hls_status(s3_key, "complete", hls_prefix)
+                    set_hls_status(s3_key, "complete", hls_prefix)
                     logger.info("[hls] Done: %s -> %s", s3_key, hls_prefix)
                 except Exception as exc:
                     logger.error("[hls] Failed for %s: %s", s3_key, exc)
-                    _set_hls_status(s3_key, "failed")
+                    set_hls_status(s3_key, "failed")
             except Exception as exc:
                 logger.error("[transcode] Failed for %s: %s", s3_key, exc)
-                _set_transcode_status(s3_key, "failed")
+                set_transcode_status(s3_key, "failed")
     else:
         logger.info("Phase 1: All videos already transcoded")
 
@@ -95,14 +95,14 @@ def main() -> None:
         for i, (s3_key, transcoded_key) in enumerate(hls_assets, 1):
             effective_key = transcoded_key or s3_key
             logger.info("[hls %d/%d] %s", i, len(hls_assets), effective_key)
-            _set_hls_status(s3_key, "processing")
+            set_hls_status(s3_key, "processing")
             try:
                 hls_prefix = segment_to_hls(effective_key)
-                _set_hls_status(s3_key, "complete", hls_prefix)
+                set_hls_status(s3_key, "complete", hls_prefix)
                 logger.info("[hls] Done: %s -> %s", s3_key, hls_prefix)
             except Exception as exc:
                 logger.error("[hls] Failed for %s: %s", s3_key, exc)
-                _set_hls_status(s3_key, "failed")
+                set_hls_status(s3_key, "failed")
     else:
         logger.info("Phase 2: All transcoded assets already have HLS")
 

@@ -88,15 +88,15 @@ class TestMediaAssetHlsColumns:
 
 class TestHlsKeyDerivation:
     def test_hls_prefix_from_original_key(self):
-        from services.transcode_service import _hls_prefix_for
+        from services.transcode_service import hls_prefix_for
 
-        result = _hls_prefix_for("videos/private/g1/u1/s1/clip-abc123.mp4")
+        result = hls_prefix_for("videos/private/g1/u1/s1/clip-abc123.mp4")
         assert result == "videos/private/g1/u1/s1/clip-abc123_hls/"
 
     def test_hls_prefix_from_transcoded_key(self):
-        from services.transcode_service import _hls_prefix_for
+        from services.transcode_service import hls_prefix_for
 
-        result = _hls_prefix_for("videos/private/g1/u1/s1/clip-abc123_h264.mp4")
+        result = hls_prefix_for("videos/private/g1/u1/s1/clip-abc123_h264.mp4")
         assert result == "videos/private/g1/u1/s1/clip-abc123_h264_hls/"
 
 

@@ -491,11 +491,9 @@ function AROverlayInner({
                       <VideoPlayer
                         key={`cached-player-${streamId}`}
                         streamId={streamId}
-                        whepUrl={playbackUrls?.whep_url}
                         hlsUrl={playbackUrls?.hls_url}
                         hlsS3Url={playbackUrls?.hls_s3_url}
                         sessionToken={videoSession}
-                        allowHlsFallback={isActivePlayer}
                         className="background-video"
                         style={{
                           objectFit: arControls.videoFitMode,

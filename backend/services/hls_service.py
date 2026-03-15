@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Callable
 
 from sqlalchemy import select
@@ -32,7 +31,8 @@ def rewrite_m3u8_with_presigned_urls(
         Modified .m3u8 text with .ts lines replaced by presigned URLs.
     """
     if presign_fn is None:
-        presign_fn = lambda key, expires=_HLS_PRESIGN_EXPIRES: s3.presign_get(key, expires=expires)
+        def presign_fn(key: str, expires: int = _HLS_PRESIGN_EXPIRES) -> str:
+            return s3.presign_get(key, expires=expires)
 
     lines = m3u8_text.splitlines()
     result = []
