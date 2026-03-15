@@ -308,7 +308,6 @@ function PoiOverlay({
             }}
           >
             <ObcPoiLayer
-              ref={layerRefCallback}
               label="Vessel Layer"
               className="poi-layer"
               overlap-mode="grouping"
@@ -316,7 +315,12 @@ function PoiOverlay({
             >
               {/* obc-poi-data elements are managed imperatively in useEffect above */}
             </ObcPoiLayer>
-            <ObcPoiLayer label="Background Layer" className="poi-layer" data-controller-layer="background">
+            <ObcPoiLayer
+              ref={layerRefCallback}
+              label="Background Layer"
+              className="poi-layer"
+              data-controller-layer="background"
+            >
               {/* Background layer for controller-managed detections */}
             </ObcPoiLayer>
           </ObcPoiLayerStack>
