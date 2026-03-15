@@ -26,8 +26,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
-    "@ocean-industries-concept-lab/openbridge-webcomponents": "0.0.20260311201934",
-    "@ocean-industries-concept-lab/openbridge-webcomponents-react": "^0.0.20260311201934",
+    "@ocean-industries-concept-lab/openbridge-webcomponents": "0.0.20260315181738",
+    "@ocean-industries-concept-lab/openbridge-webcomponents-react": "^0.0.20260315181738",
     "@testing-library/react": "^16.3.2",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.1.0",
@@ -38,6 +38,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^28.1.0",
+    "postcss-mixins": "^12.1.2",
     "prettier": "^3.8.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.43.0",

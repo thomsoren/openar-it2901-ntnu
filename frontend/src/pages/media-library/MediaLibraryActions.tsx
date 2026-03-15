@@ -2,7 +2,7 @@ import { ObcRichButton } from "@ocean-industries-concept-lab/openbridge-webcompo
 import { RichButtonDirection } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/rich-button/rich-button";
 import { ObiFileDownloadGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-file-download-google";
 import { ObiLink } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-link";
-import { ObiWidgetAddGoogle } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-widget-add-google";
+import { ObiUpIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-up-iec";
 
 interface MediaLibraryActionsProps {
   onBrowse: () => void;
@@ -23,7 +23,7 @@ export function MediaLibraryActions({
         <ObcRichButton
           className="media-library-rich-button"
           label="Connect live stream"
-          description="Start a new live stream using your own media"
+          description="Connect livestream camera"
           direction={RichButtonDirection.Horizontal}
           hasTrailingIcon
           fullHeight
@@ -45,7 +45,7 @@ export function MediaLibraryActions({
           fullWidth
           onClick={onBrowse}
         >
-          <ObiWidgetAddGoogle slot="trailing-icon" />
+          <ObiUpIec slot="trailing-icon" />
         </ObcRichButton>
       </div>
 

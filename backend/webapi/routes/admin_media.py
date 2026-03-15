@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -94,7 +95,9 @@ def list_media_assets(
         )
     query = db.query(MediaAsset)
     if not current_user.is_admin:
-        query = query.filter(MediaAsset.owner_user_id == current_user.id)
+        query = query.filter(
+            or_(MediaAsset.owner_user_id == current_user.id, MediaAsset.is_system.is_(True))
+        )
     assets = query.order_by(MediaAsset.created_at.desc()).all()
     s3_assets = [asset for asset in assets if _asset_exists_on_s3(asset)]
     return [MediaAssetResponse.from_orm(a) for a in s3_assets]
@@ -109,6 +112,8 @@ def delete_media_asset(
     asset = db.get(MediaAsset, asset_id)
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if asset.is_system:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="System assets cannot be deleted")
     if not current_user.is_admin and asset.owner_user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 

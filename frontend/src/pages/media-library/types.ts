@@ -6,9 +6,7 @@ export interface MediaRow {
   fileName: string;
   type: string;
   uploaded: string;
-  visibilityValue: string;
   previewUrl: string | null;
-  previewDescription: string;
   asset: MediaAsset;
 }
 
@@ -26,12 +24,6 @@ export interface MediaLibraryPreviewProps {
   row: MediaRow | null;
   previewError: boolean;
   onPreviewError: () => void;
+  onDelete?: () => void;
 }
 
-export type MediaLibraryModalMode = "edit" | "delete" | null;
-
-export const VISIBILITY_OPTIONS = [
-  { value: "private", label: "Private" },
-  { value: "group", label: "Group" },
-  { value: "public", label: "Public" },
-];

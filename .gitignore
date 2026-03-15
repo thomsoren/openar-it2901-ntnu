@@ -2,6 +2,7 @@
 .idea/
 .vscode/
 .claude/
+.mcp.json
 CLAUDE.md
 **/CLAUDE.md
 

@@ -1,22 +1,20 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-export type PageId = "ar" | "ais" | "media-library" | "components" | "control-customization";
+export type PageId = "ar" | "ais" | "components" | "control-customization";
 
 const PAGE_PATHS: Record<PageId, string> = {
   ar: "/ar",
   ais: "/ais",
-  "media-library": "/media-library",
   components: "/components",
   "control-customization": "/control-customization",
 };
 
 const pageLabels: Record<PageId, string> = {
-  ar: "AR",
-  ais: "AIS",
-  "media-library": "Media Library",
+  ar: "Live stream",
+  ais: "Map",
   components: "Components",
-  "control-customization": "Configuration",
+  "control-customization": "Configure",
 };
 
 const getPageFromPath = (pathname: string): PageId => {
@@ -26,8 +24,6 @@ const getPageFromPath = (pathname: string): PageId => {
       return "ais";
     case "components":
       return "components";
-    case "media-library":
-      return "media-library";
     case "control-customization":
       return "control-customization";
     case "ar":

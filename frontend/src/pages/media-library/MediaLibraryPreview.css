@@ -1,0 +1,113 @@
+.media-preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  height: 100%;
+  border-radius: var(--border-radius-br-6, 6px);
+  border: 1px solid var(--container-section-color);
+  background: var(--container-background-color);
+  box-shadow: var(--shadow-flat-x, 0px) var(--shadow-flat-y, 1px)
+    var(--shadow-flat-blur, 2px) 0px var(--shadow-flat-color, rgba(0, 0, 0, 0.23));
+}
+
+.media-preview-card__thumbnail {
+  width: 100%;
+  padding: 4px;
+}
+
+.media-preview-card__thumbnail-inner {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--border-radius-br-4, 4px);
+  background: var(--element-neutral-color);
+}
+
+.media-preview-card__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-preview-card__empty {
+  padding: 24px;
+  color: var(--container-backdrop-color);
+  @mixin font-label;
+  text-align: center;
+}
+
+.media-preview-card__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 0;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 24px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.media-preview-card__title {
+  @mixin font-body-active;
+  margin: 0;
+  color: var(--element-active-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.media-preview-card__metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.media-preview-card__metadata-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.media-preview-card__metadata-item {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 0;
+  min-width: 0;
+}
+
+.media-preview-card__metadata-label {
+  @mixin font-label;
+  margin: 0;
+  color: var(--element-neutral-color);
+}
+
+.media-preview-card__metadata-value {
+  margin: 0;
+  @mixin font-body;
+  color: var(--element-active-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-preview-card__source-row {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.media-preview-card__source-text {
+  flex: 1 0 0;
+  min-width: 0;
+}
+
+.media-preview-card__actions {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+}

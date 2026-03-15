@@ -11,6 +11,13 @@
   background: var(--container-backdrop-color, #ffffff);
 }
 
+.control-customization-page--embedded {
+  position: static;
+  overflow: visible;
+  padding: 0;
+  background: none;
+}
+
 .control-customization-page__content {
   width: 100%;
   max-width: 1080px;

@@ -7,19 +7,22 @@ import "./ControlCustomization.css";
 
 const CONTROL_CUSTOMIZATION_ITEMS = [...AR_PANEL_CONTROL_DEFINITIONS] as const;
 
-function ControlCustomizationInner() {
+function ControlCustomizationInner({ embedded = false }: { embedded?: boolean }) {
   const { panelVisibility, setPanelControlVisibility } = useARControls();
   const hasVisibleControls = AR_PANEL_CONTROL_DEFINITIONS.some((item) => panelVisibility[item.key]);
+  const pageClassName = embedded ? "control-customization-page control-customization-page--embedded" : "page control-customization-page";
 
   return (
-    <section className="page control-customization-page">
+    <section className={pageClassName}>
       <div className="control-customization-page__content">
-        <div className="control-customization-page__hero">
-          <h2 className="page-title control-customization-page__title">Configuration</h2>
-          <p className="page-subtitle control-customization-page__subtitle">
-            Choose which controls are shown in the AR panel. Changes are saved automatically.
-          </p>
-        </div>
+        {!embedded && (
+          <div className="control-customization-page__hero">
+            <h2 className="page-title control-customization-page__title">Configuration</h2>
+            <p className="page-subtitle control-customization-page__subtitle">
+              Choose which controls are shown in the AR panel. Changes are saved automatically.
+            </p>
+          </div>
+        )}
 
         <section className="control-customization-preview">
           <div className="control-customization-preview__header">
@@ -67,10 +70,10 @@ function ControlCustomizationInner() {
   );
 }
 
-export default function ControlCustomization() {
+export default function ControlCustomization({ embedded = false }: { embedded?: boolean }) {
   return (
     <ARControlProvider>
-      <ControlCustomizationInner />
+      <ControlCustomizationInner embedded={embedded} />
     </ARControlProvider>
   );
 }
