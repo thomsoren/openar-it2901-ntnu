@@ -22,7 +22,11 @@ import logging
 import os
 import signal
 import struct
+import tempfile
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 import cv2
 import numpy as np
@@ -37,11 +41,13 @@ logging.basicConfig(
 logger = logging.getLogger("idun_worker")
 
 COOLIFY_WS_URL = os.environ.get("COOLIFY_WS_URL", "")
+IDUN_BATCH_API_BASE_URL = os.environ.get("IDUN_BATCH_API_BASE_URL", "")
 IDUN_API_KEY = os.environ.get("IDUN_API_KEY", "")
 HEARTBEAT_INTERVAL_S = 30.0
 RECONNECT_BASE_S = 1.0
 RECONNECT_MAX_S = 30.0
 STATUS_LOG_INTERVAL_S = 30.0
+JOB_POLL_INTERVAL_S = float(os.environ.get("IDUN_JOB_POLL_INTERVAL_S", "5.0"))
 
 MAX_BATCH_SIZE = int(os.environ.get("IDUN_MAX_BATCH_SIZE", "10"))
 BATCH_FILL_TIMEOUT_S = float(os.environ.get("IDUN_BATCH_FILL_TIMEOUT_S", "0.02"))
@@ -56,6 +62,153 @@ def handle_signal(sig: int, _frame: object) -> None:
 
 signal.signal(signal.SIGTERM, handle_signal)
 signal.signal(signal.SIGINT, handle_signal)
+
+
+def _derive_batch_api_base_url() -> str:
+    if IDUN_BATCH_API_BASE_URL:
+        return IDUN_BATCH_API_BASE_URL.rstrip("/")
+    if not COOLIFY_WS_URL:
+        return ""
+    parsed = urllib.parse.urlparse(COOLIFY_WS_URL)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    scheme = "https" if parsed.scheme == "wss" else "http"
+    return f"{scheme}://{parsed.netloc}"
+
+
+def _http_json(method: str, url: str, payload: dict | None = None) -> dict | None:
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {IDUN_API_KEY}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=300) as response:
+            body = response.read().decode("utf-8")
+            if response.status == 204 or not body:
+                return None
+            return json.loads(body)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"HTTP {exc.code} for {url}: {body or exc.reason}") from exc
+
+
+def _download_input_video(url: str) -> str:
+    suffix = os.path.splitext(urllib.parse.urlparse(url).path)[1] or ".mp4"
+    tmp = tempfile.NamedTemporaryFile(prefix="openar-idun-", suffix=suffix, delete=False)
+    tmp.close()
+    urllib.request.urlretrieve(url, tmp.name)
+    return tmp.name
+
+
+def _process_batch_job(detector: RTDETRDetector, api_base_url: str, job: dict) -> None:
+    job_id = str(job["id"])
+    input_url = str(job["input_url"])
+    local_path = _download_input_video(input_url)
+    detector.reset_tracker()
+    _http_json("POST", f"{api_base_url}/api/idun/jobs/{job_id}/start", {})
+
+    cap = cv2.VideoCapture(local_path)
+    if not cap.isOpened():
+        os.unlink(local_path)
+        raise RuntimeError(f"Failed to open downloaded video for job {job_id}")
+
+    fps_raw = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    fps = fps_raw if fps_raw > 0 else 25.0
+    total_frames_raw = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0) or None
+    video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0) or None
+    frame_index = 0
+    frames: dict[str, list[dict]] = {}
+
+    try:
+        while not shutdown_event.is_set():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            detections = detector.detect(frame, track=True)
+            if detections:
+                frames[str(frame_index)] = [
+                    {
+                        "detection": detection.model_dump(),
+                        "vessel": None,
+                    }
+                    for detection in detections
+                ]
+            frame_index += 1
+    finally:
+        cap.release()
+        try:
+            os.unlink(local_path)
+        except OSError:
+            pass
+
+    _http_json(
+        "PUT",
+        f"{api_base_url}/api/idun/jobs/{job_id}/complete",
+        {
+            "fps": fps,
+            "total_frames": total_frames_raw if total_frames_raw > 0 else frame_index,
+            "video_width": video_width,
+            "video_height": video_height,
+            "frames": frames,
+        },
+    )
+
+
+async def run_batch_worker(detector: RTDETRDetector) -> None:
+    api_base_url = _derive_batch_api_base_url()
+    if not api_base_url:
+        logger.error("IDUN batch API base URL is not set")
+        return
+    if not IDUN_API_KEY:
+        logger.error("IDUN_API_KEY not set")
+        return
+
+    logger.info("Starting batch worker against %s", api_base_url)
+
+    while not shutdown_event.is_set():
+        try:
+            claimed = await asyncio.get_running_loop().run_in_executor(
+                None,
+                _http_json,
+                "POST",
+                f"{api_base_url}/api/idun/jobs/claim",
+                {},
+            )
+            job = claimed.get("job") if claimed else None
+            if not job:
+                await asyncio.sleep(JOB_POLL_INTERVAL_S)
+                continue
+
+            logger.info("Claimed uploaded-video job %s", job.get("id"))
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    _process_batch_job,
+                    detector,
+                    api_base_url,
+                    job,
+                )
+                logger.info("Completed uploaded-video job %s", job.get("id"))
+            except Exception as exc:
+                logger.exception("Uploaded-video job %s failed: %s", job.get("id"), exc)
+                await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    _http_json,
+                    "PUT",
+                    f"{api_base_url}/api/idun/jobs/{job.get('id')}/fail",
+                    {"error_message": str(exc)},
+                )
+        except Exception as exc:
+            logger.warning("Batch worker loop failed: %s", exc)
+            await asyncio.sleep(JOB_POLL_INTERVAL_S)
 
 
 async def run_worker(detector: RTDETRDetector) -> None:
@@ -397,6 +550,12 @@ async def _inference_task(
 def main() -> None:
     parser = argparse.ArgumentParser(description="IDUN inference worker")
     parser.add_argument("--model", default="best.pt", help="Path to RT-DETR model weights")
+    parser.add_argument(
+        "--mode",
+        choices=("stream", "batch"),
+        default=os.environ.get("IDUN_WORKER_MODE", "stream"),
+        help="Worker mode: stream for live WebSocket inference, batch for uploaded-video jobs",
+    )
     args = parser.parse_args()
 
     logger.info("Loading model: %s", args.model)
@@ -406,8 +565,10 @@ def main() -> None:
         MAX_BATCH_SIZE,
         BATCH_FILL_TIMEOUT_S,
     )
-
-    asyncio.run(run_worker(detector))
+    if args.mode == "batch":
+        asyncio.run(run_batch_worker(detector))
+    else:
+        asyncio.run(run_worker(detector))
 
 
 if __name__ == "__main__":
