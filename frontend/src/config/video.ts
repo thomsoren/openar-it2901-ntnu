@@ -28,18 +28,9 @@ export const MOCK_DATA_CONFIG = {
   WIDTH: 2560,
   HEIGHT: 1440,
   FPS: 25,
-  VIDEO_SOURCE: `${API_CONFIG.BASE_URL}/api/video/fusion`,
-  WS_URL: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws?profile=mock`,
-  RESET_URL: `${API_CONFIG.BASE_URL}/api/fusion/reset?profile=mock`,
-} as const;
-
-export const FUSION_PIRBADET_CONFIG = {
-  WIDTH: 1920,
-  HEIGHT: 1080,
-  FPS: 30,
-  VIDEO_SOURCE: `${API_CONFIG.BASE_URL}/api/video/fusion?profile=pirbadet`,
-  WS_URL: `${API_CONFIG.WS_BASE_URL}/api/fusion/ws?profile=pirbadet`,
-  RESET_URL: `${API_CONFIG.BASE_URL}/api/fusion/reset?profile=pirbadet`,
+  VIDEO_SOURCE: `${API_CONFIG.BASE_URL}/api/video/mock_stream`,
+  WS_URL: `${API_CONFIG.WS_BASE_URL}/api/mock_stream/ws`,
+  RESET_URL: `${API_CONFIG.BASE_URL}/api/mock_stream/reset`,
 } as const;
 
 // Detection API configuration
