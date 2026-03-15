@@ -43,6 +43,7 @@ from services.stream_service import (
     resolve_stream_source,
 )
 from services.transcode_service import get_transcoded_key, run_transcode_task
+from services.hls_service import get_hls_playback_url
 from storage import s3
 from webapi.constants import FUSION_STREAM_ID, SYSTEM_STREAM_IDS
 
@@ -224,20 +225,12 @@ async def start_stream(
         if current_user is not None:
             _require_stream_access(orchestrator, stream_id, current_user)
         if stream_id == FUSION_STREAM_ID:
-            try:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, _configure_fusion_stream_ais, stream_id
-                )
-            except Exception as exc:
-                logger.warning(
-                    "[fusion:%s] Failed to refresh AIS enrichment on existing stream: %s",
-                    stream_id,
-                    exc,
-                )
+            background_tasks.add_task(_configure_fusion_stream_ais, stream_id)
+        existing_s3_key = existing_handle.config.source_s3_key
         return {
             "status": "already_running",
             **existing_handle.to_dict(),
-            "playback_urls": build_stream_playback_payload(stream_id),
+            "playback_urls": build_stream_playback_payload(stream_id, s3_key=existing_s3_key),
         }
 
     if (
@@ -271,6 +264,7 @@ async def start_stream(
 
     # Fusion stream: resolve S3 key directly so FFmpeg can use -c:v copy
     # instead of live-transcoding the HTTP API endpoint.
+    fusion_s3_key: str | None = None
     if stream_id == FUSION_STREAM_ID and source_url and is_http_url(source_url):
         try:
             _, fusion_s3_key = s3.resolve_first_system_asset_key(("fusion_video_pirbadet",))
@@ -279,26 +273,34 @@ async def start_stream(
         except HTTPException:
             pass
 
+    # Resolve the canonical S3 key for this stream (used for HLS playback).
+    # Priority: explicit s3:// from request > fusion system asset > default system asset
+    source_s3_key = original_s3_key or fusion_s3_key
+    if not source_s3_key and not request.source_url:
+        # Default stream — resolve the system "video" asset key
+        try:
+            source_s3_key = s3.resolve_system_asset_key("video")
+        except Exception:
+            pass
+
     config = StreamConfig(
         stream_id=stream_id,
         source_url=source_url or request.source_url,
         loop=request.loop,
         owner_user_id=current_user.id if current_user else None,
         pretranscoded=is_pretranscoded,
+        source_s3_key=source_s3_key,
     )
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
     )
     if stream_id == FUSION_STREAM_ID:
-        try:
-            await asyncio.get_running_loop().run_in_executor(None, _configure_fusion_stream_ais, stream_id)
-        except Exception as exc:
-            logger.warning("[fusion:%s] Failed to configure AIS enrichment: %s", stream_id, exc)
+        background_tasks.add_task(_configure_fusion_stream_ais, stream_id)
 
     return {
         "status": "started",
         **handle.to_dict(),
-        "playback_urls": build_stream_playback_payload(stream_id),
+        "playback_urls": build_stream_playback_payload(stream_id, s3_key=source_s3_key),
     }
 
 
@@ -366,12 +368,13 @@ async def get_stream_playback(
     orchestrator = _require_orchestrator()
 
     try:
-        orchestrator.get_stream(stream_id)
+        handle = orchestrator.get_stream(stream_id)
     except StreamNotFoundError as exc:
         not_found(str(exc))
 
     _require_stream_access(orchestrator, stream_id, current_user)
-    return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id)}
+    s3_key = handle.config.source_s3_key if handle else None
+    return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id, s3_key=s3_key)}
 
 
 

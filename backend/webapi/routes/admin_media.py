@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from auth.deps import get_current_user
 from db.database import get_db
 from db.models import AppUser, MediaAsset
+from services.transcode_service import backfill_hls_all
 from webapi import state
 from webapi.errors import conflict
 from storage.s3 import S3_BUCKET, _client, _normalize_key, s3_enabled
@@ -196,3 +197,16 @@ def rename_asset(
         conflict(f"An asset named '{name}' already exists", cause=exc)
     db.refresh(asset)
     return MediaAssetResponse.from_orm(asset)
+
+
+@router.post("/backfill/hls")
+def trigger_hls_backfill(
+    current_user: Annotated[AppUser, Depends(get_current_user)],
+):
+    """Queue HLS segmentation for all transcoded assets that don't have HLS yet."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin only"
+        )
+    queued = backfill_hls_all()
+    return {"queued": len(queued), "s3_keys": queued}

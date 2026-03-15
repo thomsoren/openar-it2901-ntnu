@@ -155,15 +155,6 @@ class TestTwoUsersTwoStreams:
         assert "playback_urls" in resp_a
         assert "playback_urls" in resp_b
 
-        playback_a = client.get(f"/api/streams/{stream_a}/playback").json()
-        playback_b = client.get(f"/api/streams/{stream_b}/playback").json()
-
-        assert playback_a["stream_id"] == stream_a
-        assert playback_b["stream_id"] == stream_b
-        assert playback_a["playback_urls"] != playback_b["playback_urls"] or (
-            not playback_a["playback_urls"].get("media_enabled")
-        )
-
     def test_stopping_one_stream_does_not_affect_other(self, redis_available, stream_app_client):
         client = stream_app_client
         stream_a = "stop-iso-a"

@@ -22,7 +22,7 @@ class TestStartStream:
         )
         body = resp.json()
         assert "playback_urls" in body
-        assert isinstance(body["playback_urls"].get("media_enabled"), bool)
+        assert isinstance(body["playback_urls"], dict)
 
     def test_has_stream_info(self, stream_app_client):
         resp = stream_app_client.post(

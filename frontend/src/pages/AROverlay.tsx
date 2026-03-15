@@ -216,15 +216,15 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
           loop: true,
           allowExisting: true,
         });
+        if (!cancelled) {
+          await refreshStreams();
+        }
       } catch (err) {
         if (!cancelled) {
           setControlError(toStreamError(err, "Failed to start Fusion stream"));
         }
       } finally {
         fusionStartInFlightRef.current = false;
-      }
-      if (!cancelled) {
-        await refreshStreams();
       }
     };
 
@@ -429,6 +429,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
                         streamId={streamId}
                         whepUrl={playbackUrls?.whep_url}
                         hlsUrl={playbackUrls?.hls_url}
+                        hlsS3Url={playbackUrls?.hls_s3_url}
                         sessionToken={videoSession}
                         allowHlsFallback={isActivePlayer}
                         className="background-video"

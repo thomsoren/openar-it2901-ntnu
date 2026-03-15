@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from common.config import BASE_DIR, MEDIAMTX_ENABLED, VIDEO_PATH, build_playback_urls
+from common.config import BASE_DIR, VIDEO_PATH
 from cv.utils import is_remote_url
+from services.hls_service import get_hls_playback_url
 from services.transcode_service import get_transcoded_key
 from storage import s3
 
@@ -97,10 +98,12 @@ def resolve_stream_source(source_url: str | None) -> str | None:
     return raw
 
 
-def build_stream_playback_payload(stream_id: str) -> dict:
-    payload = {"media_enabled": MEDIAMTX_ENABLED}
-    if MEDIAMTX_ENABLED:
-        payload.update(build_playback_urls(stream_id))
+def build_stream_playback_payload(stream_id: str, s3_key: str | None = None) -> dict:
+    payload: dict = {}
+    if s3_key:
+        hls_url = get_hls_playback_url(s3_key)
+        if hls_url:
+            payload["hls_s3_url"] = hls_url
     return payload
 
 
@@ -108,4 +111,5 @@ def augment_stream_payload(stream: dict) -> dict:
     stream_id = str(stream.get("stream_id", "")).strip()
     if not stream_id:
         return stream
-    return {**stream, "playback_urls": build_stream_playback_payload(stream_id)}
+    s3_key = stream.get("source_s3_key") or None
+    return {**stream, "playback_urls": build_stream_playback_payload(stream_id, s3_key=s3_key)}

@@ -214,6 +214,13 @@ export function useVideoSessionRecovery({
         return;
       }
 
+      if (next.status === "connecting") {
+        // A new connection attempt is in progress (e.g. HLS fallback after WHEP error).
+        // Cancel any pending reconnect timer so it doesn't interrupt.
+        clearReconnectTimers();
+        return;
+      }
+
       if (next.status === "error") {
         imageLoadedRef.current = false;
         dispatch({ type: "SET_IMAGE_LOADED", payload: false });

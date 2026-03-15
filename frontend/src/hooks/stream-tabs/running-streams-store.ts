@@ -10,7 +10,8 @@ function arePlaybackUrlsEqual(
   return (
     previous.whep_url === next.whep_url &&
     previous.hls_url === next.hls_url &&
-    previous.rtsp_url === next.rtsp_url
+    previous.rtsp_url === next.rtsp_url &&
+    previous.hls_s3_url === next.hls_s3_url
   );
 }
 

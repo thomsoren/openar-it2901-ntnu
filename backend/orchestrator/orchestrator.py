@@ -84,11 +84,10 @@ class WorkerOrchestrator:
         inf = self._ensure_inference_thread()
         inf.register_stream(config.stream_id, decode_thread)
 
-        ffmpeg_proc = self._start_ffmpeg(config)
         return StreamHandle(
             decode_thread=decode_thread,
             config=config,
-            ffmpeg_process=ffmpeg_proc,
+            ffmpeg_process=None,
             backoff_seconds=self._initial_backoff_seconds,
             viewer_count=max(0, viewer_count),
             no_viewer_since=0.0 if viewer_count > 0 else time.monotonic(),
@@ -333,7 +332,6 @@ class WorkerOrchestrator:
                 with self._lock:
                     if self._workers.get(stream_id) is not handle:
                         continue
-                self._handle_ffmpeg_health(stream_id, handle)
 
                 if handle.is_alive:
                     handle.next_restart_at = 0.0

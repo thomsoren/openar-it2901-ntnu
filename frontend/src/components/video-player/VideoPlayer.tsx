@@ -2,7 +2,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import { VIDEO_CONFIG } from "../../config/video";
 import { useWhepConnection } from "../../hooks/useWhepConnection";
-import { getApiAccessToken } from "../../lib/api-client";
+import { getApiAccessToken, getApiBaseUrl } from "../../lib/api-client";
 
 type VideoTransport = "webrtc" | "hls";
 type VideoConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
@@ -18,6 +18,7 @@ export interface VideoPlayerProps {
   mediamtxBaseUrl?: string;
   whepUrl?: string;
   hlsUrl?: string;
+  hlsS3Url?: string;
   onVideoReady?: (video: HTMLVideoElement) => void;
   onStatusChange?: (state: VideoPlayerState) => void;
   className?: string;
@@ -47,6 +48,7 @@ function VideoPlayer({
   mediamtxBaseUrl,
   whepUrl,
   hlsUrl,
+  hlsS3Url,
   onVideoReady,
   onStatusChange,
   className,
@@ -58,7 +60,8 @@ function VideoPlayer({
   allowHlsFallback = true,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [transport, setTransport] = useState<VideoTransport>("webrtc");
+  // Always use HLS — video served directly from S3
+  const [transport, setTransport] = useState<VideoTransport>("hls");
   const [hlsState, setHlsState] = useState<VideoConnectionStatus>("idle");
   const [hlsError, setHlsError] = useState<string | null>(null);
 
@@ -70,17 +73,22 @@ function VideoPlayer({
   }, [mediamtxBaseUrl, streamId, whepUrl]);
 
   const resolvedHlsUrl = useMemo(() => {
+    if (hlsS3Url) {
+      // Direct S3 HLS — presigned .m3u8 served through the API
+      const base = getApiBaseUrl();
+      return `${base}${hlsS3Url}`;
+    }
     if (hlsUrl) {
       return hlsUrl;
     }
-    return VIDEO_CONFIG.MEDIAMTX_HLS_URL(streamId, mediamtxBaseUrl);
-  }, [hlsUrl, mediamtxBaseUrl, streamId]);
+    return null;
+  }, [hlsS3Url, hlsUrl]);
 
   useEffect(() => {
-    setTransport("webrtc");
+    setTransport("hls");
     setHlsState("idle");
     setHlsError(null);
-  }, [resolvedHlsUrl, resolvedWhepUrl, sessionToken, streamId]);
+  }, [hlsS3Url, resolvedHlsUrl, streamId]);
 
   useEffect(() => {
     if (videoRef.current && onVideoReady) {
@@ -160,15 +168,19 @@ function VideoPlayer({
     videoEl.addEventListener("error", onError);
 
     if (Hls.isSupported()) {
+      const isS3Hls = !!hlsS3Url;
       hls = new Hls({
-        lowLatencyMode: true,
+        // VOD from S3 doesn't need low-latency mode
+        lowLatencyMode: !isS3Hls,
         backBufferLength: 30,
-        xhrSetup: (xhr) => {
-          const token = getApiAccessToken();
-          if (token) {
-            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-          }
-        },
+        xhrSetup: isS3Hls
+          ? undefined // S3 presigned URLs have auth in query params
+          : (xhr) => {
+              const token = getApiAccessToken();
+              if (token) {
+                xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+              }
+            },
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) {
@@ -204,7 +216,7 @@ function VideoPlayer({
         videoEl.load();
       }
     };
-  }, [resolvedHlsUrl, sessionToken, streamId, transport]);
+  }, [hlsS3Url, resolvedHlsUrl, sessionToken, streamId, transport]);
 
   useEffect(() => {
     if (!onStatusChange) {

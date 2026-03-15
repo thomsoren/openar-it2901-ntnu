@@ -50,6 +50,8 @@ class MediaAsset(Base):
     group_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     transcoded_s3_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     transcode_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    hls_s3_prefix: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    hls_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_system: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
