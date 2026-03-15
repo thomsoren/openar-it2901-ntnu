@@ -26,4 +26,3 @@ export interface MediaLibraryPreviewProps {
   onPreviewError: () => void;
   onDelete?: () => void;
 }
-

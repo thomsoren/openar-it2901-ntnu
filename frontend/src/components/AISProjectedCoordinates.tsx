@@ -2,15 +2,15 @@ import React, { useState } from "react";
 import type { AISData, AISProjection } from "../types/aisData";
 import { useFetchAISGeographicalData } from "../hooks/useFetchAISGeographicalData";
 import "./AISProjectedCoordinates.css";
-import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
+import { ObcNumberInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/number-input-field/number-input-field";
+import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
 import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/elevated-card/elevated-card";
 import { ObcElevatedCardTag } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
 import { useFetchHistoricalMmsiInArea } from "../hooks/useFetchHistoricalMmsiInArea";
 import { buildFovPolygon } from "../utils/geometryMath";
-import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/text-input-field/text-input-field";
 import { parseNumberInput } from "../utils/dom-input";
 
 /** Type guard: narrows AISData to ensure projection is non-null. */
@@ -107,8 +107,7 @@ export const AISProjectedCoordinates: React.FC = () => {
       <div className="projection-params">
         <div className="param-group">
           <span className="param-label">Ship Latitude</span>
-          <ObcTextInputField
-            type={HTMLInputTypeAttribute.Text}
+          <ObcNumberInputField
             value={String(shipLat)}
             placeholder="63.4365"
             disabled={isStreaming}
@@ -118,8 +117,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Ship Longitude</span>
-          <ObcTextInputField
-            type={HTMLInputTypeAttribute.Text}
+          <ObcNumberInputField
             value={String(shipLon)}
             placeholder="10.3835"
             disabled={isStreaming}
@@ -129,8 +127,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Heading (°)</span>
-          <ObcTextInputField
-            type={HTMLInputTypeAttribute.Text}
+          <ObcNumberInputField
             value={String(heading)}
             placeholder="90"
             disabled={isStreaming}
@@ -140,8 +137,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Range (m)</span>
-          <ObcTextInputField
-            type={HTMLInputTypeAttribute.Text}
+          <ObcNumberInputField
             value={String(offsetMeters)}
             placeholder="3000"
             disabled={isStreaming}
@@ -151,8 +147,7 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">FOV (°)</span>
-          <ObcTextInputField
-            type={HTMLInputTypeAttribute.Text}
+          <ObcNumberInputField
             value={String(fovDegrees)}
             placeholder="120"
             disabled={isStreaming}
@@ -163,7 +158,6 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">From (UTC)</span>
           <ObcTextInputField
-            type={HTMLInputTypeAttribute.Text}
             value={msgTimeFrom}
             placeholder="2026-01-01T08:00:00Z"
             aria-label="Historic query start time (ISO-8601 UTC)"
@@ -173,7 +167,6 @@ export const AISProjectedCoordinates: React.FC = () => {
         <div className="param-group">
           <span className="param-label">To (UTC)</span>
           <ObcTextInputField
-            type={HTMLInputTypeAttribute.Text}
             value={msgTimeTo}
             placeholder="2026-01-01T08:15:00Z"
             aria-label="Historic query end time (ISO-8601 UTC)"

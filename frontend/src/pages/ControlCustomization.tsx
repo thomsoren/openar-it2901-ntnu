@@ -10,7 +10,9 @@ const CONTROL_CUSTOMIZATION_ITEMS = [...AR_PANEL_CONTROL_DEFINITIONS] as const;
 function ControlCustomizationInner({ embedded = false }: { embedded?: boolean }) {
   const { panelVisibility, setPanelControlVisibility } = useARControls();
   const hasVisibleControls = AR_PANEL_CONTROL_DEFINITIONS.some((item) => panelVisibility[item.key]);
-  const pageClassName = embedded ? "control-customization-page control-customization-page--embedded" : "page control-customization-page";
+  const pageClassName = embedded
+    ? "control-customization-page control-customization-page--embedded"
+    : "page control-customization-page";
 
   return (
     <section className={pageClassName}>

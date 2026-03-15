@@ -35,9 +35,7 @@ export function MediaLibraryPreview({
               />
             ) : (
               <div className="media-preview-card__empty">
-                {previewError
-                  ? "Preview unavailable."
-                  : "Select a video asset to preview."}
+                {previewError ? "Preview unavailable." : "Select a video asset to preview."}
               </div>
             )}
           </div>
@@ -51,13 +49,21 @@ export function MediaLibraryPreview({
               <div className="media-preview-card__metadata-item">
                 <p className="media-preview-card__metadata-label">Type</p>
                 <p className="media-preview-card__metadata-value">
-                  {row ? (row.asset.media_type === "video" ? "Video file" : row.asset.media_type) : "\u2013"}
+                  {row
+                    ? row.asset.media_type === "video"
+                      ? "Video file"
+                      : row.asset.media_type
+                    : "\u2013"}
                 </p>
               </div>
               <div className="media-preview-card__metadata-item">
                 <p className="media-preview-card__metadata-label">Status</p>
                 <p className="media-preview-card__metadata-value">
-                  {row ? (row.asset.transcode_status === "completed" ? "Ready" : (row.asset.transcode_status ?? "Unknown")) : "\u2013"}
+                  {row
+                    ? row.asset.transcode_status === "completed"
+                      ? "Ready"
+                      : (row.asset.transcode_status ?? "Unknown")
+                    : "\u2013"}
                 </p>
               </div>
             </div>
@@ -65,7 +71,9 @@ export function MediaLibraryPreview({
             <div className="media-preview-card__metadata-row">
               <div className="media-preview-card__metadata-item">
                 <p className="media-preview-card__metadata-label">Visibility</p>
-                <p className="media-preview-card__metadata-value">{row?.asset.visibility ?? "\u2013"}</p>
+                <p className="media-preview-card__metadata-value">
+                  {row?.asset.visibility ?? "\u2013"}
+                </p>
               </div>
               <div className="media-preview-card__metadata-item">
                 <p className="media-preview-card__metadata-label">Uploaded</p>
@@ -77,7 +85,9 @@ export function MediaLibraryPreview({
               <div className="media-preview-card__source-text">
                 <div className="media-preview-card__metadata-item">
                   <p className="media-preview-card__metadata-label">Source</p>
-                  <p className="media-preview-card__metadata-value">{row?.asset.s3_key ?? "\u2013"}</p>
+                  <p className="media-preview-card__metadata-value">
+                    {row?.asset.s3_key ?? "\u2013"}
+                  </p>
                 </div>
               </div>
               {row && (
@@ -94,11 +104,7 @@ export function MediaLibraryPreview({
 
           {row && !row.asset.is_system && (
             <div className="media-preview-card__actions">
-              <ObcButton
-                variant={ButtonVariant.normal}
-                showLeadingIcon
-                onClick={onDelete}
-              >
+              <ObcButton variant={ButtonVariant.normal} showLeadingIcon onClick={onDelete}>
                 <span slot="leading-icon">
                   <ObiDelete />
                 </span>
