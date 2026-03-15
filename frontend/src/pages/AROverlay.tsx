@@ -22,7 +22,12 @@ import StreamSetup from "../components/stream-setup/StreamSetup";
 import { startStream, stopStream, toStreamError } from "../services/streams";
 import { useInterpolatedDetections } from "../hooks/useInterpolatedDetections";
 import { StreamWorkspaceHeader } from "../components/app/StreamWorkspaceHeader";
-import { DEFAULT_STREAM_ID, FUSION_TAB_ID, MOCK_DATA_TAB_ID } from "../hooks/stream-tabs/constants";
+import {
+  DEFAULT_STREAM_ID,
+  FUSION_ASSET_NAME,
+  FUSION_TAB_ID,
+  MOCK_DATA_TAB_ID,
+} from "../hooks/stream-tabs/constants";
 import { apiFetchPublic } from "../lib/api-client";
 import "./AROverlay.css";
 
@@ -212,7 +217,7 @@ function AROverlayInner({ externalStreamId, onAuthGateVisibleChange }: AROverlay
     const ensureFusionStreamRunning = async () => {
       try {
         await startStream(FUSION_TAB_ID, {
-          assetName: "fusion_video_gunnerus",
+          assetName: FUSION_ASSET_NAME,
           loop: true,
           allowExisting: true,
         });
