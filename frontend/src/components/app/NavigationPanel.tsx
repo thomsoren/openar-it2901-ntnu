@@ -1,5 +1,9 @@
 import { ObcNavigationMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-menu/navigation-menu";
 import { ObcNavigationItem } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/navigation-item/navigation-item";
+import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
+import { ObiEcdisProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ecdis-proposal";
+import { ObiConfigure } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-configure";
+import { ObiPlaceholder } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-placeholder";
 import type { PageId } from "../../hooks/useNavigation";
 
 interface NavigationPanelProps {
@@ -12,30 +16,37 @@ export function NavigationPanel({ currentPage, onNavigate }: NavigationPanelProp
     <ObcNavigationMenu className="navigation-menu">
       <div slot="main">
         <ObcNavigationItem
-          label="AR"
+          label="Live stream"
           checked={currentPage === "ar"}
+          hasIcon
           onClick={() => onNavigate("ar")}
-        />
+        >
+          <ObiCamera slot="icon" />
+        </ObcNavigationItem>
         <ObcNavigationItem
-          label="AIS"
+          label="Map"
           checked={currentPage === "ais"}
+          hasIcon
           onClick={() => onNavigate("ais")}
-        />
+        >
+          <ObiEcdisProposal slot="icon" />
+        </ObcNavigationItem>
         <ObcNavigationItem
-          label="Media Library"
-          checked={currentPage === "media-library"}
-          onClick={() => onNavigate("media-library")}
-        />
+          label="Configure"
+          checked={currentPage === "control-customization"}
+          hasIcon
+          onClick={() => onNavigate("control-customization")}
+        >
+          <ObiConfigure slot="icon" />
+        </ObcNavigationItem>
         <ObcNavigationItem
           label="Components"
           checked={currentPage === "components"}
+          hasIcon
           onClick={() => onNavigate("components")}
-        />
-        <ObcNavigationItem
-          label="Configuration"
-          checked={currentPage === "control-customization"}
-          onClick={() => onNavigate("control-customization")}
-        />
+        >
+          <ObiPlaceholder slot="icon" />
+        </ObcNavigationItem>
       </div>
     </ObcNavigationMenu>
   );
