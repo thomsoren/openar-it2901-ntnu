@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ObcTabRow } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import { ObiCameraOff } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera-off";
-import { ObiCameraOn } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera-on";
+import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
 import { ObiMediaLive } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-media-live";
 import { ObiUpIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-up-iec";
 import type { StreamSummary } from "../../types/stream";
@@ -20,11 +20,11 @@ function isLiveSourceUrl(sourceUrl: string): boolean {
 
 function tabIcon(tabId: string, runningStreams: StreamSummary[], configureTabId: string | null) {
   if (tabId === configureTabId) return <ObiUpIec />;
-  if (tabId === MOCK_DATA_TAB_ID) return <ObiCameraOn />;
+  if (tabId === MOCK_DATA_TAB_ID) return <ObiCamera />;
   const stream = runningStreams.find((s) => s.stream_id === tabId);
   if (!stream) return <ObiCameraOff />;
   if (isLiveSourceUrl(stream.source_url)) return <ObiMediaLive />;
-  return <ObiCameraOn />;
+  return <ObiCamera />;
 }
 
 interface StreamWorkspaceHeaderProps {

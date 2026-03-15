@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import type { AISData, AISProjection } from "../types/aisData";
 import { useFetchAISGeographicalData } from "../hooks/useFetchAISGeographicalData";
 import "./AISProjectedCoordinates.css";
-import { ObcInput } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/input/input";
+import { ObcTextInputField } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/text-input-field/text-input-field";
 import { ObcButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/button/button";
 import { ObcStatusIndicator } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/status-indicator/status-indicator";
 import { ObcTag } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tag/tag";
@@ -10,6 +10,8 @@ import { ObcElevatedCard } from "@ocean-industries-concept-lab/openbridge-webcom
 import { ObcElevatedCardTag } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/elevated-card/elevated-card";
 import { useFetchHistoricalMmsiInArea } from "../hooks/useFetchHistoricalMmsiInArea";
 import { buildFovPolygon } from "../utils/geometryMath";
+import { HTMLInputTypeAttribute } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/text-input-field/text-input-field";
+import { parseNumberInput } from "../utils/dom-input";
 
 /** Type guard: narrows AISData to ensure projection is non-null. */
 function hasProjection(f: AISData): f is AISData & { projection: AISProjection } {
@@ -27,12 +29,6 @@ export const AISProjectedCoordinates: React.FC = () => {
   const [fovDegrees, setFovDegrees] = useState(120);
   const [msgTimeFrom, setMsgTimeFrom] = useState("");
   const [msgTimeTo, setMsgTimeTo] = useState("");
-
-  const parseNumberInput = (event: Event, fallback: number) => {
-    const rawValue = (event.target as { value?: string }).value ?? "";
-    const parsedValue = Number.parseFloat(rawValue);
-    return Number.isNaN(parsedValue) ? fallback : parsedValue;
-  };
 
   const { features, isStreaming, error } = useFetchAISGeographicalData(
     shouldStream,
@@ -111,9 +107,8 @@ export const AISProjectedCoordinates: React.FC = () => {
       <div className="projection-params">
         <div className="param-group">
           <span className="param-label">Ship Latitude</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(shipLat)}
             placeholder="63.4365"
             disabled={isStreaming}
@@ -123,9 +118,8 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Ship Longitude</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(shipLon)}
             placeholder="10.3835"
             disabled={isStreaming}
@@ -135,9 +129,8 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Heading (°)</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(heading)}
             placeholder="90"
             disabled={isStreaming}
@@ -147,9 +140,8 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">Range (m)</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(offsetMeters)}
             placeholder="3000"
             disabled={isStreaming}
@@ -159,9 +151,8 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">FOV (°)</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="number"
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={String(fovDegrees)}
             placeholder="120"
             disabled={isStreaming}
@@ -171,9 +162,8 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">From (UTC)</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="text"
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={msgTimeFrom}
             placeholder="2026-01-01T08:00:00Z"
             aria-label="Historic query start time (ISO-8601 UTC)"
@@ -182,9 +172,8 @@ export const AISProjectedCoordinates: React.FC = () => {
         </div>
         <div className="param-group">
           <span className="param-label">To (UTC)</span>
-          <ObcInput
-            /* @ts-expect-error - OpenBridge component type mismatch */
-            type="text"
+          <ObcTextInputField
+            type={HTMLInputTypeAttribute.Text}
             value={msgTimeTo}
             placeholder="2026-01-01T08:15:00Z"
             aria-label="Historic query end time (ISO-8601 UTC)"
