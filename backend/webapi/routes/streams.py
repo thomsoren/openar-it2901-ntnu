@@ -244,16 +244,6 @@ async def start_stream(
         if not transcoded:
             background_tasks.add_task(run_transcode_task, original_s3_key)
 
-    # Fusion stream: resolve S3 key directly so FFmpeg can use -c:v copy
-    # instead of live-transcoding the HTTP API endpoint.
-    if stream_id == FUSION_STREAM_ID and source_url and is_http_url(source_url):
-        try:
-            _, fusion_s3_key = s3.resolve_first_system_asset_key(("fusion_video_pirbadet",))
-            source_url = _presign_s3_for_ffmpeg(fusion_s3_key)
-            is_pretranscoded = True
-        except HTTPException:
-            pass
-
     config = StreamConfig(
         stream_id=stream_id,
         source_url=source_url or request.source_url,
