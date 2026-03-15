@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ObcTabRow } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
 import type { TabData } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/tab-row/tab-row";
-import { ObiCameraOff } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera-off";
 import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
+import { ObiCameraOff } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera-off";
 import { ObiMediaLive } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-media-live";
 import { ObiUpIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-up-iec";
 import type { StreamSummary } from "../../types/stream";

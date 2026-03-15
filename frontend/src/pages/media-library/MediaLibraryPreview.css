@@ -6,8 +6,8 @@
   border-radius: var(--border-radius-br-6, 6px);
   border: 1px solid var(--container-section-color);
   background: var(--container-background-color);
-  box-shadow: var(--shadow-flat-x, 0px) var(--shadow-flat-y, 1px)
-    var(--shadow-flat-blur, 2px) 0px var(--shadow-flat-color, rgba(0, 0, 0, 0.23));
+  box-shadow: var(--shadow-flat-x, 0px) var(--shadow-flat-y, 1px) var(--shadow-flat-blur, 2px) 0px
+    var(--shadow-flat-color, rgba(0, 0, 0, 0.23));
 }
 
 .media-preview-card__thumbnail {

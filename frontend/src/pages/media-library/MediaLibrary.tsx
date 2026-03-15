@@ -6,7 +6,12 @@ import { ObcTable } from "@ocean-industries-concept-lab/openbridge-webcomponents
 import { ButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/button/button";
 import { ObcTableCellType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
 import { CheckboxStatus } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/checkbox/checkbox";
-import type { ObcTableRow, ObcTableCellDataRegular, ObcTableColumn, ObcTableCellData } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
+import type {
+  ObcTableRow,
+  ObcTableCellDataRegular,
+  ObcTableColumn,
+  ObcTableCellData,
+} from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/table/table.js";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/progress-bar/progress-bar.js";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/tag/tag.js";
 import { ObiDelete } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-delete";
@@ -35,7 +40,9 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
   const { session, isSessionPending, authBridgeStatus, authBridgeError, retryAuthBridge } =
     useAuth();
   const storageScope = session?.user?.id ?? "anon";
-  const pageClassName = embedded ? "media-library-page media-library-page--embedded" : "media-library-page";
+  const pageClassName = embedded
+    ? "media-library-page media-library-page--embedded"
+    : "media-library-page";
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +73,10 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
     return () => window.clearTimeout(id);
   }, [actionError]);
 
-  const mediaRows = useMemo(() => assets.map((a) => assetToRow(a, previewUrls[a.id])), [assets, previewUrls]);
+  const mediaRows = useMemo(
+    () => assets.map((a) => assetToRow(a, previewUrls[a.id])),
+    [assets, previewUrls]
+  );
   const selectedRow = mediaRows.find((r) => r.id === selectedRowId) ?? mediaRows[0] ?? null;
 
   const loadAssets = useCallback(async () => {
@@ -108,7 +118,10 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
         renderCell: (value: ObcTableCellData, row: ObcTableRow) => {
           const text = (value as ObcTableCellDataRegular).text ?? "";
           if (row.isSystem) {
-            return html`<span style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px"><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag></span>`;
+            return html`<span
+              style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px"
+              ><span>${text}</span><obc-tag label="Demo" color="indigo"></obc-tag
+            ></span>`;
           }
           return html`<span>${text}</span>`;
         },
@@ -119,7 +132,8 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
         sortable: true as const,
         compareFunction: textCompare,
         renderCell: (_value: ObcTableCellData, row: ObcTableRow) => {
-          if (row.id !== UPLOAD_ROW_ID) return html`<span>${(_value as ObcTableCellDataRegular).text}</span>`;
+          if (row.id !== UPLOAD_ROW_ID)
+            return html`<span>${(_value as ObcTableCellDataRegular).text}</span>`;
           return html`<obc-progress-bar
             ${litRef((el) => {
               if (!el) return;
@@ -164,7 +178,11 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
       rows.unshift({
         id: UPLOAD_ROW_ID,
         selected: false,
-        fileName: { type: ObcTableCellType.Regular, text: `${uploadFileName} (${uploadProgress}%)`, noWrap: true },
+        fileName: {
+          type: ObcTableCellType.Regular,
+          text: `${uploadFileName} (${uploadProgress}%)`,
+          noWrap: true,
+        },
         type: { type: ObcTableCellType.Regular, text: "", cssPart: "upload-progress-cell" },
       });
     }
@@ -196,7 +214,9 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
             <p className="media-library-page__subtitle">Sign in to view your media library.</p>
           </div>
         )}
-        {embedded && <p className="media-library-page__subtitle">Sign in to view your media library.</p>}
+        {embedded && (
+          <p className="media-library-page__subtitle">Sign in to view your media library.</p>
+        )}
       </section>
     );
   }
@@ -378,14 +398,15 @@ export default function MediaLibrary({ embedded = false }: { embedded?: boolean 
         </div>
       )}
 
-      {embedded && (uploadStatus === "done" || uploadStatus === "error" || loadError || actionError) && (
-        <p className="media-library-page__subtitle">
-          {uploadStatus === "done" && "Upload complete!"}
-          {uploadStatus === "error" && "Upload failed."}
-          {loadError && loadError}
-          {actionError && actionError}
-        </p>
-      )}
+      {embedded &&
+        (uploadStatus === "done" || uploadStatus === "error" || loadError || actionError) && (
+          <p className="media-library-page__subtitle">
+            {uploadStatus === "done" && "Upload complete!"}
+            {uploadStatus === "error" && "Upload failed."}
+            {loadError && loadError}
+            {actionError && actionError}
+          </p>
+        )}
 
       <div className="media-library-page__content">
         <div className="media-library-page__left-column">
