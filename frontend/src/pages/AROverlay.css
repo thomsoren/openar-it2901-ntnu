@@ -93,7 +93,7 @@
 .stream-error {
   position: absolute;
   left: 50%;
-  bottom: 80px;
+  bottom: 16px;
   transform: translateX(-50%);
   z-index: 30;
   display: flex;
