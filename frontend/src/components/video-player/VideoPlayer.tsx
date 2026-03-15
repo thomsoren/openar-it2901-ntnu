@@ -1,23 +1,19 @@
-import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
-import { VIDEO_CONFIG } from "../../config/video";
-import { useWhepConnection } from "../../hooks/useWhepConnection";
-import { getApiAccessToken } from "../../lib/api-client";
+import { getApiAccessToken, getApiBaseUrl } from "../../lib/api-client";
 
-type VideoTransport = "webrtc" | "hls";
 type VideoConnectionStatus = "idle" | "connecting" | "playing" | "stalled" | "error";
 
 export interface VideoPlayerState {
-  transport: VideoTransport;
+  transport: "hls";
   status: VideoConnectionStatus;
   error: string | null;
 }
 
 export interface VideoPlayerProps {
   streamId: string;
-  mediamtxBaseUrl?: string;
-  whepUrl?: string;
   hlsUrl?: string;
+  hlsS3Url?: string;
   onVideoReady?: (video: HTMLVideoElement) => void;
   onStatusChange?: (state: VideoPlayerState) => void;
   className?: string;
@@ -26,7 +22,6 @@ export interface VideoPlayerProps {
   autoPlay?: boolean;
   playsInline?: boolean;
   sessionToken?: number;
-  allowHlsFallback?: boolean;
 }
 
 const withCacheBust = (url: string, sessionToken: number): string =>
@@ -44,9 +39,8 @@ const withAccessToken = (url: string): string => {
 
 function VideoPlayer({
   streamId,
-  mediamtxBaseUrl,
-  whepUrl,
   hlsUrl,
+  hlsS3Url,
   onVideoReady,
   onStatusChange,
   className,
@@ -55,94 +49,52 @@ function VideoPlayer({
   autoPlay = true,
   playsInline = true,
   sessionToken = 0,
-  allowHlsFallback = true,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [transport, setTransport] = useState<VideoTransport>("webrtc");
+  // Track the video element in state so the HLS effect re-runs when
+  // the <video> remounts (key change on stream switch).
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const videoCallbackRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    setVideoEl(node);
+  }, []);
   const [hlsState, setHlsState] = useState<VideoConnectionStatus>("idle");
   const [hlsError, setHlsError] = useState<string | null>(null);
 
-  const resolvedWhepUrl = useMemo(() => {
-    if (whepUrl) {
-      return whepUrl;
-    }
-    return VIDEO_CONFIG.MEDIAMTX_WHEP_URL(streamId, mediamtxBaseUrl);
-  }, [mediamtxBaseUrl, streamId, whepUrl]);
-
   const resolvedHlsUrl = useMemo(() => {
+    if (hlsS3Url) {
+      // Direct S3 HLS — presigned .m3u8 served through the API
+      const base = getApiBaseUrl();
+      return `${base}${hlsS3Url}`;
+    }
     if (hlsUrl) {
       return hlsUrl;
     }
-    return VIDEO_CONFIG.MEDIAMTX_HLS_URL(streamId, mediamtxBaseUrl);
-  }, [hlsUrl, mediamtxBaseUrl, streamId]);
+    return null;
+  }, [hlsS3Url, hlsUrl]);
+
+  // Derive status for missing prerequisites without useEffect setState
+  const hlsUrlMissing = !resolvedHlsUrl;
 
   useEffect(() => {
-    setTransport("webrtc");
-    setHlsState("idle");
-    setHlsError(null);
-  }, [resolvedHlsUrl, resolvedWhepUrl, sessionToken, streamId]);
+    if (videoEl && onVideoReady) {
+      onVideoReady(videoEl);
+    }
+  }, [onVideoReady, videoEl]);
 
   useEffect(() => {
-    if (videoRef.current && onVideoReady) {
-      onVideoReady(videoRef.current);
-    }
-  }, [onVideoReady]);
-
-  const { status: whepStatus, error: whepError } = useWhepConnection({
-    whepUrl: transport === "webrtc" ? resolvedWhepUrl : null,
-    videoRef,
-    enabled: transport === "webrtc",
-    sessionToken,
-  });
-
-  useEffect(() => {
-    if (transport !== "webrtc") {
-      return;
-    }
-    if (whepStatus !== "error") {
-      return;
-    }
-    if (allowHlsFallback && resolvedHlsUrl) {
-      setTransport("hls");
-      return;
-    }
-    onStatusChange?.({
-      transport: "webrtc",
-      status: "error",
-      error: whepError || "WebRTC failed and no HLS fallback URL is available",
-    });
-  }, [
-    allowHlsFallback,
-    onStatusChange,
-    resolvedHlsUrl,
-    streamId,
-    transport,
-    whepError,
-    whepStatus,
-  ]);
-
-  useEffect(() => {
-    if (transport !== "hls") {
+    if (!videoEl || !resolvedHlsUrl) {
       return;
     }
 
-    const videoEl = videoRef.current;
-    if (!videoEl) {
-      setHlsState("error");
-      setHlsError("Video element missing");
-      return;
-    }
-    if (!resolvedHlsUrl) {
-      setHlsState("error");
-      setHlsError("HLS URL missing");
+    // Use the ref for DOM operations (ESLint treats useState values as immutable)
+    const el = videoRef.current;
+    if (!el) {
       return;
     }
 
     let hls: Hls | null = null;
     const sourceUrl = withCacheBust(withAccessToken(resolvedHlsUrl), sessionToken);
-
-    setHlsState("connecting");
-    setHlsError(null);
 
     const onLoadedData = () => setHlsState("playing");
     const onPlaying = () => setHlsState("playing");
@@ -153,22 +105,30 @@ function VideoPlayer({
       setHlsError("HLS video element error");
     };
 
-    videoEl.addEventListener("loadeddata", onLoadedData);
-    videoEl.addEventListener("playing", onPlaying);
-    videoEl.addEventListener("waiting", onWaiting);
-    videoEl.addEventListener("stalled", onStalled);
-    videoEl.addEventListener("error", onError);
+    el.addEventListener("loadeddata", onLoadedData);
+    el.addEventListener("playing", onPlaying);
+    el.addEventListener("waiting", onWaiting);
+    el.addEventListener("stalled", onStalled);
+    el.addEventListener("error", onError);
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial state before async HLS setup
+    setHlsState("connecting");
+    setHlsError(null);
 
     if (Hls.isSupported()) {
+      const isS3Hls = !!hlsS3Url;
       hls = new Hls({
-        lowLatencyMode: true,
+        // VOD from S3 doesn't need low-latency mode
+        lowLatencyMode: !isS3Hls,
         backBufferLength: 30,
-        xhrSetup: (xhr) => {
-          const token = getApiAccessToken();
-          if (token) {
-            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-          }
-        },
+        xhrSetup: isS3Hls
+          ? undefined // S3 presigned URLs have auth in query params
+          : (xhr) => {
+              const token = getApiAccessToken();
+              if (token) {
+                xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+              }
+            },
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) {
@@ -178,11 +138,11 @@ function VideoPlayer({
         setHlsError(`HLS fatal error: ${data.type}`);
       });
       hls.loadSource(sourceUrl);
-      hls.attachMedia(videoEl);
-    } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-      videoEl.src = sourceUrl;
-      videoEl.load();
-      void videoEl.play().catch(() => {
+      hls.attachMedia(el);
+    } else if (el.canPlayType("application/vnd.apple.mpegurl")) {
+      el.src = sourceUrl;
+      el.load();
+      void el.play().catch(() => {
         // Autoplay can reject transiently while metadata is pending.
       });
     } else {
@@ -191,44 +151,39 @@ function VideoPlayer({
     }
 
     return () => {
-      videoEl.removeEventListener("loadeddata", onLoadedData);
-      videoEl.removeEventListener("playing", onPlaying);
-      videoEl.removeEventListener("waiting", onWaiting);
-      videoEl.removeEventListener("stalled", onStalled);
-      videoEl.removeEventListener("error", onError);
+      el.removeEventListener("loadeddata", onLoadedData);
+      el.removeEventListener("playing", onPlaying);
+      el.removeEventListener("waiting", onWaiting);
+      el.removeEventListener("stalled", onStalled);
+      el.removeEventListener("error", onError);
 
       if (hls) {
         hls.destroy();
       } else {
-        videoEl.removeAttribute("src");
-        videoEl.load();
+        el.removeAttribute("src");
+        el.load();
       }
     };
-  }, [resolvedHlsUrl, sessionToken, streamId, transport]);
+  }, [hlsS3Url, resolvedHlsUrl, sessionToken, videoEl]);
+
+  const effectiveStatus: VideoConnectionStatus = hlsUrlMissing ? "error" : hlsState;
+  const effectiveError = hlsUrlMissing ? "HLS URL missing" : hlsError;
 
   useEffect(() => {
     if (!onStatusChange) {
       return;
     }
-    if (transport === "webrtc") {
-      onStatusChange({
-        transport,
-        status: whepStatus,
-        error: whepError,
-      });
-      return;
-    }
     onStatusChange({
-      transport,
-      status: hlsState,
-      error: hlsError,
+      transport: "hls",
+      status: effectiveStatus,
+      error: effectiveError,
     });
-  }, [hlsError, hlsState, onStatusChange, transport, whepError, whepStatus]);
+  }, [effectiveError, effectiveStatus, onStatusChange]);
 
   return (
     <video
-      key={`${streamId}-${sessionToken}-${transport}`}
-      ref={videoRef}
+      key={`${streamId}-${sessionToken}`}
+      ref={videoCallbackRef}
       className={className}
       style={style}
       autoPlay={autoPlay}

@@ -128,41 +128,26 @@ class TestNoViewerTimeout:
 # ---------- FFmpeg health ----------
 
 class TestFFmpegHealth:
-    def test_crash_triggers_restart(self, orchestrator_factory, fake_ffmpeg):
+    def test_ffmpeg_not_spawned(self, orchestrator_factory, fake_ffmpeg):
+        """FFmpeg publishing to MediaMTX is disabled — process should be None."""
         orch = orchestrator_factory(
             monitor_interval_seconds=0.02,
             idle_timeout_seconds=999,
             no_viewer_timeout_seconds=0,
         )
         handle = orch.start_stream(_cfg("ff"))
-        orch.start_monitoring()
+        assert handle.ffmpeg_process is None
 
-        # Simulate FFmpeg crash
-        original_ffmpeg = handle.ffmpeg_process
-        original_ffmpeg.die(returncode=1)
-
-        time.sleep(0.15)
-
-        current = orch.get_stream("ff")
-        # FFmpeg should have been replaced
-        assert current.ffmpeg_process is not original_ffmpeg
-
-    def test_independent_of_decode_thread(self, orchestrator_factory, fake_ffmpeg):
+    def test_decode_thread_runs_without_ffmpeg(self, orchestrator_factory, fake_ffmpeg):
+        """Decode thread for CV inference should still run when FFmpeg is disabled."""
         orch = orchestrator_factory(
             monitor_interval_seconds=0.02,
             idle_timeout_seconds=999,
             no_viewer_timeout_seconds=0,
         )
         handle = orch.start_stream(_cfg("ff2"))
-        orch.start_monitoring()
-
-        # Kill FFmpeg only
-        handle.ffmpeg_process.die(returncode=1)
-        time.sleep(0.15)
-
-        current = orch.get_stream("ff2")
-        # Decode thread should be untouched
-        assert current.decode_thread.is_alive
+        assert handle.decode_thread.is_alive
+        assert handle.ffmpeg_process is None
 
 
 # ---------- Decode thread crash detection ----------

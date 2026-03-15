@@ -16,6 +16,7 @@ from cv.publisher import get_fusion_publisher
 from cv.utils import is_http_url
 from db.models import AppUser
 from sensor_fusion import fusion_config
+from sensor_fusion.ais_store import AISStore
 from webapi.errors import (
     bad_gateway,
     bad_request,
@@ -49,8 +50,8 @@ from webapi.constants import FUSION_STREAM_ID, SYSTEM_STREAM_IDS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-FUSION_STREAM_ID = "fusion"
+FUSION_AIS_ASSET_NAMES = ("fusion_ais_pirbadet",)
+FUSION_AIS_TIME_WINDOW_S = float(os.getenv("FUSION_STREAM_AIS_TIME_WINDOW_S", "900"))
 STREAM_UPLOAD_MAX_DURATION_S = float(os.getenv("STREAM_UPLOAD_MAX_DURATION_S", "300"))
 STREAM_UPLOAD_MAX_SIZE_MB = float(os.getenv("STREAM_UPLOAD_MAX_SIZE_MB", "300"))
 STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
@@ -99,6 +100,63 @@ def _configure_stream_fusion(stream_id: str, asset_name: str) -> None:
     """Eagerly configure AIS fusion for a stream using the named media asset."""
     fusion_config.configure_from_db_asset(
         stream_id, asset_name, get_fusion_publisher().fusion_svc
+    )
+
+
+def _resolve_asset_s3_key(asset_name: str) -> str | None:
+    """Look up a media asset's raw S3 key by name."""
+    from db.database import SessionLocal
+    from db.models import MediaAsset
+    from sqlalchemy import select
+
+    try:
+        with SessionLocal() as db:
+            asset = db.scalar(select(MediaAsset).where(MediaAsset.asset_name == asset_name))
+    except Exception:
+        logger.exception("Failed to resolve S3 key for asset %s", asset_name)
+        return None
+    return asset.s3_key if asset else None
+
+
+def _load_fusion_ais_text() -> tuple[str | None, str | None]:
+    try:
+        asset_name, s3_key = s3.resolve_first_system_asset_key(FUSION_AIS_ASSET_NAMES)
+    except Exception:
+        logger.exception("Failed to resolve fusion AIS asset")
+        return None, None
+
+    text = s3.read_text_from_sources(s3_key)
+    if text and text.strip():
+        return text, f"{asset_name} (s3://{s3_key})"
+    return None, f"{asset_name} (s3://{s3_key})"
+
+
+def _configure_fusion_stream_ais(stream_id: str) -> None:
+    if stream_id != FUSION_STREAM_ID:
+        return
+
+    text, source_label = _load_fusion_ais_text()
+    if not text:
+        logger.warning("[fusion:%s] No AIS NDJSON available; fusion enrichment disabled", stream_id)
+        return
+
+    store = AISStore(ndjson_text=text, time_window_s=FUSION_AIS_TIME_WINDOW_S)
+    time_range = store.time_range
+    if not time_range:
+        logger.warning("[fusion:%s] AIS NDJSON had no usable records", stream_id)
+        return
+
+    get_fusion_publisher().fusion_svc.configure(
+        stream_id=stream_id,
+        ais_store=store,
+        video_epoch_utc=time_range[0],
+    )
+    logger.info(
+        "[fusion:%s] Configured AIS enrichment from %s (%d records, time_window_s=%s)",
+        stream_id,
+        source_label or "unknown",
+        store.record_count,
+        FUSION_AIS_TIME_WINDOW_S,
     )
 
 
@@ -192,20 +250,12 @@ async def start_stream(
         if current_user is not None:
             _require_stream_access(orchestrator, stream_id, current_user)
         if request.asset_name:
-            try:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, _configure_stream_fusion, stream_id, request.asset_name
-                )
-            except Exception as exc:
-                logger.warning(
-                    "[fusion:%s] Failed to refresh AIS enrichment on existing stream: %s",
-                    stream_id,
-                    exc,
-                )
+            background_tasks.add_task(_configure_stream_fusion, stream_id, request.asset_name)
+        existing_s3_key = existing_handle.config.source_s3_key
         return {
             "status": "already_running",
             **existing_handle.to_dict(),
-            "playback_urls": build_stream_playback_payload(stream_id),
+            "playback_urls": build_stream_playback_payload(stream_id, s3_key=existing_s3_key),
         }
 
     if (
@@ -244,12 +294,26 @@ async def start_stream(
         if not transcoded:
             background_tasks.add_task(run_transcode_task, original_s3_key)
 
+
+    # Resolve the canonical S3 key for this stream (used for HLS playback).
+    # Priority: explicit s3:// from request > asset DB lookup > default system asset
+    source_s3_key = original_s3_key
+    if not source_s3_key and request.asset_name:
+        source_s3_key = _resolve_asset_s3_key(request.asset_name)
+    if not source_s3_key and not request.source_url:
+        # Default stream — resolve the system "video" asset key
+        try:
+            source_s3_key = s3.resolve_system_asset_key("video")
+        except Exception:
+            pass
+
     config = StreamConfig(
         stream_id=stream_id,
         source_url=source_url or request.source_url,
         loop=request.loop,
         owner_user_id=current_user.id if current_user else None,
         pretranscoded=is_pretranscoded,
+        source_s3_key=source_s3_key,
     )
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
@@ -261,11 +325,13 @@ async def start_stream(
             )
         except Exception as exc:
             logger.warning("[fusion:%s] Failed to configure AIS enrichment: %s", stream_id, exc)
+    if stream_id == FUSION_STREAM_ID:
+        background_tasks.add_task(_configure_fusion_stream_ais, stream_id)
 
     return {
         "status": "started",
         **handle.to_dict(),
-        "playback_urls": build_stream_playback_payload(stream_id),
+        "playback_urls": build_stream_playback_payload(stream_id, s3_key=source_s3_key),
     }
 
 
@@ -333,12 +399,13 @@ async def get_stream_playback(
     orchestrator = _require_orchestrator()
 
     try:
-        orchestrator.get_stream(stream_id)
+        handle = orchestrator.get_stream(stream_id)
     except StreamNotFoundError as exc:
         not_found(str(exc))
 
     _require_stream_access(orchestrator, stream_id, current_user)
-    return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id)}
+    s3_key = handle.config.source_s3_key if handle else None
+    return {"stream_id": stream_id, "playback_urls": build_stream_playback_payload(stream_id, s3_key=s3_key)}
 
 
 

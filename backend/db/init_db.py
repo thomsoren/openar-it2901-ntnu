@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 _COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("media_assets", "transcoded_s3_key", "VARCHAR(1024)"),
     ("media_assets", "transcode_status", "VARCHAR(20)"),
+    ("media_assets", "hls_s3_prefix", "VARCHAR(1024)"),
+    ("media_assets", "hls_status", "VARCHAR(20)"),
 ]
 
 

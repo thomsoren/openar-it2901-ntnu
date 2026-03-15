@@ -42,7 +42,7 @@ type RecoveryAction =
 const initialState: RecoveryState = {
   recoveryStreamKey: "",
   videoSession: 0,
-  videoState: { transport: "webrtc", status: "idle", error: null },
+  videoState: { transport: "hls", status: "idle", error: null },
   imageLoaded: false,
   controlError: null,
 };
@@ -54,7 +54,7 @@ function reducer(state: RecoveryState, action: RecoveryAction): RecoveryState {
         ...state,
         recoveryStreamKey: action.streamKey,
         videoSession: action.session,
-        videoState: { transport: "webrtc", status: "idle", error: null },
+        videoState: { transport: "hls", status: "idle", error: null },
         imageLoaded: false,
         controlError: null,
       };
@@ -62,7 +62,7 @@ function reducer(state: RecoveryState, action: RecoveryAction): RecoveryState {
       return {
         recoveryStreamKey: state.recoveryStreamKey,
         videoSession: state.videoSession + 1,
-        videoState: { transport: "webrtc", status: "idle", error: null },
+        videoState: { transport: "hls", status: "idle", error: null },
         imageLoaded: false,
         controlError: null,
       };
@@ -180,7 +180,6 @@ export function useVideoSessionRecovery({
       if (imageLoadedRef.current || firstFrameRetryDoneRef.current) return;
 
       const current = videoStateRef.current;
-      if (current.transport !== "webrtc") return;
       if (current.status === "error") return;
 
       firstFrameRetryDoneRef.current = true;
@@ -208,18 +207,22 @@ export function useVideoSessionRecovery({
         const isRecoveryError =
           prev?.startsWith("Video stream") ||
           prev?.startsWith("Waiting for first video frame") ||
-          prev?.startsWith("WebRTC stream") ||
           prev?.startsWith("HLS stream");
         dispatch({ type: "SET_CONTROL_ERROR", payload: isRecoveryError ? null : prev });
+        return;
+      }
+
+      if (next.status === "connecting") {
+        // A new connection attempt is in progress.
+        // Cancel any pending reconnect timer so it doesn't interrupt.
+        clearReconnectTimers();
         return;
       }
 
       if (next.status === "error") {
         imageLoadedRef.current = false;
         dispatch({ type: "SET_IMAGE_LOADED", payload: false });
-        scheduleReconnect(
-          next.transport === "webrtc" ? "WebRTC stream reconnecting" : "HLS stream reconnecting"
-        );
+        scheduleReconnect("HLS stream reconnecting");
         return;
       }
 

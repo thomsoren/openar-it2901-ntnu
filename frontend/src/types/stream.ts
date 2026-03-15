@@ -1,7 +1,8 @@
 export interface PlaybackUrls {
-  whep_url: string;
-  hls_url: string;
-  rtsp_url: string;
+  whep_url?: string;
+  hls_url?: string;
+  rtsp_url?: string;
+  hls_s3_url?: string;
 }
 
 export interface StreamSummary {

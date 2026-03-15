@@ -9,7 +9,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 from common.config.mediamtx import FFMPEG_BIN, FFPROBE_BIN
 from db.database import SessionLocal
@@ -21,10 +21,21 @@ logger = logging.getLogger(__name__)
 
 _TRANSCODE_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="transcode")
 
+HLS_SEGMENT_DURATION_S = 4
+
 
 def _transcoded_key_for(original_key: str) -> str:
     p = PurePosixPath(original_key)
     return str(p.with_name(f"{p.stem}_h264.mp4"))
+
+
+def hls_prefix_for(s3_key: str) -> str:
+    """Derive the HLS S3 prefix from a video S3 key.
+
+    Example: 'videos/.../clip_h264.mp4' → 'videos/.../clip_h264_hls/'
+    """
+    p = PurePosixPath(s3_key)
+    return str(p.with_name(f"{p.stem}_hls")) + "/"
 
 
 def _probe_codec_and_faststart(source_path: str) -> tuple[str | None, bool]:
@@ -95,7 +106,7 @@ def _check_moov_before_mdat(source_path: str) -> bool:
     return False
 
 
-def _set_transcode_status(
+def set_transcode_status(
     s3_key: str,
     status: str,
     transcoded_key: str | None = None,
@@ -109,6 +120,23 @@ def _set_transcode_status(
             row.transcode_status = status
             if transcoded_key:
                 row.transcoded_s3_key = transcoded_key
+            db.commit()
+
+
+def set_hls_status(
+    s3_key: str,
+    status: str,
+    hls_prefix: str | None = None,
+) -> None:
+    """Update HLS segmentation status on the MediaAsset row."""
+    with SessionLocal() as db:
+        row = db.execute(
+            select(MediaAsset).where(MediaAsset.s3_key == s3_key)
+        ).scalar_one_or_none()
+        if row:
+            row.hls_status = status
+            if hls_prefix:
+                row.hls_s3_prefix = hls_prefix
             db.commit()
 
 
@@ -210,6 +238,63 @@ def transcode_to_h264(s3_key: str) -> str | None:
         return transcoded_key
 
 
+def segment_to_hls(s3_key: str) -> str:
+    """Segment an H.264 MP4 into HLS (.m3u8 + .ts) and upload to S3.
+
+    Downloads the file from S3, runs FFmpeg to produce VOD HLS segments,
+    uploads all resulting files, and returns the HLS S3 prefix.
+    Uses -c:v copy (no re-encode) so this is fast.
+    """
+    hls_prefix = hls_prefix_for(s3_key)
+
+    with tempfile.TemporaryDirectory(prefix="openar_hls_") as tmpdir:
+        tmp = Path(tmpdir)
+        input_path = tmp / PurePosixPath(s3_key).name
+
+        logger.info("[hls] Downloading s3://%s for segmentation", s3_key)
+        s3.download_to_path(s3_key, input_path)
+
+        hls_out_dir = tmp / "hls"
+        hls_out_dir.mkdir()
+        m3u8_path = hls_out_dir / "index.m3u8"
+        segment_pattern = str(hls_out_dir / "%03d.ts")
+
+        cmd = [
+            FFMPEG_BIN,
+            "-i", str(input_path),
+            "-c:v", "copy",
+            "-an",
+            "-hls_time", str(HLS_SEGMENT_DURATION_S),
+            "-hls_playlist_type", "vod",
+            "-hls_segment_filename", segment_pattern,
+            "-y",
+            str(m3u8_path),
+        ]
+        logger.info("[hls] Segmenting to HLS: %s", s3_key)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=app_settings.transcode_timeout_s,
+        )
+        if result.returncode != 0:
+            logger.error(
+                "[hls] FFmpeg segmentation failed for %s (exit %d): %s",
+                s3_key, result.returncode, result.stderr[-500:] if result.stderr else "",
+            )
+            raise RuntimeError(f"FFmpeg HLS segmentation failed with exit code {result.returncode}")
+
+        # Upload all produced files
+        for f in sorted(hls_out_dir.iterdir()):
+            remote_key = hls_prefix + f.name
+            content_type = "application/vnd.apple.mpegurl" if f.suffix == ".m3u8" else "video/mp2t"
+            logger.info("[hls] Uploading %s to s3://%s", f.name, remote_key)
+            s3.upload_from_path(f, remote_key, content_type=content_type)
+
+    logger.info("[hls] HLS segmentation complete for %s -> s3://%s", s3_key, hls_prefix)
+    return hls_prefix
+
+
 def run_transcode_task(s3_key: str) -> None:
     """Transcode a video and update its MediaAsset status.
 
@@ -244,18 +329,92 @@ def run_transcode_task(s3_key: str) -> None:
         transcoded_key = transcode_to_h264(s3_key)
     except Exception as exc:
         logger.error("[transcode] Failed for %s: %s", s3_key, exc)
-        _set_transcode_status(s3_key, "failed")
+        set_transcode_status(s3_key, "failed")
         return
 
-    _set_transcode_status(s3_key, "complete", transcoded_key)
+    set_transcode_status(s3_key, "complete", transcoded_key)
     logger.info("[transcode] Done for %s -> %s", s3_key, transcoded_key or "(original is fine)")
+
+    # Chain HLS segmentation after successful transcode
+    effective_key = transcoded_key or s3_key
+    set_hls_status(s3_key, "processing")
+    try:
+        hls_prefix = segment_to_hls(effective_key)
+        set_hls_status(s3_key, "complete", hls_prefix)
+        logger.info("[hls] Done for %s -> %s", s3_key, hls_prefix)
+    except Exception as exc:
+        logger.error("[hls] Segmentation failed for %s: %s", s3_key, exc)
+        set_hls_status(s3_key, "failed")
+
+
+def run_hls_only_task(s3_key: str) -> None:
+    """Run HLS segmentation for a video that is already transcoded.
+
+    Unlike run_transcode_task, this skips the transcode step and only
+    performs HLS segmentation.  Safe for backfilling existing assets.
+    """
+    with SessionLocal() as db:
+        row = db.execute(
+            select(MediaAsset).where(MediaAsset.s3_key == s3_key)
+        ).scalar_one_or_none()
+        if not row:
+            logger.warning("[hls-backfill] Asset not found: %s", s3_key)
+            return
+        if row.hls_status == "complete":
+            logger.info("[hls-backfill] Already done: %s", s3_key)
+            return
+        if row.transcode_status != "complete":
+            logger.info("[hls-backfill] Transcode not complete, skipping: %s", s3_key)
+            return
+        effective_key = row.transcoded_s3_key or s3_key
+
+    set_hls_status(s3_key, "processing")
+    try:
+        hls_prefix = segment_to_hls(effective_key)
+        set_hls_status(s3_key, "complete", hls_prefix)
+        logger.info("[hls-backfill] Done for %s -> %s", s3_key, hls_prefix)
+    except Exception as exc:
+        logger.error("[hls-backfill] Failed for %s: %s", s3_key, exc)
+        set_hls_status(s3_key, "failed")
+
+
+def backfill_hls_all() -> list[str]:
+    """Queue HLS segmentation for all transcoded assets missing HLS.
+
+    Returns the list of s3_keys that were queued.
+    """
+    with SessionLocal() as db:
+        rows = db.execute(
+            select(MediaAsset).where(
+                MediaAsset.transcode_status == "complete",
+                or_(
+                    MediaAsset.hls_status.is_(None),
+                    MediaAsset.hls_status.in_(["pending", "failed"]),
+                ),
+            )
+        ).scalars().all()
+        keys = [row.s3_key for row in rows]
+
+    if not keys:
+        logger.info("[hls-backfill] No assets need HLS segmentation")
+        return []
+
+    logger.info("[hls-backfill] Queuing %d asset(s) for HLS segmentation", len(keys))
+    for key in keys:
+        _TRANSCODE_POOL.submit(run_hls_only_task, key)
+    return keys
 
 
 def retry_interrupted_transcodes() -> None:
-    """Re-enqueue transcodes that were interrupted by a server restart."""
+    """Re-enqueue transcodes/HLS jobs that were interrupted by a server restart."""
     with SessionLocal() as db:
         rows = db.execute(
-            select(MediaAsset).where(MediaAsset.transcode_status.in_(["pending", "processing"]))
+            select(MediaAsset).where(
+                or_(
+                    MediaAsset.transcode_status.in_(["pending", "processing"]),
+                    MediaAsset.hls_status.in_(["pending", "processing"]),
+                )
+            )
         ).scalars().all()
         keys = [row.s3_key for row in rows]
 

@@ -25,6 +25,17 @@ def extract_token_from_request(request: Request) -> str | None:
     return _extract_bearer_token(request.headers.get("authorization"))
 
 
+def _extract_token_with_query_param(request: Request) -> str | None:
+    """Extract from Bearer header or ?access_token= query param.
+
+    Only used by routes that genuinely need query-param tokens (e.g. HLS
+    playback where the browser/player cannot set headers).
+    """
+    return _extract_bearer_token(request.headers.get("authorization")) or request.query_params.get(
+        "access_token"
+    )
+
+
 def extract_token_from_websocket(websocket: WebSocket) -> str | None:
     return _extract_bearer_token(websocket.headers.get("authorization")) or websocket.query_params.get(
         "access_token"
@@ -61,6 +72,24 @@ def get_optional_user(
     db: Annotated[Session, Depends(get_db)],
 ) -> AppUser | None:
     token = extract_token_from_request(request)
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+    except HTTPException:
+        return None
+    return db.get(AppUser, str(payload["sub"]))
+
+
+def get_optional_user_with_query_token(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> AppUser | None:
+    """Like get_optional_user but also accepts ?access_token= query param.
+
+    Use ONLY on routes where the client cannot set headers (HLS playback).
+    """
+    token = _extract_token_with_query_param(request)
     if not token:
         return None
     try:

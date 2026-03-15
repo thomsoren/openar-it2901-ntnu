@@ -121,17 +121,17 @@ def test_streams_include_playback_urls(fake_decode_thread, fake_ffmpeg):
         assert start_response.status_code == 201, start_response.text
         start_payload = start_response.json()
         assert "playback_urls" in start_payload
-        assert isinstance(start_payload["playback_urls"].get("media_enabled"), bool)
+        assert isinstance(start_payload["playback_urls"], dict)
 
         list_response = client.get("/api/streams")
         assert list_response.status_code == 200, list_response.text
         list_payload = list_response.json()
         stream = next(item for item in list_payload["streams"] if item["stream_id"] == stream_id)
         assert "playback_urls" in stream
-        assert isinstance(stream["playback_urls"].get("media_enabled"), bool)
+        assert isinstance(stream["playback_urls"], dict)
 
         playback_response = client.get(f"/api/streams/{stream_id}/playback")
         assert playback_response.status_code == 200, playback_response.text
         playback_payload = playback_response.json()
         assert playback_payload["stream_id"] == stream_id
-        assert isinstance(playback_payload["playback_urls"].get("media_enabled"), bool)
+        assert isinstance(playback_payload["playback_urls"], dict)

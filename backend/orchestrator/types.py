@@ -23,6 +23,7 @@ class StreamConfig(BaseModel):
     loop: bool = True
     owner_user_id: str | None = None
     pretranscoded: bool = False
+    source_s3_key: str | None = None
 
 
 @dataclass
@@ -77,4 +78,5 @@ class StreamHandle:
             "last_exitcode": self.last_exitcode,
             "viewer_count": self.viewer_count,
             "warm_until_monotonic": self.warm_until,
+            "source_s3_key": self.config.source_s3_key,
         }

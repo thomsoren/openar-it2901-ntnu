@@ -17,6 +17,7 @@ from webapi.routes.detections import router as detections_router
 from webapi.routes.media import router as media_router
 from webapi.routes.mediamtx_auth import router as mediamtx_auth_router
 from webapi.routes.streams import router as streams_router
+from webapi.routes.playback import router as playback_router
 from webapi.routes.system import router as system_router
 from settings import app_settings
 from auth.config import settings as auth_settings
@@ -68,6 +69,7 @@ app.include_router(media_router)
 app.include_router(mediamtx_auth_router)
 app.include_router(ais_router)
 app.include_router(streams_router)
+app.include_router(playback_router)
 app.include_router(detections_router)
 
 if IDUN_ENABLED:
@@ -119,6 +121,7 @@ async def lifespan(_: FastAPI):
                     source_url=source_url,
                     loop=True,
                     pretranscoded=pretranscoded,
+                    source_s3_key=s3_key,
                 )
             )
             logger.info("Default stream '%s' started from %s", app_settings.default_stream_id, source_url)
