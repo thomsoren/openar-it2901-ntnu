@@ -39,7 +39,7 @@ export function StreamAlarmPanel({ alerts, dismissed, onDismiss }: StreamAlarmPa
             description={alert.recovery ? `${alert.detail} ${alert.recovery}` : alert.detail}
             time={timeLabel}
             status={ObcAlertMenuItemStatus.Unacknowledged}
-            size={ObcMessageMenuItemSize.DoubleLine}
+            size={ObcMessageMenuItemSize.SingleLine}
             onAckClick={() => onDismiss(alert.id)}
           >
             {alert.source === "data" ? (
