@@ -14,6 +14,14 @@ header {
   z-index: 120;
 }
 
+.topbar-alert-panel {
+  position: absolute;
+  top: 52px;
+  right: 56px;
+  width: min(800px, calc(100vw - 72px));
+  z-index: 120;
+}
+
 .user-panel obc-user-menu {
   display: flex;
   margin-left: auto;
@@ -113,6 +121,24 @@ header {
   top: 4px;
   right: 48px;
   z-index: 101;
+}
+
+.stream-alarm-panel {
+  width: 100%;
+  pointer-events: auto;
+}
+
+.stream-alarm-panel obc-alert-menu {
+  max-width: 800px;
+  height: 500px;
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .topbar-alert-panel {
+    right: 12px;
+    width: calc(100vw - 24px);
+  }
 }
 
 .main {

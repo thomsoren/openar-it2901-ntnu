@@ -15,6 +15,7 @@ from auth.deps import get_current_user, get_optional_user
 from cv.publisher import get_fusion_publisher
 from cv.utils import is_http_url
 from db.models import AppUser
+from sensor_fusion import fusion_config
 from sensor_fusion.ais_store import AISStore
 from webapi.errors import (
     bad_gateway,
@@ -40,10 +41,10 @@ from services.stream_service import (
     _presign_s3_for_ffmpeg,
     augment_stream_payload,
     build_stream_playback_payload,
+    resolve_asset_video_source,
     resolve_stream_source,
 )
 from services.transcode_service import get_transcoded_key, run_transcode_task
-from services.hls_service import get_hls_playback_url
 from storage import s3
 from webapi.constants import FUSION_STREAM_ID, SYSTEM_STREAM_IDS
 
@@ -58,6 +59,7 @@ STREAM_UPLOAD_MAX_SIZE_BYTES = int(STREAM_UPLOAD_MAX_SIZE_MB * 1024 * 1024)
 
 class StreamStartRequest(BaseModel):
     source_url: str | None = None
+    asset_name: str | None = None
     loop: bool = True
 
 
@@ -92,6 +94,13 @@ def _start_orchestrator_stream(orchestrator: WorkerOrchestrator, config: StreamC
         conflict(str(exc), cause=exc)
     except ResourceLimitExceededError as exc:
         service_unavailable(str(exc))
+
+
+def _configure_stream_fusion(stream_id: str, asset_name: str) -> None:
+    """Eagerly configure AIS fusion for a stream using the named media asset."""
+    fusion_config.configure_from_db_asset(
+        stream_id, asset_name, get_fusion_publisher().fusion_svc
+    )
 
 
 def _load_fusion_ais_text() -> tuple[str | None, str | None]:
@@ -224,8 +233,8 @@ async def start_stream(
     if existing_handle is not None:
         if current_user is not None:
             _require_stream_access(orchestrator, stream_id, current_user)
-        if stream_id == FUSION_STREAM_ID:
-            background_tasks.add_task(_configure_fusion_stream_ais, stream_id)
+        if request.asset_name:
+            background_tasks.add_task(_configure_stream_fusion, stream_id, request.asset_name)
         existing_s3_key = existing_handle.config.source_s3_key
         return {
             "status": "already_running",
@@ -244,13 +253,20 @@ async def start_stream(
         )
 
     try:
-        source_url = await asyncio.get_running_loop().run_in_executor(
-            None, resolve_stream_source, request.source_url
-        )
+        if request.asset_name:
+            source_url = await asyncio.get_running_loop().run_in_executor(
+                None, resolve_asset_video_source, request.asset_name
+            )
+            if not source_url:
+                bad_request(f"Asset '{request.asset_name}' not found in media_assets")
+        else:
+            source_url = await asyncio.get_running_loop().run_in_executor(
+                None, resolve_stream_source, request.source_url
+            )
     except RuntimeError as exc:
         bad_gateway(str(exc))
     if not source_url:
-        bad_request("source_url is required for this stream")
+        bad_request("source_url or asset_name is required for this stream")
     await _validate_s3_source_limits(request.source_url, source_url)
 
     # Trigger background transcode for S3 uploads that haven't been transcoded yet
@@ -294,6 +310,13 @@ async def start_stream(
     handle = await asyncio.get_running_loop().run_in_executor(
         None, _start_orchestrator_stream, orchestrator, config
     )
+    if request.asset_name:
+        try:
+            await asyncio.get_running_loop().run_in_executor(
+                None, _configure_stream_fusion, stream_id, request.asset_name
+            )
+        except Exception as exc:
+            logger.warning("[fusion:%s] Failed to configure AIS enrichment: %s", stream_id, exc)
     if stream_id == FUSION_STREAM_ID:
         background_tasks.add_task(_configure_fusion_stream_ais, stream_id)
 
