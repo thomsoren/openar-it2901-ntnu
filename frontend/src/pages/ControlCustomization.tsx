@@ -5,7 +5,24 @@ import { AR_PANEL_CONTROL_DEFINITIONS } from "../components/ar-control-panel/pan
 import { useARControls } from "../components/ar-control-panel/useARControls";
 import "./ControlCustomization.css";
 
-const CONTROL_CUSTOMIZATION_ITEMS = [...AR_PANEL_CONTROL_DEFINITIONS] as const;
+const CONTROL_CUSTOMIZATION_ITEMS = AR_PANEL_CONTROL_DEFINITIONS.filter((c) =>
+  (
+    [
+      "vesselVisible",
+      "buoyLightsVisible",
+      "aisDataVisible",
+      "videoFitVisible",
+      "debugBboxVisible",
+    ] as const
+  ).includes(
+    c.key as
+      | "vesselVisible"
+      | "buoyLightsVisible"
+      | "aisDataVisible"
+      | "videoFitVisible"
+      | "debugBboxVisible"
+  )
+);
 
 function ControlCustomizationInner() {
   const { panelVisibility, setPanelControlVisibility } = useARControls();
