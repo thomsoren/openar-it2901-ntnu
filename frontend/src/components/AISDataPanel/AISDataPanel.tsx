@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { AISData } from "../../types/aisData";
 import getVesselIcon, { type VesselIconSet } from "../../utils/vesselIconMapper";
 import "./AISDataPanel.css";
@@ -19,6 +19,8 @@ interface AISDataPanelProps {
   vessel: AISData;
   originVessel: OriginVesselData;
   onClose: () => void;
+  onIconClick?: () => void;
+  selectedIndex?: number;
   useAISData?: boolean;
   iconSet?: VesselIconSet;
 }
@@ -58,10 +60,29 @@ const formatRelativeTime = (msgtime?: string): string => {
   return `${deltaDays} d ago`;
 };
 
+const isValidAngle = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 360;
+
+const normalizeAngle = (value: number): number => ((value % 360) + 360) % 360;
+
+const getVesselIconRotation = (vessel: AISData): number => {
+  if (isValidAngle(vessel.trueHeading)) {
+    return normalizeAngle(vessel.trueHeading);
+  }
+
+  if (isValidAngle(vessel.courseOverGround)) {
+    return normalizeAngle(vessel.courseOverGround);
+  }
+
+  return 0;
+};
+
 export const AISDataPanel: React.FC<AISDataPanelProps> = ({
   vessel,
   originVessel,
   onClose,
+  onIconClick,
+  selectedIndex,
   useAISData,
   iconSet = "generic",
 }) => {
@@ -98,18 +119,18 @@ export const AISDataPanel: React.FC<AISDataPanelProps> = ({
   const heading = formatMetric(vessel.trueHeading, 0);
   const speed = formatMetric(vessel.speedOverGround);
   const rot = formatMetric(vessel.rateOfTurn);
-  const bearingDeg = Number.isFinite(vessel.courseOverGround)
-    ? vessel.courseOverGround
-    : Number.isFinite(vessel.trueHeading)
-      ? vessel.trueHeading
-      : 0;
+  const vesselIconRotation = getVesselIconRotation(vessel);
+  const slotIconStyle = {
+    "--ais-poi-icon-rotation": `${vesselIconRotation}deg`,
+  } as CSSProperties;
+  const bearingDeg = vesselIconRotation;
 
   return (
     <div className="ais-poi-panel">
       <ObcPoiCard
         ref={cardRef}
         className="ais-poi-card"
-        index={String(statusBadge)}
+        index={String(selectedIndex ?? statusBadge)}
         cardTitle={vessel.name || "Unknown vessel"}
         description={`MMSI ${vessel.mmsi || "N/A"}`}
         source={useAISData ? "AIS" : "SRC"}
@@ -117,7 +138,23 @@ export const AISDataPanel: React.FC<AISDataPanelProps> = ({
         headerVariant={ObcPoiCardHeaderVariant.Detailed}
         hasCloseButton
       >
-        <span slot="poi-icon">{getVesselIcon(vessel, { iconSet, returnType: "icon" })}</span>
+        <span
+          slot="poi-icon"
+          className="ais-poi-slot-icon"
+          style={slotIconStyle}
+          role={onIconClick ? "button" : undefined}
+          tabIndex={onIconClick ? 0 : undefined}
+          onClick={() => onIconClick?.()}
+          onKeyDown={(event) => {
+            if (!onIconClick) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onIconClick();
+            }
+          }}
+        >
+          {getVesselIcon(vessel, { iconSet, returnType: "icon" })}
+        </span>
 
         {useAISData ? (
           <div className="ais-poi-body">

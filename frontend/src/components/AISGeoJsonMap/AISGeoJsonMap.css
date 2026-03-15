@@ -41,6 +41,18 @@
   filter: brightness(0) invert(1);
 }
 
+.ais-poi-panels-row {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  z-index: 3;
+  pointer-events: none;
+}
+
 .geojson-map-vessel-icon {
   cursor: pointer;
   display: flex;

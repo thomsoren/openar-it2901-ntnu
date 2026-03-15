@@ -4,9 +4,10 @@
  * Consolidates repeated GeoJSON construction, layer management,
  * and draggable-marker creation logic.
  */
+import { createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import maplibregl from "maplibre-gl";
-import type { ReactElement } from "react";
+import { ObiAisTargetActivatedSelectedIec } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-target-activated-selected-iec";
 import { AISData } from "../../types/aisData";
 import getVesselIcon, { type VesselIconSet } from "../../utils/vesselIconMapper";
 
@@ -98,6 +99,25 @@ export function getScanAreaSource(map: maplibregl.Map): maplibregl.GeoJSONSource
 // Marker factories
 // ---------------------------------------------------------------------------
 
+/** Tracks React roots for vessel marker elements so icons can be re-rendered. */
+const vesselMarkerRoots = new WeakMap<HTMLElement, ReturnType<typeof createRoot>>();
+
+/** Re-render a vessel marker's icon to reflect selected / deselected state. */
+export function updateVesselMarkerIcon(
+  element: HTMLElement,
+  vessel: AISData,
+  isSelected: boolean,
+  iconSet: VesselIconSet = "generic"
+): void {
+  const root = vesselMarkerRoots.get(element);
+  if (!root) return;
+  root.render(
+    isSelected
+      ? createElement(ObiAisTargetActivatedSelectedIec)
+      : getVesselIcon(vessel, { iconSet, returnType: "icon" })
+  );
+}
+
 interface AnchorMarkerOptions {
   className: string;
   lngLat: [number, number];
@@ -132,10 +152,7 @@ export function createVesselMarker(
 
   const root = createRoot(element);
   root.render(getVesselIcon(vessel, { iconSet, returnType: "icon" }));
-
-  const popup = new maplibregl.Popup({ offset: 10 }).setText(
-    `MMSI: ${vessel.mmsi}\n${vessel.name || "Unknown Vessel"}`
-  );
+  vesselMarkerRoots.set(element, root);
 
   const marker = new maplibregl.Marker({
     element: element,
@@ -144,7 +161,6 @@ export function createVesselMarker(
   })
     .setLngLat([vessel.longitude ?? 0, vessel.latitude ?? 0])
     .setRotation(getVesselMarkerRotation(vessel))
-    .setPopup(popup)
     .addTo(map);
 
   element.addEventListener("click", () => {

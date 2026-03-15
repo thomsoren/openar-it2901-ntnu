@@ -3,6 +3,7 @@ import { createRoot, Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./AISGeoJsonMap.mocks";
 import { clearMarkers, getCreatedMarkers, simulateDragTest } from "./AISGeoJsonMap.test-utils";
+import type { AISData } from "../../../types/aisData";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -273,6 +274,80 @@ describe("AISGeoJsonMap", () => {
 
     const payload = getLastOnChangePayload<Partial<{ rectWidth: number }>>(onChange);
     expect(payload.rectWidth).toBeDefined();
+  });
+
+  it("focuses the map on selected vessel when slot icon is clicked", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    const vessel: AISData = {
+      mmsi: 257123456,
+      name: "Selected vessel",
+      latitude: 63.44,
+      longitude: 10.4,
+      courseOverGround: 80,
+      speedOverGround: 12,
+      shipType: 70,
+      rateOfTurn: 0,
+      trueHeading: 82,
+      navigationalStatus: 0,
+      msgtime: "2026-03-14T00:00:00Z",
+      projection: null,
+    };
+
+    const { useVesselMarkers } = await import("../../../hooks/useVesselMarkers");
+    const mockedUseVesselMarkers = vi.mocked(useVesselMarkers);
+    mockedUseVesselMarkers.mockImplementationOnce((_map, _vessels, onVesselClick) => {
+      onVesselClick(vessel);
+    });
+
+    await renderMap({ vessels: [vessel] });
+
+    const panelIcon = container.querySelector(
+      '[data-testid="ais-panel-icon"]'
+    ) as HTMLButtonElement | null;
+    expect(panelIcon).not.toBeNull();
+
+    await act(async () => {
+      panelIcon?.click();
+    });
+
+    const mapInstance = await getLatestMapInstance();
+    expect(mapInstance?.panTo).toHaveBeenCalledWith([10.4, 63.44], { duration: 500 });
+  });
+
+  it("closes selected vessel panel when vessel is no longer in scan-area vessels", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    const vessel: AISData = {
+      mmsi: 257123456,
+      name: "Selected vessel",
+      latitude: 63.44,
+      longitude: 10.4,
+      courseOverGround: 80,
+      speedOverGround: 12,
+      shipType: 70,
+      rateOfTurn: 0,
+      trueHeading: 82,
+      navigationalStatus: 0,
+      msgtime: "2026-03-14T00:00:00Z",
+      projection: null,
+    };
+
+    const { useVesselMarkers } = await import("../../../hooks/useVesselMarkers");
+    const mockedUseVesselMarkers = vi.mocked(useVesselMarkers);
+    mockedUseVesselMarkers.mockImplementationOnce((_map, _vessels, onVesselClick) => {
+      onVesselClick(vessel);
+    });
+
+    await renderMap({ vessels: [vessel] });
+    expect(container.querySelector('[data-testid="ais-panel"]')).not.toBeNull();
+
+    await renderMap({ vessels: [] });
+    expect(container.querySelector('[data-testid="ais-panel"]')).toBeNull();
   });
 
   it("handles marker drag interactions without onChange callback", async () => {

@@ -9,6 +9,7 @@ vi.mock("maplibre-gl", () => {
   class Marker {
     private lngLat: [number, number] = [0, 0];
     private rotation = 0;
+    private element = document.createElement("div");
 
     constructor(options?: unknown) {
       void options;
@@ -32,6 +33,10 @@ vi.mock("maplibre-gl", () => {
       return this.rotation;
     }
 
+    getElement() {
+      return this.element;
+    }
+
     remove = vi.fn();
   }
 
@@ -52,6 +57,7 @@ vi.mock("maplibre-gl", () => {
 vi.mock("../../components/AISGeoJsonMap/mapHelpers", () => ({
   createVesselMarker: vi.fn(),
   getVesselMarkerRotation: vi.fn(),
+  updateVesselMarkerIcon: vi.fn(),
 }));
 
 describe("useVesselMarkers", () => {
@@ -321,5 +327,42 @@ describe("useVesselMarkers", () => {
     rerender({ vessels: [updatedVessel] });
 
     expect(setRotationSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("re-applies selected icon when iconSet changes", () => {
+    const vessel = createMockVessel();
+
+    const { rerender } = renderHook(
+      ({ iconSet, selectedMmsis }) =>
+        useVesselMarkers(mockMap, [vessel], onVesselClick, iconSet, selectedMmsis),
+      {
+        initialProps: {
+          iconSet: "generic" as const,
+          selectedMmsis: [vessel.mmsi],
+        },
+      }
+    );
+
+    expect(mapHelpers.updateVesselMarkerIcon).toHaveBeenCalledWith(
+      mockMarker.getElement(),
+      vessel,
+      true,
+      "generic"
+    );
+
+    rerender({ iconSet: "generic" as const, selectedMmsis: [vessel.mmsi] });
+
+    expect(mapHelpers.createVesselMarker).toHaveBeenLastCalledWith(
+      mockMap,
+      vessel,
+      expect.any(Function),
+      "generic"
+    );
+    expect(mapHelpers.updateVesselMarkerIcon).toHaveBeenLastCalledWith(
+      mockMarker.getElement(),
+      vessel,
+      true,
+      "generic"
+    );
   });
 });

@@ -168,7 +168,26 @@ vi.mock("../../../components/AISGeoJsonMap/AISGeoJsonMapTilemap", () => ({
 }));
 
 vi.mock("../../../components/AISDataPanel/AISDataPanel", () => ({
-  AISDataPanel: () => React.createElement("div", { "data-testid": "ais-panel" }),
+  AISDataPanel: ({
+    selectedIndex,
+    onIconClick,
+  }: {
+    selectedIndex?: number;
+    onIconClick?: () => void;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "ais-panel", "data-index": String(selectedIndex ?? "") },
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": "ais-panel-icon",
+          onClick: () => onIconClick?.(),
+        },
+        "focus vessel"
+      )
+    ),
 }));
 
 vi.mock(

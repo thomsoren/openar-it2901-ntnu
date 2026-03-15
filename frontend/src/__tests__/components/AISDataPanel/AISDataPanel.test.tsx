@@ -1,5 +1,5 @@
 import { act, type ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AISData } from "../../../types/aisData";
 
@@ -125,16 +125,17 @@ describe("AISDataPanel", () => {
         vessel={vessel}
         originVessel={{ latitude: 63.44, longitude: 10.41 }}
         onClose={vi.fn()}
+        selectedIndex={2}
         useAISData
       />
     );
 
     expect(screen.getByTestId("obc-poi-card").getAttribute("data-source")).toBe("AIS");
+    expect(screen.getByTestId("obc-poi-card").getAttribute("data-index")).toBe("2");
     expect(screen.getByText("Test Vessel")).toBeDefined();
     expect(screen.getByText("MMSI 257123456")).toBeDefined();
     expect(screen.getByText("30 min ago")).toBeDefined();
     expect(screen.getByText("Icon 70")).toBeDefined();
-    expect(screen.getByTestId("obc-bearing-indicator").textContent).toContain("Bearing 87");
     expect(container.textContent).toContain("87");
     expect(container.textContent).toContain("1234");
     expect(container.textContent).toContain("-4.2");
@@ -207,5 +208,26 @@ describe("AISDataPanel", () => {
     });
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onIconClick when clicking the slot icon", () => {
+    const onIconClick = vi.fn();
+
+    render(
+      <AISDataPanel
+        vessel={createVessel()}
+        originVessel={{ latitude: 63.44, longitude: 10.41 }}
+        onClose={vi.fn()}
+        onIconClick={onIconClick}
+        useAISData
+      />
+    );
+
+    const icon = screen.getByText("Icon 70").closest("span");
+    expect(icon).not.toBeNull();
+
+    fireEvent.click(icon!);
+
+    expect(onIconClick).toHaveBeenCalledTimes(1);
   });
 });

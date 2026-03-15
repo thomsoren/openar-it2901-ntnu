@@ -25,15 +25,3 @@
   z-index: 10;
   pointer-events: none;
 }
-
-@media (max-width: 920px) {
-  .ais-page__panel-wrap {
-    top: auto;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100% - 20px);
-    display: flex;
-    justify-content: center;
-  }
-}

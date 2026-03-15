@@ -130,14 +130,3 @@
 .ais-map-panel__edit-area-button {
   align-self: flex-start;
 }
-
-@media (max-width: 920px) {
-  .ais-map-panel {
-    width: min(420px, calc(100vw - 20px));
-    max-height: 50vh;
-  }
-
-  .ais-map-panel__grid--three {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}

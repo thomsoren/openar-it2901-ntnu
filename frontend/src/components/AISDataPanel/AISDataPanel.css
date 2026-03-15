@@ -1,10 +1,5 @@
 .ais-poi-panel {
-  position: absolute;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
   min-width: 264px;
-  z-index: 3;
   pointer-events: none;
 }
 
@@ -13,6 +8,10 @@
   min-width: 264px;
   max-width: 100%;
   pointer-events: auto;
+}
+
+.ais-poi-slot-icon {
+  cursor: pointer;
 }
 
 .ais-poi-body {

@@ -154,8 +154,10 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
   const headingRef = useRef<maplibregl.Marker | null>(null);
   const fovRef = useRef<maplibregl.Marker | null>(null);
 
+  const MAX_SELECTED_VESSELS = 3;
+
   const theme = useObcPalette();
-  const [selectedVessel, setSelectedVessel] = useState<AISData | null>(null);
+  const [selectedVessels, setSelectedVessels] = useState<AISData[]>([]);
 
   // Mutable ref so drag handlers always see latest props
   const paramsRef = useRef<ScanAreaParams>({
@@ -184,8 +186,27 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
   // ---- Callbacks ----
 
-  const handleVesselClick = useCallback((vessel: AISData) => {
-    setSelectedVessel(vessel);
+  const handleVesselClick = useCallback(
+    (vessel: AISData) => {
+      setSelectedVessels((prev) => {
+        const idx = prev.findIndex((v) => v.mmsi === vessel.mmsi);
+        if (idx !== -1) {
+          // Toggle off — deselect
+          return prev.filter((v) => v.mmsi !== vessel.mmsi);
+        }
+        if (prev.length < MAX_SELECTED_VESSELS) {
+          return [...prev, vessel];
+        }
+        // Already at max — evict oldest (first) and add new
+        return [...prev.slice(1), vessel];
+      });
+    },
+    [MAX_SELECTED_VESSELS]
+  );
+
+  const focusVesselOnMap = useCallback((vessel: AISData) => {
+    if (!Number.isFinite(vessel.longitude) || !Number.isFinite(vessel.latitude)) return;
+    mapRef.current?.panTo([vessel.longitude, vessel.latitude], { duration: 500 });
   }, []);
 
   const setAnchorVisibility = useCallback((enabled: boolean) => {
@@ -200,7 +221,8 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
 
   // Keep vessel markers in sync with vessels data + selected vessel
 
-  useVesselMarkers(mapRef.current, vessels, handleVesselClick, iconSet);
+  const selectedMmsis = selectedVessels.map((v) => v.mmsi);
+  useVesselMarkers(mapRef.current, vessels, handleVesselClick, iconSet, selectedMmsis);
 
   // Map initialisation (runs once)
 
@@ -612,13 +634,19 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     };
   }, [theme]);
 
-  // ---- Keep selected vessel in sync ----------------------------------------
+  // ---- Keep selected vessels in sync --------------------------------------
 
   useEffect(() => {
-    if (!selectedVessel || !vessels) return;
-    const updated = vessels.find((v) => v.mmsi === selectedVessel.mmsi);
-    if (updated) setSelectedVessel(updated);
-  }, [vessels, selectedVessel]);
+    setSelectedVessels((prev) => {
+      if (prev.length === 0) return prev;
+      if (!vessels || vessels.length === 0) return [];
+
+      const vesselByMmsi = new Map(vessels.map((v) => [v.mmsi, v]));
+      return prev
+        .map((sv) => vesselByMmsi.get(sv.mmsi))
+        .filter((v): v is AISData => v !== undefined);
+    });
+  }, [vessels]);
 
   // ---- Render --------------------------------------------------------------
 
@@ -626,14 +654,23 @@ export const AISGeoJsonMap: React.FC<AISGeoJsonMapProps> = ({
     <div className="geojson-map-container">
       <div ref={containerRef} className="geojson-map-canvas" />
 
-      {selectedVessel && (
-        <AISDataPanel
-          vessel={selectedVessel}
-          originVessel={{ latitude: shipLat, longitude: shipLon, trueHeading: heading }}
-          onClose={() => setSelectedVessel(null)}
-          useAISData
-          iconSet={iconSet}
-        />
+      {selectedVessels.length > 0 && (
+        <div className="ais-poi-panels-row">
+          {selectedVessels.map((vessel, index) => (
+            <AISDataPanel
+              key={vessel.mmsi}
+              vessel={vessel}
+              originVessel={{ latitude: shipLat, longitude: shipLon, trueHeading: heading }}
+              onClose={() =>
+                setSelectedVessels((prev) => prev.filter((v) => v.mmsi !== vessel.mmsi))
+              }
+              onIconClick={() => focusVesselOnMap(vessel)}
+              selectedIndex={index + 1}
+              useAISData
+              iconSet={iconSet}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
