@@ -10,6 +10,7 @@ export function assetToRow(asset: MediaAsset, previewUrl?: string): MediaRow {
     type: asset.media_type,
     uploaded: new Date(asset.created_at).toLocaleDateString(),
     visibilityValue: asset.visibility,
+    analysisStatus: asset.analysis?.status ?? null,
     previewUrl: previewUrl ?? null,
     previewDescription: isVideo
       ? "Select to preview this video."

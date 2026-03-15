@@ -10,6 +10,7 @@ export interface MediaAsset {
   group_id: string | null;
   is_system: boolean;
   created_at: string;
+  analysis?: MediaAnalysisSummary | null;
 }
 
 export interface PresignGetResult {
@@ -17,6 +18,44 @@ export interface PresignGetResult {
 }
 
 export type MediaVisibility = "private" | "group" | "public";
+export type UploadPurpose = "analysis" | "stream" | "generic";
+
+export interface MediaAnalysisSummary {
+  status: "queued" | "processing" | "completed" | "failed";
+  error_message: string | null;
+  updated_at: string;
+  completed_at: string | null;
+  fps: number | null;
+  video_width: number | null;
+  video_height: number | null;
+  has_result: boolean;
+}
+
+export interface MediaAnalysisDetection {
+  detection: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    confidence: number;
+    class_name?: string;
+    track_id?: number;
+  };
+  vessel: {
+    mmsi: string;
+    name?: string;
+    speed?: number;
+    heading?: number;
+  } | null;
+}
+
+export interface MediaAnalysisResult {
+  fps: number | null;
+  total_frames: number | null;
+  video_width: number | null;
+  video_height: number | null;
+  frames: Record<string, MediaAnalysisDetection[]>;
+}
 
 interface MultipartPartPresign {
   part_number: number;
@@ -57,7 +96,8 @@ const presignMultipartInit = async (
   contentType: string,
   visibility: MediaVisibility,
   partCount: number,
-  groupId?: string
+  groupId?: string,
+  uploadPurpose?: UploadPurpose
 ): Promise<MultipartInitResult> => {
   return postStoragePresign<MultipartInitResult>(
     {
@@ -65,6 +105,7 @@ const presignMultipartInit = async (
       filename,
       content_type: contentType,
       visibility,
+      ...(uploadPurpose ? { upload_purpose: uploadPurpose } : {}),
       part_count: partCount,
       ...(groupId ? { group_id: groupId } : {}),
     },
@@ -75,7 +116,8 @@ const presignMultipartInit = async (
 const presignMultipartComplete = async (
   key: string,
   uploadId: string,
-  completedParts: Array<{ part_number: number; etag: string }>
+  completedParts: Array<{ part_number: number; etag: string }>,
+  uploadPurpose?: UploadPurpose
 ): Promise<void> => {
   await postStoragePresign(
     {
@@ -83,6 +125,7 @@ const presignMultipartComplete = async (
       key,
       upload_id: uploadId,
       completed_parts: completedParts,
+      ...(uploadPurpose ? { upload_purpose: uploadPurpose } : {}),
     },
     "Multipart complete failed"
   );
@@ -156,10 +199,18 @@ export const uploadFileToS3Multipart = async (
   visibility: MediaVisibility,
   onProgress?: (percentage: number) => void,
   onAbortReady?: (abortFn: () => void) => void,
-  groupId?: string
+  groupId?: string,
+  uploadPurpose?: UploadPurpose
 ): Promise<{ key: string }> => {
   const partCount = Math.max(1, Math.ceil(file.size / MULTIPART_CHUNK_SIZE_BYTES));
-  const init = await presignMultipartInit(file.name, file.type, visibility, partCount, groupId);
+  const init = await presignMultipartInit(
+    file.name,
+    file.type,
+    visibility,
+    partCount,
+    groupId,
+    uploadPurpose
+  );
   const partByNumber = new Map(init.part_urls.map((part) => [part.part_number, part] as const));
 
   if (!init.upload_id || !init.key || partByNumber.size !== partCount) {
@@ -233,7 +284,7 @@ export const uploadFileToS3Multipart = async (
     }
 
     completedParts.sort((a, b) => a.part_number - b.part_number);
-    await presignMultipartComplete(init.key, init.upload_id, completedParts);
+    await presignMultipartComplete(init.key, init.upload_id, completedParts, uploadPurpose);
     onProgress?.(100);
     return { key: init.key };
   } catch (error) {
@@ -307,4 +358,37 @@ export const presignDownload = async (key: string): Promise<PresignGetResult> =>
     throw new Error(`Presign GET failed: ${text}`);
   }
   return response.json() as Promise<PresignGetResult>;
+};
+
+export const getMediaAnalysis = async (
+  assetId: string
+): Promise<{ asset_id: string; analysis: MediaAnalysisSummary }> => {
+  const response = await apiFetch(`/api/media/${encodeURIComponent(assetId)}/analysis`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to load analysis: ${text}`);
+  }
+  return response.json() as Promise<{ asset_id: string; analysis: MediaAnalysisSummary }>;
+};
+
+export const retryMediaAnalysis = async (
+  assetId: string
+): Promise<{ asset_id: string; analysis: MediaAnalysisSummary }> => {
+  const response = await apiFetch(`/api/media/${encodeURIComponent(assetId)}/analysis/retry`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to retry analysis: ${text}`);
+  }
+  return response.json() as Promise<{ asset_id: string; analysis: MediaAnalysisSummary }>;
+};
+
+export const getMediaAnalysisResult = async (assetId: string): Promise<MediaAnalysisResult> => {
+  const response = await apiFetch(`/api/media/${encodeURIComponent(assetId)}/analysis/result`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to load analysis result: ${text}`);
+  }
+  return response.json() as Promise<MediaAnalysisResult>;
 };

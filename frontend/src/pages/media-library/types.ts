@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { MediaAsset } from "../../services/media";
+import type { MediaAnalysisResult, MediaAnalysisSummary, MediaAsset } from "../../services/media";
 
 export interface MediaRow {
   id: string;
@@ -7,6 +7,7 @@ export interface MediaRow {
   type: string;
   uploaded: string;
   visibilityValue: string;
+  analysisStatus: string | null;
   previewUrl: string | null;
   previewDescription: string;
   asset: MediaAsset;
@@ -26,6 +27,10 @@ export interface MediaLibraryPreviewProps {
   row: MediaRow | null;
   previewError: boolean;
   onPreviewError: () => void;
+  analysis: MediaAnalysisSummary | null;
+  analysisResult: MediaAnalysisResult | null;
+  isRetrying: boolean;
+  onRetry: () => void;
 }
 
 export type MediaLibraryModalMode = "edit" | "delete" | null;
