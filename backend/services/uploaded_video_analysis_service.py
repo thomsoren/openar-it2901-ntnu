@@ -57,6 +57,13 @@ def build_placeholder_payload(
     }
 
 
+def get_analysis_status(payload: dict[str, Any] | None) -> str | None:
+    if payload is None:
+        return None
+    status = str(payload.get("status") or "").strip().lower()
+    return status if status in ANALYSIS_STATUSES else None
+
+
 def build_result_payload(
     *,
     frames: dict[str, list[dict[str, Any]]],
@@ -95,10 +102,8 @@ def write_analysis_payload(media_asset: MediaAsset, payload: dict[str, Any]) -> 
 
 def build_summary(media_asset: MediaAsset) -> dict[str, Any] | None:
     payload = read_analysis_payload(media_asset)
-    if payload is None:
-        return None
-    status = str(payload.get("status") or "").strip().lower()
-    if status not in ANALYSIS_STATUSES:
+    status = get_analysis_status(payload)
+    if status is None or payload is None:
         return None
     return {
         "status": status,
@@ -141,6 +146,8 @@ def mark_payload_failed(payload: dict[str, Any] | None, error_message: str) -> d
 
 
 def claim_next_queued_asset(db: Session) -> MediaAsset | None:
+    # TODO: This linear scan keeps the design small for now, but it is not
+    # safe against concurrent claims from multiple workers.
     assets = (
         db.execute(
             select(MediaAsset)
@@ -153,9 +160,7 @@ def claim_next_queued_asset(db: Session) -> MediaAsset | None:
     )
     for asset in assets:
         payload = read_analysis_payload(asset)
-        if payload is None:
-            continue
-        if str(payload.get("status") or "").strip().lower() != ANALYSIS_STATUS_QUEUED:
+        if get_analysis_status(payload) != ANALYSIS_STATUS_QUEUED:
             continue
         write_analysis_payload(asset, mark_payload_processing(payload))
         return asset

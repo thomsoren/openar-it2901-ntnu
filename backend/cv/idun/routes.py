@@ -4,10 +4,11 @@ Conditionally included in the main app only when IDUN_ENABLED=true.
 """
 from __future__ import annotations
 
+import hmac
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
 
 from cv.idun.bridge import IdunBridge
@@ -42,10 +43,6 @@ def init_bridge(bridge: IdunBridge) -> None:
     _bridge = bridge
 
 
-class AnalysisStartPayload(BaseModel):
-    pass
-
-
 class AnalysisFailurePayload(BaseModel):
     error_message: str
 
@@ -61,7 +58,7 @@ class AnalysisCompletePayload(BaseModel):
 def _require_idun_api_key(request: Request) -> None:
     auth_header = request.headers.get("authorization", "")
     _, _, token = auth_header.partition(" ")
-    if not token or token.strip() != IDUN_API_KEY:
+    if not token or not hmac.compare_digest(token.strip(), IDUN_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -88,7 +85,7 @@ async def websocket_idun_worker(websocket: WebSocket) -> None:
     # Authenticate
     auth_header = websocket.headers.get("authorization", "")
     _, _, token = auth_header.partition(" ")
-    if not token or token.strip() != IDUN_API_KEY:
+    if not token or not hmac.compare_digest(token.strip(), IDUN_API_KEY):
         await websocket.close(code=1008, reason="Invalid API key")
         logger.warning("IDUN worker rejected: invalid API key")
         return
@@ -97,8 +94,9 @@ async def websocket_idun_worker(websocket: WebSocket) -> None:
 
 
 @router.post("/api/idun/jobs/claim")
-def claim_uploaded_video_job(request: Request):
-    _require_idun_api_key(request)
+def claim_uploaded_video_job(
+    _auth: None = Depends(_require_idun_api_key),
+):
     with SessionLocal() as db:
         asset = claim_next_queued_asset(db)
         if asset is None:
@@ -117,9 +115,10 @@ def claim_uploaded_video_job(request: Request):
 
 
 @router.post("/api/idun/jobs/{job_id}/start")
-def start_uploaded_video_job(job_id: str, payload: AnalysisStartPayload, request: Request):
-    _require_idun_api_key(request)
-    _ = payload
+def start_uploaded_video_job(
+    job_id: str,
+    _auth: None = Depends(_require_idun_api_key),
+):
     with SessionLocal() as db:
         asset = _load_asset_or_404(db, job_id)
         current_payload = read_analysis_payload(asset) or build_placeholder_payload(asset)
@@ -128,8 +127,11 @@ def start_uploaded_video_job(job_id: str, payload: AnalysisStartPayload, request
 
 
 @router.put("/api/idun/jobs/{job_id}/complete")
-def complete_uploaded_video_job(job_id: str, payload: AnalysisCompletePayload, request: Request):
-    _require_idun_api_key(request)
+def complete_uploaded_video_job(
+    job_id: str,
+    payload: AnalysisCompletePayload,
+    _auth: None = Depends(_require_idun_api_key),
+):
     with SessionLocal() as db:
         asset = _load_asset_or_404(db, job_id)
         result_payload = build_result_payload(
@@ -144,8 +146,11 @@ def complete_uploaded_video_job(job_id: str, payload: AnalysisCompletePayload, r
 
 
 @router.put("/api/idun/jobs/{job_id}/fail")
-def fail_uploaded_video_job(job_id: str, payload: AnalysisFailurePayload, request: Request):
-    _require_idun_api_key(request)
+def fail_uploaded_video_job(
+    job_id: str,
+    payload: AnalysisFailurePayload,
+    _auth: None = Depends(_require_idun_api_key),
+):
     with SessionLocal() as db:
         asset = _load_asset_or_404(db, job_id)
         current_payload = read_analysis_payload(asset) or build_placeholder_payload(asset)

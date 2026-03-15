@@ -136,6 +136,83 @@ def test_media_analysis_retry_and_result_routes(
         assert result_response.json()["frames"]["2"] == []
 
 
+def test_media_analysis_retry_requires_failed_status(
+    db_session: Session,
+    regular_user,
+    monkeypatch,
+):
+    stored_json: dict[str, dict] = {}
+    asset = MediaAsset(
+        id="asset-retry-guard",
+        s3_key="videos/private/default-group/user-1/manual/completed.mp4",
+        media_type="video",
+        visibility="private",
+        owner_user_id=regular_user.id,
+        is_system=False,
+    )
+    db_session.add(asset)
+    db_session.commit()
+    detections_s3_key = build_detections_s3_key(regular_user.id, asset.id)
+    stored_json[detections_s3_key] = {
+        "status": "completed",
+        "error_message": None,
+        "updated_at": "2026-03-15T00:00:00+00:00",
+        "completed_at": "2026-03-15T00:00:00+00:00",
+        "fps": 25.0,
+        "total_frames": 10,
+        "video_width": 1280,
+        "video_height": 720,
+        "frames": {"0": []},
+    }
+
+    monkeypatch.setattr("storage.s3.write_json", lambda key, payload: stored_json.__setitem__(key, payload))
+    monkeypatch.setattr("storage.s3.read_json", lambda key: stored_json.get(key))
+
+    app = _analysis_app(db_session, regular_user)
+    with TestClient(app) as client:
+        retry_response = client.post(f"/api/media/{asset.id}/analysis/retry")
+        assert retry_response.status_code == 409
+        assert stored_json[detections_s3_key]["status"] == "completed"
+
+
+def test_media_analysis_requires_asset_ownership(
+    db_session: Session,
+    regular_user,
+    admin_user,
+    monkeypatch,
+):
+    stored_json: dict[str, dict] = {}
+    asset = MediaAsset(
+        id="asset-foreign",
+        s3_key="videos/private/default-group/other-user/manual/owned.mp4",
+        media_type="video",
+        visibility="private",
+        owner_user_id=admin_user.id,
+        is_system=False,
+    )
+    db_session.add(asset)
+    db_session.commit()
+    detections_s3_key = build_detections_s3_key(admin_user.id, asset.id)
+    stored_json[detections_s3_key] = {
+        "status": "failed",
+        "error_message": "boom",
+        "updated_at": "2026-03-15T00:00:00+00:00",
+        "completed_at": None,
+        "fps": None,
+        "total_frames": None,
+        "video_width": None,
+        "video_height": None,
+        "frames": {},
+    }
+
+    monkeypatch.setattr("storage.s3.read_json", lambda key: stored_json.get(key))
+
+    app = _analysis_app(db_session, regular_user)
+    with TestClient(app) as client:
+        response = client.get(f"/api/media/{asset.id}/analysis")
+        assert response.status_code == 404
+
+
 def test_idun_claim_and_complete_routes(
     db_session: Session,
     regular_user,
@@ -197,3 +274,79 @@ def test_idun_claim_and_complete_routes(
         assert stored_json[detections_s3_key]["fps"] == 25.0
         assert stored_json[detections_s3_key]["total_frames"] == 2
         assert stored_json[detections_s3_key]["frames"]["1"] == []
+
+
+def test_idun_claim_returns_204_when_no_queued_assets(
+    db_session: Session,
+    monkeypatch,
+):
+    monkeypatch.setattr("cv.idun.routes.SessionLocal", lambda: _session_ctx(db_session))
+    monkeypatch.setattr("storage.s3.read_json", lambda key: None)
+
+    app = FastAPI()
+    app.include_router(idun_router)
+    with TestClient(app) as client:
+        monkeypatch.setattr("cv.idun.routes.IDUN_API_KEY", "test-key")
+        response = client.post("/api/idun/jobs/claim", headers={"Authorization": "Bearer test-key"})
+        assert response.status_code == 204
+
+
+def test_idun_fail_route_marks_payload_failed(
+    db_session: Session,
+    regular_user,
+    monkeypatch,
+):
+    stored_json: dict[str, dict] = {}
+    asset = MediaAsset(
+        id="asset-fail",
+        s3_key="videos/private/default-group/user-1/manual/fail.mp4",
+        media_type="video",
+        visibility="private",
+        owner_user_id=regular_user.id,
+        is_system=False,
+    )
+    db_session.add(asset)
+    db_session.commit()
+    detections_s3_key = build_detections_s3_key(regular_user.id, asset.id)
+    stored_json[detections_s3_key] = {
+        "status": "processing",
+        "error_message": None,
+        "updated_at": "2026-03-15T00:00:00+00:00",
+        "completed_at": None,
+        "fps": None,
+        "total_frames": None,
+        "video_width": None,
+        "video_height": None,
+        "frames": {},
+    }
+
+    monkeypatch.setattr("cv.idun.routes.SessionLocal", lambda: _session_ctx(db_session))
+    monkeypatch.setattr("storage.s3.write_json", lambda key, payload: stored_json.__setitem__(key, payload))
+    monkeypatch.setattr("storage.s3.read_json", lambda key: stored_json.get(key))
+
+    app = FastAPI()
+    app.include_router(idun_router)
+    with TestClient(app) as client:
+        monkeypatch.setattr("cv.idun.routes.IDUN_API_KEY", "test-key")
+        response = client.put(
+            f"/api/idun/jobs/{asset.id}/fail",
+            json={"error_message": "detector failed"},
+            headers={"Authorization": "Bearer test-key"},
+        )
+        assert response.status_code == 200
+        assert stored_json[detections_s3_key]["status"] == "failed"
+        assert stored_json[detections_s3_key]["error_message"] == "detector failed"
+
+
+def test_idun_routes_reject_invalid_api_key(
+    db_session: Session,
+    monkeypatch,
+):
+    monkeypatch.setattr("cv.idun.routes.SessionLocal", lambda: _session_ctx(db_session))
+
+    app = FastAPI()
+    app.include_router(idun_router)
+    with TestClient(app) as client:
+        monkeypatch.setattr("cv.idun.routes.IDUN_API_KEY", "test-key")
+        response = client.post("/api/idun/jobs/claim", headers={"Authorization": "Bearer wrong-key"})
+        assert response.status_code == 401

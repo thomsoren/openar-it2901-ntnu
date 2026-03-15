@@ -1,9 +1,9 @@
 """S3 storage. Env: S3_ACCESS_KEY, S3_SECRET_KEY, S3_PUBLIC_BASE_URL."""
 from __future__ import annotations
 
+import json
 import os
 import re
-import json
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse

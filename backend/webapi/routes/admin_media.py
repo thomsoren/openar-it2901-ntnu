@@ -81,6 +81,10 @@ def _asset_exists_on_s3(asset: MediaAsset) -> bool:
         return False
 
 
+def _analysis_summary_for_asset(asset: MediaAsset) -> dict | None:
+    return build_summary(asset) if asset.media_type == "video" else None
+
+
 @router.get("", response_model=list[MediaAssetResponse])
 def list_media_assets(
     current_user: Annotated[AppUser, Depends(get_current_user)],
@@ -96,10 +100,12 @@ def list_media_assets(
         query = query.filter(MediaAsset.owner_user_id == current_user.id)
     assets = query.order_by(MediaAsset.created_at.desc()).all()
     s3_assets = [asset for asset in assets if _asset_exists_on_s3(asset)]
+    # TODO: This reads one analysis JSON per video asset. If the list grows,
+    # cache or persist summary status separately.
     return [
         MediaAssetResponse.from_orm(
             a,
-            analysis=build_summary(a) if a.media_type == "video" else None,
+            analysis=_analysis_summary_for_asset(a),
         )
         for a in s3_assets
     ]
@@ -171,7 +177,7 @@ def update_visibility(
     db.refresh(asset)
     return MediaAssetResponse.from_orm(
         asset,
-        analysis=build_summary(asset) if asset.media_type == "video" else None,
+        analysis=_analysis_summary_for_asset(asset),
     )
 
 
@@ -205,5 +211,5 @@ def rename_asset(
     db.refresh(asset)
     return MediaAssetResponse.from_orm(
         asset,
-        analysis=build_summary(asset) if asset.media_type == "video" else None,
+        analysis=_analysis_summary_for_asset(asset),
     )

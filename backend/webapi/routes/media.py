@@ -14,8 +14,10 @@ from common.types import DetectedVessel
 from fusion import fusion
 from services.uploaded_video_analysis_service import (
     ANALYSIS_STATUS_COMPLETED,
+    ANALYSIS_STATUS_FAILED,
     build_placeholder_payload,
     build_summary,
+    get_analysis_status,
     read_analysis_payload,
     write_analysis_payload,
 )
@@ -165,6 +167,12 @@ def retry_uploaded_video_analysis(
         asset = _get_owned_media_asset(db, asset_id, current_user)
         if asset.media_type != "video":
             not_found("Uploaded video analysis is only available for video assets")
+        current_payload = read_analysis_payload(asset)
+        current_status = get_analysis_status(current_payload)
+        if current_status is None:
+            not_found("Uploaded video analysis not found")
+        if current_status != ANALYSIS_STATUS_FAILED:
+            raise HTTPException(status_code=409, detail="Uploaded video analysis can only be retried from failed state")
         write_analysis_payload(asset, build_placeholder_payload(asset))
         return {
             "asset_id": asset.id,
@@ -189,7 +197,7 @@ def get_uploaded_video_analysis_result(
         payload = read_analysis_payload(asset)
         if payload is None:
             not_found("Uploaded video analysis not found")
-        if str(payload.get("status") or "").strip().lower() != ANALYSIS_STATUS_COMPLETED:
+        if get_analysis_status(payload) != ANALYSIS_STATUS_COMPLETED:
             raise HTTPException(status_code=409, detail="Uploaded video analysis is not complete")
         return JSONResponse(payload)
     except HTTPException:
