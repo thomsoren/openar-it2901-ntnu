@@ -12,7 +12,7 @@
 }
 
 .stream-tabs-shell {
-  pointer-events: auto;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -22,52 +22,39 @@
 }
 
 .stream-tabs-bar {
+  pointer-events: auto;
+  position: absolute;
+  height: 48px;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
+  flex-direction: row;
   align-items: center;
-  flex-wrap: nowrap;
-  flex: 0 0 auto;
-  position: relative;
-  column-gap: 8px;
-  row-gap: 0;
+  gap: 8px;
+  padding: 0 8px;
+  background: #f7f7f7;
+  border-radius: 12px;
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.23);
+  z-index: 30;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
 
-.stream-tab-row {
-  display: block;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.stream-tabs-controls {
-  display: flex;
-  flex: 0 0 auto;
-  min-width: 0;
-}
-
-.stream-tabs-bar--stacked {
-  flex-wrap: wrap;
-  align-items: flex-start;
-  row-gap: 8px;
-}
-
-.stream-tabs-bar--stacked .stream-tab-row {
-  flex: 1 1 100%;
-  min-width: 100%;
-}
-
-.stream-tabs-bar--stacked .stream-tabs-controls {
-  flex: 1 1 100%;
+.stream-tabs-divider {
+  width: 0px;
+  height: 16px;
+  border: 1px solid #dddddd;
+  flex-shrink: 0;
 }
 
 .stream-card-content {
-  position: relative;
-  width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: #e5e9ef;
 }
 
-/* Ensure content area has height when showing video-only tabs (Fusion Video, Mock data) */
 .stream-card-content--video-tab {
   min-height: 200px;
 }

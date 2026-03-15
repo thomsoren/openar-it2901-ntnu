@@ -1,18 +1,18 @@
 import { ObcIconButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-button/icon-button";
+import { ObcCheckButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/check-button/check-button";
 import { ObcDropdownButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/dropdown-button/dropdown-button";
+import { ObcIconCheckButton } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/icon-check-button/icon-check-button";
+import { CheckButtonType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/check-button/check-button";
 import { IconButtonVariant } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/icon-button/icon-button";
 import { DropdownButtonType } from "@ocean-industries-concept-lab/openbridge-webcomponents/dist/components/dropdown-button/dropdown-button";
 import { ObiBuoySparEast } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-buoy-spar-east";
 import { ObiRadarRangeProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-radar-range-proposal";
 import { ObiVesselTypeGenericOutlined } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-vessel-type-generic-outlined";
-import { ObiAisProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-ais-proposal";
 import { ObiCamera } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-camera";
 import { ObiTargetSettingsProposal } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-target-settings-proposal";
 import { ObiExpand } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/icons/icon-expand";
 import { useARControls } from "./useARControls";
 import type { PoiDropdownValue, RangeValue } from "./ar-control-context";
-import { AR_PANEL_CONTROL_DEFINITIONS } from "./panel-controls";
-import "./ARControlPanel.css";
 
 const RANGE_OPTIONS: { value: RangeValue; label: string }[] = [
   { value: "off", label: "Range: OFF" },
@@ -70,37 +70,38 @@ export function ARControlPanel() {
       </ObcIconButton>
     ),
     buoyLightsVisible: (
-      <ObcIconButton
+      <ObcIconCheckButton
         key="buoyLightsVisible"
-        variant={IconButtonVariant.flat}
-        activated={buoyAndLightOn}
-        title="Buoy + lighthouse"
-        onClick={() => setPair("buoyLayerVisible", "flotsamLayerVisible", !buoyAndLightOn)}
+        checked={buoyAndLightOn}
+        title="Toggle buoy detection visibility"
+        onIconCheckButtonClick={() =>
+          setPair("buoyLayerVisible", "flotsamLayerVisible", !buoyAndLightOn)
+        }
       >
-        <ObiBuoySparEast />
-      </ObcIconButton>
+        <ObiBuoySparEast slot="icon" />
+      </ObcIconCheckButton>
     ),
     vesselVisible: (
-      <ObcIconButton
+      <ObcIconCheckButton
         key="vesselVisible"
-        variant={IconButtonVariant.flat}
-        activated={state.vesselLayerVisible}
-        title="Boat"
-        onClick={() => toggle("vesselLayerVisible")}
+        checked={state.vesselLayerVisible}
+        title="Toggle vessel detection visibility"
+        externalControl
+        onIconCheckButtonClick={() => toggle("vesselLayerVisible")}
       >
-        <ObiVesselTypeGenericOutlined />
-      </ObcIconButton>
+        <ObiVesselTypeGenericOutlined slot="icon" />
+      </ObcIconCheckButton>
     ),
     aisDataVisible: (
-      <ObcIconButton
-        key="aisDataVisible"
-        variant={IconButtonVariant.flat}
-        activated={aisDataOn}
-        title="AIS Data"
-        onClick={() => setPair("aisCardsVisible", "mobLayerVisible", !aisDataOn)}
+      <ObcCheckButton
+        key="aisDataAvailable"
+        type={CheckButtonType.checkbox}
+        checked={aisDataOn}
+        disabled={!state.vesselLayerVisible}
+        onCheckButtonClick={() => setPair("aisCardsVisible", "mobLayerVisible", !aisDataOn)}
       >
-        <ObiAisProposal />
-      </ObcIconButton>
+        Vessel Data
+      </ObcCheckButton>
     ),
     imageDataVisible: (
       <ObcIconButton
@@ -133,34 +134,36 @@ export function ARControlPanel() {
       </div>
     ),
     videoFitVisible: (
-      <ObcIconButton
+      <ObcIconCheckButton
         key="videoFitVisible"
-        variant={IconButtonVariant.flat}
-        activated={state.videoFitMode === "cover"}
+        checked={state.videoFitMode === "cover"}
         title={state.videoFitMode === "cover" ? "Fill Screen (Crop)" : "Fit to Screen (Letterbox)"}
         onClick={() => setVideoFitMode(state.videoFitMode === "cover" ? "contain" : "cover")}
       >
-        <ObiExpand />
-      </ObcIconButton>
+        <ObiExpand slot="icon" />
+      </ObcIconCheckButton>
     ),
     debugBboxVisible: (
-      <ObcIconButton
+      <ObcIconCheckButton
         key="debugBboxVisible"
-        variant={IconButtonVariant.flat}
-        activated={state.debugBboxVisible}
+        checked={state.debugBboxVisible}
         title="Debug bounding boxes"
         onClick={() => toggle("debugBboxVisible")}
       >
-        <ObiVesselTypeGenericOutlined />
-      </ObcIconButton>
+        <ObiVesselTypeGenericOutlined slot="icon" />
+      </ObcIconCheckButton>
     ),
   } as const;
 
   return (
-    <div className="ar-control-bar">
-      {AR_PANEL_CONTROL_DEFINITIONS.filter((c) => panelVisibility[c.key]).map(
-        (c) => controls[c.key]
-      )}
-    </div>
+    <>
+      {panelVisibility.vesselVisible && controls.vesselVisible}
+      {panelVisibility.buoyLightsVisible && controls.buoyLightsVisible}
+      <div className="stream-tabs-divider"></div>
+      {panelVisibility.aisDataVisible && controls.aisDataVisible}
+      <div className="stream-tabs-divider"></div>
+      {panelVisibility.videoFitVisible && controls.videoFitVisible}
+      {panelVisibility.debugBboxVisible && controls.debugBboxVisible}
+    </>
   );
 }
