@@ -21,6 +21,7 @@ class StreamConfig(BaseModel):
     source_url: str = Field(..., min_length=1)
     loop: bool = True
     owner_user_id: str | None = None
+    pretranscoded: bool = False
 
 
 @dataclass

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from common.config import BASE_DIR, MEDIAMTX_ENABLED, VIDEO_PATH, build_playback_urls
 from cv.utils import is_remote_url
+from services.transcode_service import get_transcoded_key
 from storage import s3
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,11 @@ def resolve_stream_source(source_url: str | None) -> str | None:
     raw = source_url.strip()
     s3_key = s3.coerce_s3_key(raw)
     if s3_key:
-        return _presign_s3_for_ffmpeg(s3_key)
+        transcoded_key = get_transcoded_key(s3_key)
+        effective_key = transcoded_key or s3_key
+        if transcoded_key:
+            logger.info("[stream] Using transcoded version: s3://%s", transcoded_key)
+        return _presign_s3_for_ffmpeg(effective_key)
 
     if is_remote_url(raw):
         return raw

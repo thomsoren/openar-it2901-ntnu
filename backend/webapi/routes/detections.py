@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, HTTPException, WebSocket, status
 from redis.exceptions import RedisError
 from starlette.websockets import WebSocketDisconnect
 
-from auth.deps import authenticate_websocket
+from auth.deps import extract_token_from_websocket
+from auth.security import decode_access_token
+from db.database import SessionLocal
+from db.models import AppUser
 from webapi import state
 from settings import app_settings
 from common.config import detections_channel
 from orchestrator import ResourceLimitExceededError, StreamNotFoundError
+from webapi.constants import SYSTEM_STREAM_IDS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,6 +22,18 @@ router = APIRouter()
 
 def _valid_stream_id(stream_id: str) -> bool:
     return bool(app_settings.stream_id_pattern.fullmatch(stream_id))
+
+
+def _try_authenticate_websocket(websocket: WebSocket) -> AppUser | None:
+    token = extract_token_from_websocket(websocket)
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+    except HTTPException:
+        return None
+    with SessionLocal() as db:
+        return db.get(AppUser, str(payload["sub"]))
 
 
 async def _safe_ws_send_json(websocket: WebSocket, payload: dict) -> bool:
@@ -42,15 +58,17 @@ async def websocket_detections(websocket: WebSocket, stream_id: str):
         await websocket.close(code=1008, reason="invalid_stream_id")
         return
 
-    user = await authenticate_websocket(websocket)
-    if user is None:
+    user = _try_authenticate_websocket(websocket)
+
+    if user is None and stream_id not in SYSTEM_STREAM_IDS:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
     if not state.orchestrator:
         await websocket.close(code=1011, reason="Orchestrator unavailable")
         return
 
-    if not user.is_admin and not state.orchestrator.is_stream_owner(stream_id, user.id):
+    if user and not user.is_admin and stream_id not in SYSTEM_STREAM_IDS and not state.orchestrator.is_stream_owner(stream_id, user.id):
         await websocket.close(code=1008, reason="Access denied")
         return
 

@@ -101,19 +101,25 @@ class FFmpegDirectPublisher:
     Otherwise transcodes with the configured codec chain.
     """
 
-    def __init__(self, source_url: str, stream_id: str, loop: bool = False):
+    def __init__(self, source_url: str, stream_id: str, loop: bool = False, force_copy: bool = False):
         self.source_url = source_url
         self.stream_id = stream_id
         self.loop = loop
         self.enabled = MEDIAMTX_ENABLED
         self.process: subprocess.Popen | None = None
         self._can_copy = False
+        self._force_copy = force_copy
         self._codec_candidates = _codec_order()
         self._is_remote = is_remote_url(source_url)
         self._is_http = is_http_url(source_url)
 
     def _probe(self) -> None:
         """Detect source codec to decide copy vs transcode."""
+        if self._force_copy:
+            self._can_copy = True
+            logger.info("[%s] Pre-transcoded source — will use -c:v copy", self.stream_id)
+            return
+
         # Skip ffprobe for HTTP(S) sources — it requires a network download and
         # blocks the caller for several seconds. Just transcode directly.
         if self._is_http:

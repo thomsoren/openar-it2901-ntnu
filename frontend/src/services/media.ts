@@ -10,6 +10,8 @@ export interface MediaAsset {
   group_id: string | null;
   is_system: boolean;
   created_at: string;
+  transcode_status: string | null;
+  transcoded_s3_key: string | null;
 }
 
 export interface PresignGetResult {

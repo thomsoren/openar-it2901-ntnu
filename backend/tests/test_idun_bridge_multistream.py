@@ -177,7 +177,11 @@ def test_bridge_sender_announces_removed_stream_and_clears_pending_metrics():
         websocket = FakeWorkerWebSocket()
         task = asyncio.create_task(bridge._sender_loop(websocket))
         try:
-            await asyncio.sleep(0.03)
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                if any(key[0] == "s2" for key in bridge._pending_frame_metrics):
+                    break
+                await asyncio.sleep(0.01)
             assert any(key[0] == "s2" for key in bridge._pending_frame_metrics)
             noop.remove_active_stream("s2")
             deadline = time.monotonic() + 0.2
