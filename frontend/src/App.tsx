@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import "@ocean-industries-concept-lab/openbridge-webcomponents/dist/openbridge.css";
 import { ObcBrillianceMenu } from "@ocean-industries-concept-lab/openbridge-webcomponents-react/components/brilliance-menu/brilliance-menu";
@@ -114,6 +114,16 @@ function App() {
     setShowUserPanel(false);
   };
 
+  const handleAlertsChange = useCallback((alerts: StreamAlert[]) => {
+    setStreamAlerts(alerts);
+    const activeIds = new Set(alerts.map((a) => a.id));
+    setDismissedAlerts((prev) => {
+      const next = new Set([...prev].filter((id) => activeIds.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, []);
+
   const handleDismissAlert = (id: string) => {
     setDismissedAlerts((prev) => new Set(prev).add(id));
   };
@@ -182,7 +192,7 @@ function App() {
             element={
               <AROverlay
                 onAuthGateVisibleChange={handleAuthGateVisibleChange}
-                onAlertsChange={setStreamAlerts}
+                onAlertsChange={handleAlertsChange}
               />
             }
           />

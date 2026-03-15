@@ -194,8 +194,11 @@ function AROverlayInner({
 
   useEffect(() => {
     onAlertsChange?.(streamAlerts);
-    return () => onAlertsChange?.([]);
   }, [onAlertsChange, streamAlerts]);
+
+  useEffect(() => {
+    return () => onAlertsChange?.([]);
+  }, [onAlertsChange]);
 
   const handleActiveVideoReady = useCallback((videoEl: HTMLVideoElement) => {
     videoRef.current = videoEl;
